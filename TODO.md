@@ -22,7 +22,8 @@
 
 ## App
 
-- TODO
+### 0.2
+ - check sequence order and issue rebirths if invalid after timeout 
 
 ## Types
 - valid naming String

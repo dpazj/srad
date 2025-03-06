@@ -1,28 +1,45 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
-use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage};
+use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, Message, NodeMessage};
 use srad_types::{metric::MetricValidToken, payload::Payload, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}};
 use tokio::select;
 
-use crate::config::AppSubscriptionConfig;
+use crate::{config::AppSubscriptionConfig, store::{MetricDetails, MetricToken}};
 
-struct Node {
+struct NodeState {
    seq: u64,  
    last_rebirth_request: u64,  
    metrics_valid_token: MetricValidToken,  
 }
+struct Node {
+    state: Mutex<NodeState>,
+    client: Arc<DynClient>,
+}
+
+struct NodeHandle {
+    node: Arc<Node>
+}
 
 impl Node {
 
-    fn new_from_birth_payload(payload: Payload) -> Result<Self, ()> {
+    fn new_from_birth_payload(payload: Payload) -> Result<(Self, Vec<(MetricToken, MetricDetails)>), ()> {
         Err(())
     }
+
+    fn handle_payload_seq() -> Result<(), ()> {
+        Ok(())
+    }
+
+    fn update_from_birth_payload(&self, payload: Payload)-> Result<Vec<(MetricToken, MetricDetails)>, ()> {
+        Err(())
+    }
+
 
 
 }
 
 pub struct AppClient {
-
+    client: Arc<DynClient>
 }
 
 enum AppPublishTopicKind {
@@ -38,11 +55,70 @@ impl AppClient {
     async fn publish_cmd(topic: AppPublishTopic, ){}
 }
 
+struct Group {
+    id: Arc<String>,
+    nodes: Mutex<HashMap<Arc<String>, Arc<Node>>>
+}
+
+impl Group {
+
+    fn new(id: Arc<String>) -> Self {
+        Self {
+            id,
+            nodes: Mutex::new(HashMap::new())
+        }
+    }
+
+    fn get_node(&self, node_id: &String) -> Option<Arc<Node>> {
+        let nodes = self.nodes.lock().unwrap();
+        nodes.get(node_id).map(Arc::clone)
+    }
+
+    async fn handle_node_message(&self, node_id: String, message: Message) {
+        
+        match message {
+            Message::Birth { payload } => {
+
+                let node = {
+                    let mut nodes = self.nodes.lock().unwrap();
+                    match nodes.get(&node_id) {
+                        Some(node) => {
+                            match node.update_from_birth_payload(payload) {
+                                Ok(v) => Ok((node.clone(), v)),
+                                Err(e) => Err(e),
+                            }
+                        },
+                        None => {
+                            let node_id = Arc::new(node_id);
+                            match Node::new_from_birth_payload(payload) {
+                                Ok((node,metrics)) => {
+                                    let arc_node = Arc::new(node);
+                                    nodes.insert(node_id, arc_node.clone());
+                                    Ok((arc_node, metrics))
+                                },
+                                Err(e) => Err(e),
+                            }
+                        },
+                    }
+                };
+                //nbirth_cb (node, metrics).await
+            },
+            Message::Data { payload } => todo!(),
+            Message::Death { payload } => todo!(),
+            _ => (),
+        }
+    }
+
+
+
+}
+
 pub struct App {
     host_id: String,
     subscription_config: AppSubscriptionConfig,
     client: Arc<DynClient>,
     eventloop: Box<DynEventLoop>,
+    groups: Mutex<HashMap<Arc<String>, Arc<Group>>>
 }
 
 impl App {
@@ -57,7 +133,8 @@ impl App {
             host_id: host_id.into(),
             client: Arc::new(client),
             eventloop: Box::new(eventloop),
-            subscription_config
+            subscription_config,
+            groups: Mutex::new(HashMap::new())
         }
     }
 
@@ -84,21 +161,22 @@ impl App {
         
     }
 
-    // fn get_or_create_group(&self, group_id: String) -> Arc<Group> {
-    //     let mut groups= self.groups.lock().unwrap();
-    //     let group = groups.get(&group_id);
-    //     if let Some(group) = group {
-    //         return group.clone()
-    //     }
+    fn get_or_create_group(&self, group_id: String) -> Arc<Group> {
+        let mut groups= self.groups.lock().unwrap();
+        let group = groups.get(&group_id);
+        if let Some(group) = group {
+            return group.clone()
+        }
 
-    //     let group_id= Arc::new(group_id);
-    //     let group = Arc::new(Group::new(group_id.clone()));
-    //     groups.insert(group_id, group.clone());
-    //     group
-    // }
+        let group_id= Arc::new(group_id);
+        let group = Arc::new(Group::new(group_id.clone()));
+        groups.insert(group_id, group.clone());
+        group
+    }
 
     fn handle_node_message(&self, message: NodeMessage) {
-      //get or create group  
+        let group = self.get_or_create_group(message.group_id);
+        tokio::spawn(async move { group.handle_node_message(message.node_id, message.message).await } );
       //get or create node
       //
     }
