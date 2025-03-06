@@ -1,0 +1,11 @@
+[package]
+name = "srad-client-rumqtt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+srad-types = { path = "../srad-types" }
+srad-client = { path = "../srad-client" }
+async-trait = { workspace = true }
+rumqttc = { workspace = true }
+tokio = { workspace = true }

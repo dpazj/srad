@@ -1,0 +1,9 @@
+[package]
+name = "srad-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+srad-types = { path = "../srad-types" }
+srad-client = { path = "../srad-client" }
+tokio = { workspace = true }

@@ -1,0 +1,12 @@
+[package]
+name = "srad-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+srad-types = { path = "../srad-types" }
+prost = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+

@@ -1,0 +1,10 @@
+[package]
+name = "srad"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+srad-client = { path = "../srad-client" }
+srad-client-rumqtt = { path = "../srad-client-rumqtt" }
+srad-eon = { path = "../srad-eon" }
+srad-types = { path = "../srad-types" }

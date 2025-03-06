@@ -1,0 +1,15 @@
+[package]
+name = "srad-types"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "srad_types"
+
+[dependencies]
+prost = { workspace = true }
+paste = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+prost-build = { workspace = true }
