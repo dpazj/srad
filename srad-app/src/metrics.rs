@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use srad_types::{metric::MetricValidToken, payload::{self, DataType, MetaData}, property_set::PropertySet, MetricValue};
+use srad_types::{metric::MetricValidToken, payload::{self, DataType, MetaData}, property_set::PropertySet, MetricId, MetricValue};
 
 
 pub struct MetricToken {
@@ -64,7 +64,21 @@ macro_rules! metric_details_try_from_payload_metric {
     }}
 }
 
-pub struct MetricStore {
+pub(crate) fn get_metric_id_and_details_from_payload_metrics(metrics: Vec<payload::Metric>) -> Result<Vec<(MetricId, MetricDetails)>, ()> {
+    let mut metric_id_details = Vec::with_capacity(metrics.len());
+    for x in metrics {
+        let id = if let Some(alias) = x.alias {
+            MetricId::Alias(alias)
+        } else if let Some(name) = x.name {
+            MetricId::Name(name)
+        } else { return Err(()) };
+        let details = metric_details_try_from_payload_metric!(x)?; 
+        metric_id_details.push((id, details))
+    }
+    Ok(metric_id_details) 
+}
+
+pub(crate) struct MetricStore {
     metrics_valid_token: MetricValidToken
 }
 

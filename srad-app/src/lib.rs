@@ -3,6 +3,6 @@ use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLo
 use srad_types::{metric::MetricValidToken, payload::{self, DataType, MetaData, Payload}, property_set::PropertySet, topic::{QoS, StateTopic, Topic, TopicFilter}, MetricId, MetricValue};
 
 
-mod store;
+mod metrics;
 mod config;
 mod app;
