@@ -5,6 +5,7 @@ pub mod topic;
 pub mod traits;
 pub mod property_set;
 mod value;
+pub mod metric;
 
 pub use value::*;
 
