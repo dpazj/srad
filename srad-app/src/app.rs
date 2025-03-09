@@ -1,13 +1,12 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, Message, NodeMessage};
-use srad_types::{metric::MetricValidToken, payload, payload::Payload, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricId};
+use srad_types::{payload, payload::Payload, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricId};
 use tokio::select;
 
 use crate::{config::AppSubscriptionConfig, metrics::{get_metric_id_and_details_from_payload_metrics, MetricDetails, MetricToken}};
 
 struct DeviceState {
-    metrics_valid_token: MetricValidToken, 
     birth_timestamp: u64 
 }
 
@@ -33,7 +32,6 @@ impl Device {
     fn on_death_message(&self, timestamp: u64) {
         let mut state = self.state.lock().unwrap();
         if timestamp < state.birth_timestamp { return }
-        state.metrics_valid_token.invalidate();
     }
 
 }
@@ -42,7 +40,6 @@ struct NodeState {
    seq: u64,  
    birth_timestamp: u64,
    last_rebirth_request: u64,  
-   metrics_valid_token: MetricValidToken,  
    devices: HashMap<Arc<String>, Arc<Device>>
 }
 
@@ -78,7 +75,6 @@ impl Node {
     fn on_death_message(&self, timestamp: u64) {
         let state = self.state.lock().unwrap();
         if timestamp < state.birth_timestamp { return }
-        state.metrics_valid_token.invalidate();
         for (x,y) in &state.devices {
             y.on_death_message(timestamp);
         }
