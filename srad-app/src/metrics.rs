@@ -2,6 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use srad_types::{payload::{self, DataType, MetaData}, property_set::PropertySet, MetricId, MetricValue};
 
+#[derive(Debug)]
 pub struct MetricBirthDetails {
    pub name: String,
    pub alias: Option<u64>,
@@ -20,6 +21,7 @@ impl MetricBirthDetails {
 
 }
 
+#[derive(Debug)]
 pub struct MetricDetails {
     pub value: Option<MetricValue>,
     pub properties: Option<PropertySet>,
@@ -32,7 +34,6 @@ pub struct MetricDetails {
 macro_rules! metric_details_try_from_payload_metric {
     ($metric:expr) => {{
         let timestamp = $metric.timestamp.ok_or(())?;
-        
         let value = if let Some(value) = $metric.value {
             Some(value.into())
         } else if let Some(is_null) = $metric.is_null {
@@ -82,7 +83,6 @@ pub(crate) fn get_metric_birth_details_from_birth_metrics(metrics: Vec<payload::
     let mut results= Vec::with_capacity(metrics.len());
 
     for x in metrics {
-
         let datatype = x.datatype.ok_or(())?.try_into()?;
         let name = x.name.ok_or(())?;
         if metric_name_map.insert(name.clone()) == false {

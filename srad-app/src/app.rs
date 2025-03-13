@@ -84,7 +84,7 @@ impl NodeState {
 
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug,PartialEq, Eq, Hash, Clone)]
 pub struct NodeIdentifier {
     group: String,
     node_id: String
@@ -209,6 +209,7 @@ impl State {
                     },
                 }
 
+                println!("metrics: {0:?}", payload.metrics);
                 let metric_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
                     Ok(details) => details,
                     Err(_) => todo!("rebirth"),

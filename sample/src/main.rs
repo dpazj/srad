@@ -5,7 +5,7 @@ use tokio::time;
 
 #[tokio::main(flavor="current_thread")]
 async fn main() {
-    let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
+    let opts = rumqtt::MqttOptions::new("node", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts);
     let node_metrics = SimpleMetricManager::new();
     let counter_metric = node_metrics.register_metric("Counter", 0 as u64).unwrap();

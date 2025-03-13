@@ -1,7 +1,7 @@
 use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, MetricId, MetricValue};
 
 use crate::{
-  error::SpgError, metric::MetricToken, registry::{MetricRegistry, MetricRegistryInserter, MetricRegistryInserterType, MetricValidToken}
+  error::SpgError, metric::MetricToken, registry::{MetricRegistry, MetricRegistryInserter, MetricRegistryInserterType, MetricValidToken}, utils::timestamp
 };
 
 pub struct BirthMetricDetails<T> {
@@ -10,7 +10,8 @@ pub struct BirthMetricDetails<T> {
   datatype: DataType,
   initial_value: Option<T>,
   metadata: Option<MetaData>,
-  properties: Option<PropertySet>
+  properties: Option<PropertySet>,
+  timestamp: u64
 }
 
 impl<T> BirthMetricDetails<T> 
@@ -24,7 +25,8 @@ where T: traits::MetricValue
       datatype: datatype,
       initial_value: initial_value, 
       metadata: None,
-      properties: None
+      properties: None,
+      timestamp: timestamp()
     }
   }
 
@@ -54,6 +56,11 @@ where T: traits::MetricValue
     self
   }
 
+  pub fn with_timestamp(mut self, timestamp: u64) -> Self {
+    self.timestamp = timestamp;
+    self
+  }
+
   pub fn with_metadata(mut self, metadata: MetaData) -> Self {
     self.metadata = Some(metadata);
     self
@@ -74,7 +81,7 @@ where T: traits::MetricValue
     birth_metric
       .set_name(self.name)
       .set_datatype(self.datatype);
-
+    birth_metric.timestamp = Some(self.timestamp);
     birth_metric.metadata = self.metadata.map(MetaData::into);
 
     if let Some(val) = self.initial_value {

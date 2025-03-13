@@ -8,7 +8,7 @@ mod value;
 
 pub use value::*;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum MetricId {
   Name(String),
   Alias(u64)  

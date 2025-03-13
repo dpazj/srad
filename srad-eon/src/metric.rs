@@ -104,6 +104,7 @@ impl ToMetric for PublishMetric {
       metric.set_value(val.into());
     }
 
+    metric.timestamp = Some(self.timestamp);
     metric.properties = self.properties.map(PropertySet::into); 
 
     metric.is_historical = self.is_historical;
