@@ -29,12 +29,18 @@ impl From<MessageError> for ClientError {
 }
 
 #[derive(Debug)]
-pub enum Message {
-  Birth {payload: Payload},
-  Death {payload: Payload},
-  Cmd {payload: Payload}, 
-  Data {payload: Payload},
-  Other {name: String, payload: Payload}
+pub enum MessageKind {
+  Birth,
+  Death,
+  Cmd, 
+  Data,
+  Other(String)
+}
+
+#[derive(Debug)]
+pub struct Message {
+  pub payload: Payload,
+  pub kind: MessageKind
 }
 
 #[derive(Debug)]

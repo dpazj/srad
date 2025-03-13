@@ -96,8 +96,8 @@ fn create_rebirth_message(group_id: &str, node_id: &str) -> NodeMessage {
   NodeMessage {
     group_id: group_id.to_string(), 
     node_id: node_id.to_string(), 
-    message: srad_client::Message::Cmd { payload: Payload { timestamp: Some(0), metrics: vec![metric], seq: None, uuid: None, body: None }
-  }}
+    message: srad_client::Message { payload: Payload { timestamp: Some(0), metrics: vec![metric], seq: None, uuid: None, body: None }, kind: srad_client::MessageKind::Cmd}
+  }
 }
 
 #[tokio::test]

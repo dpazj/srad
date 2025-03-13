@@ -1,144 +1,80 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
-use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, Message, NodeMessage};
-use srad_types::{metric::MetricValidToken, payload, payload::Payload, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricId};
+use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, Message, MessageKind, NodeMessage};
+use srad_types::{payload::{Metric, Payload}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}};
 use tokio::select;
 
-use crate::{config::AppSubscriptionConfig, metrics::{get_metric_id_and_details_from_payload_metrics, MetricDetails, MetricToken}};
+use crate::{config::AppSubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics}};
 
 struct DeviceState {
-    metrics_valid_token: MetricValidToken, 
-    birth_timestamp: u64 
+    birth_timestamp: u64,
+    death_timestamp: u64,
 }
 
-struct DeviceHandle {
-    device: Arc<Device>
-}
-
-struct Device {
-    state: Mutex<DeviceState>,
-    client: Arc<DynClient>,
-}
-
-impl Device {
-
-    fn new_from_birth_metrics(metrics: Vec<payload::Metric>) -> Result<(Self, Vec<(MetricToken, MetricDetails)>), ()> {
-        Err(())
+impl DeviceState {
+    fn new(birth_timestamp: u64) -> Self {
+        Self {
+            birth_timestamp,
+            death_timestamp: 0,
+        }
     }
-
-    fn update_from_birth_payload(&self, metrics: Vec<payload::Metric>)-> Result<Vec<(MetricToken, MetricDetails)>, ()> {
-        Err(())
-    }
-
-    fn on_death_message(&self, timestamp: u64) {
-        let mut state = self.state.lock().unwrap();
-        if timestamp < state.birth_timestamp { return }
-        state.metrics_valid_token.invalidate();
-    }
-
 }
 
 struct NodeState {
-   seq: u64,  
+   seq: u64, 
    birth_timestamp: u64,
-   last_rebirth_request: u64,  
-   metrics_valid_token: MetricValidToken,  
-   devices: HashMap<Arc<String>, Arc<Device>>
+   death_timestamp: u64,
+   last_rebirth_request: u64,
+   devices: HashMap<String, DeviceState>  
 }
 
-struct NodeHandle {
-    node: Arc<Node>
+enum SeqState {
+    OrderGood,
+    OutOfOrder 
 }
 
-struct Node {
-    state: Mutex<NodeState>,
-    client: Arc<DynClient>,
-}
+impl NodeState {
 
-impl Node {
-
-    fn new_from_birth_payload(payload: Payload) -> Result<(Self, Vec<(MetricToken, MetricDetails)>), ()> {
-
-        Err(())
+    fn new(seq: u64, birth_timestamp: u64) -> Self {
+        Self {
+            seq, birth_timestamp, death_timestamp: 0, last_rebirth_request: 0, devices: HashMap::new()
+        } 
     }
 
-    fn handle_payload_seq() -> Result<(), ()> {
-        Ok(())
+    fn validate_and_update_seq(&mut self, seq: u64) -> SeqState {
+        self.seq = seq;
+        SeqState::OrderGood
     }
 
-    fn update_from_birth_payload(&self, payload: Payload)-> Result<Vec<(MetricToken, MetricDetails)>, ()> {
-
-
-
-        // let state = self.state.lock().unwrap();
-        // if timestamp < state.birth_timestamp { return }
-        Err(())
+    fn validate_and_update_birth_timestamp(&mut self, birth_timestamp: u64) -> bool {
+        if birth_timestamp <= self.birth_timestamp { return false }
+        if birth_timestamp < self.death_timestamp { return false }
+        self.birth_timestamp = birth_timestamp;
+        true
     }
 
-    fn on_death_message(&self, timestamp: u64) {
-        let state = self.state.lock().unwrap();
-        if timestamp < state.birth_timestamp { return }
-        state.metrics_valid_token.invalidate();
-        for (x,y) in &state.devices {
-            y.on_death_message(timestamp);
-        }
+    fn validate_and_update_death_timestamp(&mut self, death_timestamp: u64) -> bool {
+        if death_timestamp <= self.death_timestamp { return false }
+        if death_timestamp < self.birth_timestamp { return false }
+        self.death_timestamp = death_timestamp;
+        true
     }
 
-    async fn handle_device_message(&self, device_name: String, message: Message) {
-
-        match message {
-            Message::Birth { payload } => {
-
-
-
-
-                let device= {
-                    let mut state= self.state.lock().unwrap();
-                    match state.devices.get(&device_name) {
-                        Some(device) => {
-                            match device.update_from_birth_payload(payload.metrics) {
-                                Ok(v) => Ok((device.clone(), v)),
-                                Err(e) => Err(e),
-                            }
-                        },
-                        None => {
-                            let device_name = Arc::new(device_name);
-                            match Device::new_from_birth_metrics(payload.metrics) {
-                                Ok((device,metrics)) => {
-                                    let arc_device= Arc::new(device);
-                                    state.devices.insert(device_name, arc_device.clone());
-                                    Ok((arc_device, metrics))
-                                },
-                                Err(e) => Err(e),
-                            }
-                        },
-                    }
-                };
-                //dbirth_cb (node, metrics).await
-            },
-            Message::Data { payload } => {
-
-                let state = self.state.lock().unwrap();
-                let device = match state.devices.get(&device_name).map(Arc::clone) {
-                    Some(device) => device,
-                    None => todo!("rebirth"),
-                };
-
-                let metric_id_details = get_metric_id_and_details_from_payload_metrics(payload.metrics);
-                //ddata_cb(device, metrics).await
-            },
-            Message::Death { payload } => {
-
-                let state = self.state.lock().unwrap();
-                let device = match state.devices.get(&device_name).map(Arc::clone) {
-                    Some(device) => device,
-                    None => todo!("rebirth"),
-                };
-                //ddeath_cb(device, metrics).await
-            },
-            _ => (),
-        }
+    fn validate_data_timestamp(&self, timestamp: u64) -> bool {
+        if timestamp < self.death_timestamp { return false }
+        if timestamp < self.birth_timestamp{ return false }
+        return true
     }
+
+    fn get_device(&self, device_name: &String) -> Option<DeviceState> {
+        todo!()
+    }
+
+    fn add_device(&self, name: String, device: DeviceState) {
+
+    }
+    
+
 
 }
 
@@ -159,88 +95,132 @@ impl AppClient {
     async fn publish_cmd(topic: AppPublishTopic, ){}
 }
 
-struct Group {
-    id: Arc<String>,
-    nodes: Mutex<HashMap<Arc<String>, Arc<Node>>>
+#[derive(PartialEq, Eq, Hash)]
+struct NodeIdentifier {
+    group: String,
+    node_id: String
 }
 
-impl Group {
+struct State {
+    nodes: Mutex<HashMap<NodeIdentifier, NodeState>>,
+}
 
-    fn new(id: Arc<String>) -> Self {
-        Self {
-            id,
-            nodes: Mutex::new(HashMap::new())
-        }
+impl State {
+
+    fn new() -> Self {
+        State { nodes: Mutex::new(HashMap::new()) }
     }
 
-    fn get_node(&self, node_id: &String) -> Option<Arc<Node>> {
-        let nodes = self.nodes.lock().unwrap();
-        nodes.get(node_id).map(Arc::clone)
-    }
+    fn handle_nbirth(&self, id: NodeIdentifier, seq: u64, timestamp: u64, metrics: Vec<Metric>) {
+       
 
-    async fn handle_nbirth(&self, node_id: String, payload: Payload) {
-
-        let node = {
-            let mut nodes = self.nodes.lock().unwrap();
-            match nodes.get(&node_id) {
-                Some(node) => {
-                    match node.update_from_birth_payload(payload) {
-                        Ok(v) => Ok((node.clone(), v)),
-                        Err(e) => Err(e),
-                    }
-                },
-                None => {
-                    let node_id = Arc::new(node_id);
-                    match Node::new_from_birth_payload(payload) {
-                        Ok((node,metrics)) => {
-                            let arc_node = Arc::new(node);
-                            nodes.insert(node_id, arc_node.clone());
-                            Ok((arc_node, metrics))
-                        },
-                        Err(e) => Err(e),
-                    }
-                },
-            }
-        };
-        //nbirth_cb (node, metrics).await
-    }
-
-    async fn handle_ndata(&self, node_id: String, payload: Payload) {
-        let node = match self.get_node(&node_id) {
-            Some(node) => node,
-            None => todo!("rebirth"),
-        };
-        let metric_id_details = get_metric_id_and_details_from_payload_metrics(payload.metrics);
-        //ndata_cb(node, metrics).await
-    }
-
-    async fn handle_ndeath(&self, node_id: String, payload: Payload) {
-        let node = match self.get_node(&node_id) {
-            Some(node) => node,
-            None => return, 
-        };
-        node.on_death_message(todo!());
-        //ndeath cb(node).await
-    }
-
-    async fn handle_node_message(&self, node_id: String, message: Message) {
-        
-        match message {
-            Message::Birth { payload } => self.handle_nbirth(node_id, payload).await,
-            Message::Data { payload } => self.handle_ndata(node_id, payload).await,
-            Message::Death { payload } => self.handle_ndeath(node_id, payload).await,
-            _ => (),
-        }
-    }
-
-    async fn handle_device_message(&self, node_id: String, device_name: String, message: Message) {
-        let node = match self.get_node(&node_id) {
-            Some(node) => node.clone(),
+        let mut nodes = self.nodes.lock().unwrap();
+        match nodes.get_mut(&id) {
+            Some(node) => {
+                node.validate_and_update_seq(seq);
+                if !node.validate_and_update_birth_timestamp(seq) {
+                    //timestamp not new
+                    return
+                }
+            },
             None => {
-                todo!("rebirth")
+                let node = NodeState::new(seq, timestamp);
+                nodes.insert(id, node);
             },
         };
-        node.handle_device_message(device_name, message).await
+
+        let metric_details = get_metric_birth_details_from_birth_metrics(metrics);
+        //callback
+    }
+
+    fn handle_ndeath(&self, id: NodeIdentifier, seq: u64, timestamp: u64) {
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = match nodes.get_mut(&id) {
+            Some(node) => node,
+            None => return,
+        };
+
+        node.validate_and_update_seq(seq);
+        if !node.validate_and_update_death_timestamp(timestamp) { return };
+        //callback
+    }
+
+    fn handle_ndata(&self, id: NodeIdentifier, seq: u64, metrics: Vec<Metric>) {
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = match nodes.get_mut(&id) {
+            Some(node) => node,
+            None => return,
+        };
+
+        node.validate_and_update_seq(seq);
+        drop(nodes);
+
+        let data_metric_details = get_metric_id_and_details_from_payload_metrics(metrics);
+        //tokio::spawn(cb(timestamp, details));
+    }
+
+    fn handle_node_message(&self, message: NodeMessage) {
+        let id = NodeIdentifier { group: message.group_id, node_id: message.node_id };
+        let message_kind = message.message.kind;
+        let payload = message.message.payload;
+        let seq = match payload.seq {
+            Some(seq) => seq,
+            None => return,
+        };
+
+        let timestamp= match payload.timestamp{
+            Some(ts) => ts,
+            None => return,
+        };
+
+        match message_kind {
+            MessageKind::Birth => self.handle_nbirth(id, seq, timestamp, payload.metrics),
+            MessageKind::Death => self.handle_ndeath(id, seq, timestamp),
+            MessageKind::Data => self.handle_ndata(id, seq, payload.metrics),
+            _ => ()
+        }
+    }
+
+    fn handle_device_message(&self, message: DeviceMessage) {
+        let id = NodeIdentifier { group: message.group_id, node_id: message.node_id };
+        let message_kind = message.message.kind;
+        let payload = message.message.payload;
+        let seq = match payload.seq {
+            Some(seq) => seq,
+            None => return,
+        };
+
+        let timestamp= match payload.timestamp{
+            Some(ts) => ts,
+            None => return,
+        };
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = match nodes.get_mut(&id) {
+            Some(node) => node,
+            None => {
+                todo!("rebirth");
+                return;
+            },
+        };
+        node.validate_and_update_seq(seq);
+
+        match message_kind {
+            MessageKind::Birth => {
+                match node.get_device(&message.device_id) {
+                    Some(device_state) => {
+
+                    },
+                    None => {
+                        let device_state = DeviceState::new(timestamp); 
+                        node.add_device(message.device_id, device_state);
+                    },
+                }
+            },
+            MessageKind::Death => todo!(),
+            MessageKind::Data => todo!(),
+            _ => () 
+        }
+
     }
 
 }
@@ -250,7 +230,7 @@ pub struct App {
     subscription_config: AppSubscriptionConfig,
     client: Arc<DynClient>,
     eventloop: Box<DynEventLoop>,
-    groups: Mutex<HashMap<Arc<String>, Arc<Group>>>
+    state: State 
 }
 
 impl App {
@@ -266,7 +246,7 @@ impl App {
             client: Arc::new(client),
             eventloop: Box::new(eventloop),
             subscription_config,
-            groups: Mutex::new(HashMap::new())
+            state: State::new()
         }
     }
 
@@ -293,28 +273,6 @@ impl App {
         
     }
 
-    fn get_or_create_group(&self, group_id: String) -> Arc<Group> {
-        let mut groups= self.groups.lock().unwrap();
-        let group = groups.get(&group_id);
-        if let Some(group) = group {
-            return group.clone()
-        }
-
-        let group_id= Arc::new(group_id);
-        let group = Arc::new(Group::new(group_id.clone()));
-        groups.insert(group_id, group.clone());
-        group
-    }
-
-    fn handle_node_message(&self, message: NodeMessage) {
-        let group = self.get_or_create_group(message.group_id);
-        tokio::spawn(async move { group.handle_node_message(message.node_id, message.message).await } );
-    }
-
-    fn handle_device_message(&self, message: DeviceMessage) {
-        let group = self.get_or_create_group(message.group_id);
-        tokio::spawn(async move { group.handle_device_message(message.node_id, message.device_id, message.message).await } );
-    }
 
     async fn handle_event(&mut self, event: Option<Event>) 
     {
@@ -323,12 +281,12 @@ impl App {
                 Event::Online => self.on_online(),
                 Event::Offline => self.on_offline(), 
                 Event::Node(node_message) => {
-                   self.handle_node_message(node_message); 
+                   self.state.handle_node_message(node_message); 
                 },
                 Event::Device(device_message) => {
-                   self.handle_device_message(device_message); 
+                   self.state.handle_device_message(device_message); 
                 },
-                Event::State{ host_id, payload } => (),
+                Event::State { host_id, payload } => (),
                 Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
             }
         }
@@ -342,4 +300,5 @@ impl App {
             }
         }
     } 
+
 }

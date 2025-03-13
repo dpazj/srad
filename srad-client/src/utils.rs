@@ -1,4 +1,4 @@
-use crate::{DeviceMessage, Event, Message, MessageError, NodeMessage, StatePayload};
+use crate::{DeviceMessage, Event, Message, MessageError, MessageKind, NodeMessage, StatePayload};
 
 use srad_types::{constants::STATE, payload::Payload}; 
 use prost::Message as ProstMessage;
@@ -23,17 +23,17 @@ fn process_topic_message(message_part: &[u8], payload: &[u8]) -> Result<(Message
     Err(_) => {return Err(MessageError::InvalidPayload)},
   };
 
-  let message = match &message_part[1..] {
-    b"BIRTH" => Message::Birth { payload: payload },
-    b"DEATH" => Message::Death { payload: payload },
-    b"DATA" => Message::Data { payload: payload },
-    b"CMD" => Message::Cmd { payload: payload },
+  let message_kind = match &message_part[1..] {
+    b"BIRTH" => MessageKind::Birth,
+    b"DEATH" => MessageKind::Death,
+    b"DATA" => MessageKind::Data,
+    b"CMD" => MessageKind::Cmd,
     msg => {
       let message_string = String::from_utf8(msg.into())?;
-      Message::Other { name: message_string, payload: payload}
+      MessageKind::Other(message_string)
     },
   };
-  Ok ((producer, message))
+  Ok ((producer, Message { payload: payload, kind: message_kind}))
 }
 
 pub fn topic_and_payload_to_event(topic: &[u8], payload: &[u8]) -> Result<Event, MessageError>

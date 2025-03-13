@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}};
 
 use futures::future::join_all;
-use srad_client::{DeviceMessage, DynClient, Message};
+use srad_client::{DeviceMessage, DynClient, MessageKind};
 use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic};
 
 use crate::{error::SpgError, metric::{MetricPublisher, PublishMetric}, metric_manager::{birth::BirthInitializer, manager::DynDeviceMetricManager}, node::EoNState, registry::{self, DeviceId, MetricValidToken}, utils::{self, timestamp, BirthType}};
@@ -200,8 +200,10 @@ impl DeviceMap {
       }
     };
 
-    match message.message {
-      Message::Cmd { payload } => {
+    let payload = message.message.payload;
+    let message_kind = message.message.kind;
+    match message_kind {
+      MessageKind::Cmd => {
         let message_metrics= match payload.try_into() {
           Ok(metrics) => metrics,
           Err(_) => todo!(),

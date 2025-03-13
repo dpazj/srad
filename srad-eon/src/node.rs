@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
-use srad_client::{DeviceMessage, DynClient, DynEventLoop};
+use srad_client::{DeviceMessage, DynClient, DynEventLoop, MessageKind};
 use srad_client::{Event, NodeMessage, Message};
 
 use srad_types::constants::NODE_CONTROL_REBIRTH;
@@ -298,8 +298,10 @@ impl EoN
   }
 
   fn on_node_message(&self, message: NodeMessage) {
-    match message.message {
-      Message::Cmd { payload } => {
+    let payload = message.message.payload;
+    let message_kind = message.message.kind;
+    match message_kind {
+      MessageKind::Cmd => {
 
         let mut rebirth = false;
         for x in &payload.metrics {
