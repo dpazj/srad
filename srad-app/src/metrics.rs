@@ -3,14 +3,14 @@ use std::{collections::HashSet, sync::Arc};
 use srad_types::{payload::{self, DataType, MetaData}, property_set::PropertySet, MetricId, MetricValue};
 
 pub struct MetricBirthDetails {
-   name: Arc<String>,
-   alias: Option<u64>,
-   datatype: DataType,
+   pub name: String,
+   pub alias: Option<u64>,
+   pub datatype: DataType,
 }
 
 impl MetricBirthDetails {
 
-    fn new(name: Arc<String>, alias: Option<u64>, datatype:DataType) -> Self {
+    fn new(name: String, alias: Option<u64>, datatype:DataType) -> Self {
         Self {
             name, 
             alias,
@@ -21,12 +21,12 @@ impl MetricBirthDetails {
 }
 
 pub struct MetricDetails {
-    value: Option<MetricValue>,
-    properties: Option<PropertySet>,
-    metadata: Option<MetaData>,
-    timestamp: u64,
-    is_historical: bool,
-    is_transient: bool
+    pub value: Option<MetricValue>,
+    pub properties: Option<PropertySet>,
+    pub metadata: Option<MetaData>,
+    pub timestamp: u64,
+    pub is_historical: bool,
+    pub is_transient: bool
 }
 
 macro_rules! metric_details_try_from_payload_metric {
@@ -84,7 +84,7 @@ pub(crate) fn get_metric_birth_details_from_birth_metrics(metrics: Vec<payload::
     for x in metrics {
 
         let datatype = x.datatype.ok_or(())?.try_into()?;
-        let name = Arc::new(x.name.ok_or(())?);
+        let name = x.name.ok_or(())?;
         if metric_name_map.insert(name.clone()) == false {
             //for now return an error, however it may be valid to provide multiple metric 
             //values for the same metric in a birth payload? seems a bit silly tho 
@@ -98,7 +98,7 @@ pub(crate) fn get_metric_birth_details_from_birth_metrics(metrics: Vec<payload::
             }
         } 
 
-        let birth_details = MetricBirthDetails::new(name.clone(), alias, datatype);
+        let birth_details = MetricBirthDetails::new(name, alias, datatype);
         let details = metric_details_try_from_payload_metric!(x)?;
 
         results.push((birth_details, details));

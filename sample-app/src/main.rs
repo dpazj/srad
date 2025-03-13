@@ -1,31 +1,18 @@
+use srad::app::{App, SubscriptionConfig};
 use srad::client::mqtt_client::rumqtt;
-use srad::client::{Event, Client, EventLoop};
-use srad::topic::{TopicFilter, Topic, QoS};
-use tokio::task;
 
 #[tokio::main(flavor="current_thread")]
 async fn main() {
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
-    let (mut eventloop, client) = rumqtt::EventLoop::new(opts);
+    let (eventloop, client) = rumqtt::EventLoop::new(opts);
+    let mut application = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
+    application
+        .on_online(||{})
+        .on_offline(||{})
+        .on_nbirth(|id, timestamp, metrics| {})
+        .on_ndeath(|id, timestamp| {})
+        .on_ndata(|id, timestamp, metrics| async move {});
 
-    loop {
-        match eventloop.poll().await {
-           Some(event) => {
-                println!("Event = {event:?}");
-                match event {
-                    Event::Online => {
-                        let c = client.clone();
-                        task::spawn(async move {
-                            c.subscribe(TopicFilter { topic: Topic::Namespace, qos: QoS::AtMostOnce}).await
-                        });
-                    },
-                    _ => ()
-                }
-           },
-           None => (), 
-        }
-    }
-
-
+    application.run().await;
 }

@@ -22,6 +22,15 @@
 
 ## App
 
+- user should manage list/maps of metrics
+- user reports if metric mismatch
+- data before birth
+  - check timestamp ordering
+    - timestamp gt birth timstamp,  start timer for rebirth
+    - discard premature metrics
+- app handles ordering of birth and death
+- user handles reporting decode errors and unknown metric errors.
+
 ### 0.2
  - check sequence order and issue rebirths if invalid after timeout 
 
@@ -54,6 +63,7 @@
 ### v0.2
 
 - multi part publishing
+- wait states
 
 ### Test
  

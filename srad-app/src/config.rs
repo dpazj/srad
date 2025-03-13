@@ -22,20 +22,20 @@ impl From<NamespaceSubConfig> for TopicFilter {
 }
 
 #[derive(Clone)]
-pub enum AppSubscriptionConfig{
+pub enum SubscriptionConfig{
     AllGroups,
     SingleGroup{group_id: String},
     Custom(Vec<NamespaceSubConfig>)
 }
 
-impl From<AppSubscriptionConfig> for Vec<TopicFilter> {
-    fn from(value: AppSubscriptionConfig) -> Self {
+impl From<SubscriptionConfig> for Vec<TopicFilter> {
+    fn from(value: SubscriptionConfig) -> Self {
         match value {
-            AppSubscriptionConfig::AllGroups => vec![TopicFilter { topic: Topic::Namespace, qos: QoS::AtMostOnce }],
-            AppSubscriptionConfig::SingleGroup { group_id } => vec![
+            SubscriptionConfig::AllGroups => vec![TopicFilter { topic: Topic::Namespace, qos: QoS::AtMostOnce }],
+            SubscriptionConfig::SingleGroup { group_id } => vec![
                 TopicFilter { topic: Topic::Group { id: group_id }, qos: QoS::AtMostOnce}
             ],
-            AppSubscriptionConfig::Custom(namespace_sub_configs) => {
+            SubscriptionConfig::Custom(namespace_sub_configs) => {
                 namespace_sub_configs.into_iter().map(TopicFilter::from).collect()
             },
         }
