@@ -51,10 +51,16 @@ pub fn topic_and_payload_to_event(topic: &[u8], payload: &[u8]) -> Result<Event,
   };
 
   if STATE.as_bytes().eq(state_or_group_id) {
-    return Ok(Event::State { host_id: "not implemented".into(), payload: StatePayload::Other()}) //TODO
+
+    let host_id = match iter.next() {
+      Some(val) => String::from_utf8(val.into())?,
+      None => return Err(MessageError::InvalidSparkplugTopic),
+    };
+
+    return Ok(Event::State { host_id: host_id, payload: StatePayload::Other()}) //TODO
   }
 
-  let group_id= String::from_utf8(state_or_group_id.to_vec())?;
+  let group_id= String::from_utf8(state_or_group_id.into())?;
 
   //get message type 
   let (message_producer, message) = match iter.next() {
@@ -64,7 +70,7 @@ pub fn topic_and_payload_to_event(topic: &[u8], payload: &[u8]) -> Result<Event,
 
   //get node _id 
   let node_id = match iter.next() {
-    Some(val) => String::from_utf8(val.to_vec())?,
+    Some(val) => String::from_utf8(val.into())?,
     None => return Err(MessageError::InvalidSparkplugTopic),
   };
 
@@ -75,7 +81,7 @@ pub fn topic_and_payload_to_event(topic: &[u8], payload: &[u8]) -> Result<Event,
     },
     MessageProducer::Device => {
       let device_id = match iter.next() {
-        Some(val) => String::from_utf8(val.to_vec())?,
+        Some(val) => String::from_utf8(val.into())?,
         None => return Err(MessageError::InvalidSparkplugTopic),
       };
       if let Some(_) = iter.next() { return Err(MessageError::InvalidSparkplugTopic) }
