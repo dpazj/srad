@@ -6,7 +6,7 @@ async fn main() {
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts);
-    let mut application = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
+    let (mut application, client) = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
     application
         .on_online(||{ println!("App online") })
         .on_offline(||{ println!("App offline") })

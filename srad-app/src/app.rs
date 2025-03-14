@@ -1,7 +1,7 @@
-use std::{collections::HashMap, future::Future, pin::Pin, process::Output, sync::{Arc, Mutex}};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}};
 
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
-use srad_types::{payload::Metric, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricId};
+use srad_types::{topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricId};
 use tokio::task;
 
 use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails}};
@@ -244,19 +244,40 @@ impl State {
 
 }
 
-pub struct AppClient {
-    client: Arc<DynClient>
-}
+#[derive(Clone)]
+pub struct AppClient(Arc<DynClient>);
 
-enum AppPublishTopicKind {
+#[derive(Debug, Clone)]
+enum PublishTopicKind {
     NodeTopic(NodeTopic),
     DeviceTopic(DeviceTopic) 
 }
 
-struct AppPublishTopic(AppPublishTopicKind);
+#[derive(Debug, Clone)]
+pub struct PublishTopic(PublishTopicKind);
+
+impl PublishTopic {
+
+    pub fn new_device_cmd(group_id: &String, node_id: &String, device_id: &String) -> Self {
+        PublishTopic(PublishTopicKind::DeviceTopic(DeviceTopic::new(&group_id, srad_types::topic::DeviceMessage::DCmd, node_id, device_id)))
+    }
+
+    pub fn new_node_cmd(group_id: &String, node_id: &String) -> Self {
+        PublishTopic(PublishTopicKind::NodeTopic(NodeTopic::new(&group_id, srad_types::topic::NodeMessage::NCmd, node_id)))
+    }
+
+}
 
 impl AppClient {
-    async fn publish_cmd(topic: AppPublishTopic, ){}
+    pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) 
+    {
+        let topic = PublishTopic::new_node_cmd(group_id, node_id);
+        self.publish_cmd(topic).await
+    }
+
+    pub async fn publish_cmd(&self, topic: PublishTopic) {
+
+    }
 }
 
 struct Callbacks {
@@ -273,7 +294,7 @@ struct Callbacks {
 pub struct App {
     host_id: String,
     subscription_config: SubscriptionConfig,
-    client: Arc<DynClient>,
+    client: AppClient,
     eventloop: Box<DynEventLoop>,
     state: State,
     callbacks: Callbacks,
@@ -286,7 +307,7 @@ impl App {
         subscription_config: SubscriptionConfig,
         eventloop: E,
         client: C
-    ) -> Self {
+    ) -> (Self, AppClient) {
 
         let callbacks = Callbacks {
             online: None,
@@ -299,14 +320,16 @@ impl App {
             ddata: None
         };
 
-        Self {
+        let client = AppClient(Arc::new(client));
+        let app = Self {
             host_id: host_id.into(),
-            client: Arc::new(client),
+            client: client.clone(),
             eventloop: Box::new(eventloop),
             subscription_config,
             state: State::new(),
             callbacks
-        }
+        };
+        (app, client)
     }
 
     pub fn on_online<F>(&mut self, cb: F) -> &mut Self
@@ -359,7 +382,7 @@ impl App {
 
     fn handle_online(&self) {
         if let Some(callback) = &self.callbacks.online { callback() };
-        let client = self.client.clone();
+        let client = self.client.0.clone();
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
         topics.push(TopicFilter::new_with_qos(Topic::State(StateTopic::new_host(&self.host_id)), QoS::AtMostOnce));
         task::spawn(async move {
