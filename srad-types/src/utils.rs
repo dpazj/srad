@@ -7,9 +7,3 @@ pub fn timestamp () -> u64
     .unwrap()
     .as_millis() as u64
 }
-
-#[derive(PartialEq)]
-pub(crate) enum BirthType {
-  Birth,
-  Rebirth
-}

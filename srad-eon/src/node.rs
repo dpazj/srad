@@ -8,6 +8,7 @@ use srad_types::constants::NODE_CONTROL_REBIRTH;
 use srad_types::payload::metric::Value;
 use srad_types::payload::ToMetric;
 use srad_types::topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter};
+use srad_types::utils::timestamp;
 use srad_types::{
   constants,
   topic::{DeviceMessage as DeviceMessageType, NodeMessage as NodeMessageType},
@@ -21,9 +22,8 @@ use crate::metric::{MessageMetrics, MetricPublisher, PublishMetric};
 use crate::metric_manager::birth::{BirthInitializer, BirthMetricDetails};
 use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
 use crate::registry::{MetricRegistry, MetricValidToken};
-use crate::utils::{timestamp, BirthType};
+use crate::BirthType;
 
-use super::utils;
 use super::registry;
 
 use tokio::{select, task};
@@ -161,7 +161,7 @@ pub struct Node {
 impl Node {
 
   fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
-    let timestamp = utils::timestamp();
+    let timestamp = timestamp();
     let mut reg = self.registry.lock().unwrap();
     reg.clear();
 

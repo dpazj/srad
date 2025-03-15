@@ -1,7 +1,7 @@
-use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, MetricId, MetricValue};
+use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, utils::timestamp, MetricId, MetricValue};
 
 use crate::{
-  error::SpgError, metric::MetricToken, registry::{MetricRegistry, MetricRegistryInserter, MetricRegistryInserterType, MetricValidToken}, utils::timestamp
+  error::SpgError, metric::MetricToken, registry::{MetricRegistry, MetricRegistryInserter, MetricRegistryInserterType, MetricValidToken},
 };
 
 pub struct BirthMetricDetails<T> {

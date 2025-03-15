@@ -4,6 +4,7 @@ pub mod quality;
 pub mod topic;
 pub mod traits;
 pub mod property_set;
+pub mod utils;
 mod value;
 
 pub use value::*;

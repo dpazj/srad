@@ -2,9 +2,9 @@ use std::{collections::HashMap, sync::{atomic::{AtomicBool, Ordering}, Arc, Mute
 
 use futures::future::join_all;
 use srad_client::{DeviceMessage, DynClient, MessageKind};
-use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic};
+use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic, utils::timestamp};
 
-use crate::{error::SpgError, metric::{MetricPublisher, PublishMetric}, metric_manager::{birth::BirthInitializer, manager::DynDeviceMetricManager}, node::EoNState, registry::{self, DeviceId, MetricValidToken}, utils::{self, timestamp, BirthType}};
+use crate::{error::SpgError, metric::{MetricPublisher, PublishMetric}, metric_manager::{birth::BirthInitializer, manager::DynDeviceMetricManager}, node::EoNState, registry::{self, DeviceId, MetricValidToken}, BirthType};
 
 pub struct DeviceInfo {
   id: DeviceId,
@@ -85,7 +85,7 @@ impl Device {
     let mut reg = self.registry.lock().unwrap();
     let mut birth_initializer = BirthInitializer::new( registry::MetricRegistryInserterType::Device { id: self.info.id.clone(), name: self.info.device_id.clone() }, &mut reg);
     self.dev_impl.initialize_birth(&mut birth_initializer);
-    let timestamp = utils::timestamp();
+    let timestamp = timestamp();
     let (metrics, metric_valid_token) = birth_initializer.finish();
     {
       let mut valid_token = self.metrics_valid_token.lock().unwrap();
@@ -101,7 +101,7 @@ impl Device {
   }
 
   fn generate_death_payload(&self) -> Payload {
-    let timestamp = utils::timestamp();
+    let timestamp = timestamp();
     Payload {
       seq: Some(self.eon_state.get_seq()),
       timestamp: Some (timestamp),
