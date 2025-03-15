@@ -47,7 +47,7 @@ impl NodeHandle {
     self.node.rebirth().await;
   }
 
-  pub async fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, SpgError> 
+  pub fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, SpgError> 
   where 
     S: Into<String>,
     M: DeviceMetricManager + Send + Sync + 'static 
@@ -57,7 +57,7 @@ impl NodeHandle {
       &self.node.state.edge_node_id, 
       name.into(),
       Arc::new(dev_impl)
-    ).await ?;
+    )?;
     Ok(handle)
   }
 

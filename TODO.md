@@ -17,6 +17,7 @@
 - multiple clients/brokers
 
 ### Rumqtt
+  - handle multiple clients connected with same Id
   - client disconnection
   - add better config options
 
@@ -50,19 +51,17 @@
 ## EoN
 - extract common publisher logic from device and node
 - user controlled device birth and death
+- how to handle when connection is offline and user publish metrics or births device.
 - provide properties in MessageMetric
-
 - organise exports
-- multi part metric message support
-  - ddata and cmd
 
 - better server cancellation method
 - use tck to test
-- look into fx hashmap test
 
 ### v0.2
 
-- multi part publishing
+- multi part metric message support
+  - ddata and cmd
 - wait states
 
 ### Test

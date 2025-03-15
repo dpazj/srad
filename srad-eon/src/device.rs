@@ -21,7 +21,7 @@ impl DeviceHandle {
 
   pub async fn birth(&self) {
     self.device.can_birth.store(true, Ordering::SeqCst);
-    self.device.birth(&BirthType::Birth).await
+    self.device.birth(&BirthType::Birth).await;
   }
 
   pub async fn rebirth(&self) { 
@@ -122,6 +122,7 @@ impl Device {
 
   pub async fn birth(&self, birth_type: &BirthType) {
     if !self.can_birth.load(Ordering::SeqCst) { return }
+    if !self.eon_state.is_online() { return }
     if *birth_type == BirthType::Birth && self.birthed.swap(true, Ordering::SeqCst) { return }
     let payload = self.generate_birth_payload();
     self.client.publish_device_message(
@@ -132,9 +133,7 @@ impl Device {
 }
 
 pub struct DeviceMapInner {
-  devices: HashMap<Arc<String>, Arc<Device>>,
-  /* Used to determine if a device should be birthed after it is added */
-  devices_birthed: bool
+  devices: HashMap<Arc<String>, Arc<Device>>
 }
 
 pub struct DeviceMap {
@@ -151,11 +150,11 @@ impl DeviceMap {
       eon_state,
       registry,
       client,
-      state: Mutex::new(DeviceMapInner{devices: HashMap::new(), devices_birthed: false})
+      state: Mutex::new(DeviceMapInner{devices: HashMap::new()})
     }
   }
 
-  pub async fn add_device(&self, group_id: &String, node_id: &String, name: String, dev_impl: Arc<DynDeviceMetricManager>) -> Result<DeviceHandle, SpgError>{
+  pub fn add_device(&self, group_id: &String, node_id: &String, name: String, dev_impl: Arc<DynDeviceMetricManager>) -> Result<DeviceHandle, SpgError>{
     
     let mut state= self.state.lock().unwrap();
     if let Some(_) = state.devices.get_key_value(&name) {
@@ -182,21 +181,14 @@ impl DeviceMap {
 
     let handle = DeviceHandle { device: device.clone()};
     state.devices.insert(name, device);
-    let birth = state.devices_birthed;
     drop(state);
-
-    if birth {
-      handle.device.birth(&BirthType::Birth).await;
-    }
 
     Ok(handle)
   }
 
   pub async fn birth_devices(&self, birth: BirthType) {
     let devices: Vec<_> = {
-      let mut device_map = self.state.lock().unwrap();
-      /* Set node birthed so that any device automatically births after we release the lock */
-      device_map.devices_birthed = true;
+      let device_map = self.state.lock().unwrap();
       device_map.devices.iter().map(|(_, val)| { val.clone() }).collect()
     };
 
@@ -209,8 +201,7 @@ impl DeviceMap {
   }
 
   pub fn death_devices(&self) {
-    let mut device_map = self.state.lock().unwrap();
-    device_map.devices_birthed = false;
+    let device_map = self.state.lock().unwrap();
     device_map.devices.iter().for_each(|(_, x)| { x.birthed.store(false, Ordering::SeqCst); });
   }
 
