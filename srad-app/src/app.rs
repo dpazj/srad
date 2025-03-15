@@ -1,10 +1,10 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}};
 
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
-use srad_types::{topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricId};
+use srad_types::{constants::NODE_CONTROL_REBIRTH, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricId};
 use tokio::task;
 
-use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails}};
+use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, PublishMetric}};
 
 struct DeviceState {
     birth_timestamp: u64,
@@ -173,8 +173,9 @@ impl State {
         }
     }
 
-    fn handle_device_message(&self, message: DeviceMessage) {
+    fn handle_device_message(&self, message: DeviceMessage, callbacks: &Callbacks) {
         let id = NodeIdentifier { group: message.group_id, node_id: message.node_id };
+        let device_id = message.device_id;
         let message_kind = message.message.kind;
         let payload = message.message.payload;
         let seq = match payload.seq {
@@ -199,13 +200,13 @@ impl State {
 
         match message_kind {
             MessageKind::Birth => {
-                match node.get_device(&message.device_id) {
+                match node.get_device(&device_id) {
                     Some(device_state) => {
                        if !device_state.validate_and_update_birth_timestamp(timestamp) { return }
                     },
                     None => {
                         let device_state = DeviceState::new(timestamp); 
-                        node.add_device(message.device_id, device_state);
+                        node.add_device(device_id.clone(), device_state);
                     },
                 }
 
@@ -214,18 +215,22 @@ impl State {
                     Ok(details) => details,
                     Err(_) => todo!("rebirth"),
                 };
-                //callback
+                if let Some(callback) = &callbacks.dbirth {
+                   callback(id, device_id, timestamp, metric_details); 
+                }
             },
             MessageKind::Death => {
-                let device_state = match node.get_device(&message.device_id) {
+                let device_state = match node.get_device(&device_id) {
                     Some(state) => state,
                     None => return,
                 };
                 if !device_state.validate_and_update_death_timestamp(timestamp) { return };
-                //callback;
+                if let Some(callback) = &callbacks.ddeath{
+                   callback(id, device_id, timestamp); 
+                }
             },
             MessageKind::Data => {
-                let device_state = match node.get_device(&message.device_id) {
+                let device_state = match node.get_device(&device_id) {
                     Some(state) => state,
                     None => todo!("rebirth"),
                 };
@@ -235,7 +240,11 @@ impl State {
                     Ok(details) => details,
                     Err(_) => todo!("rebirth"),
                 };
-                //callback;
+
+                if let Some(callback) = &callbacks.ddata { 
+                    let callback =  callback.clone();
+                    task::spawn(callback(id, device_id,timestamp, details));
+                };
             },
             _ => () 
         }
@@ -272,11 +281,17 @@ impl AppClient {
     pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) 
     {
         let topic = PublishTopic::new_node_cmd(group_id, node_id);
-        self.publish_cmd(topic).await
+        let rebirth_cmd = PublishMetric::new(MetricId::Name(NODE_CONTROL_REBIRTH.into()), true);
+        self.publish_metrics(topic, vec![rebirth_cmd]).await
     }
 
-    pub async fn publish_cmd(&self, topic: PublishTopic) {
+    pub async fn publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) {
 
+        // match topic.0 {
+        //     PublishTopicKind::NodeTopic(topic) => self.0.publish_node_message(topic, payload),
+        //     PublishTopicKind::DeviceTopic(topic) => todo!(),
+        // }
+        // self.0.p
     }
 }
 
@@ -375,6 +390,34 @@ impl App {
         self.callbacks.ndata = Some(callback);
         self
     }
+    
+    pub fn on_dbirth<F>(&mut self, cb: F) -> &mut Self
+    where 
+        F: Fn(NodeIdentifier, String, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + 'static
+    {
+        self.callbacks.dbirth = Some(Box::pin(cb));
+        self
+    }
+
+    pub fn on_ddeath<F>(&mut self, cb: F) -> &mut Self
+    where 
+        F: Fn(NodeIdentifier, String, u64) -> () + 'static
+    {
+        self.callbacks.ddeath = Some(Box::pin(cb));
+        self
+    }
+
+    pub fn on_ddata<F, Fut>(&mut self, cb: F) -> &mut Self
+    where 
+        F: Fn(NodeIdentifier, String, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + 'static,
+        Fut: Future<Output=()> + Send + 'static
+    {
+        let callback = Arc::new(move |id, device, time, data| {
+            Box::pin(cb(id, device, time, data)) as Pin<Box<dyn Future<Output = ()> + Send>> 
+        }); 
+        self.callbacks.ddata = Some(callback);
+        self
+    }
 
     fn update_last_will(&mut self) {
         self.eventloop.set_last_will(srad_client::LastWill::new_app(&self.host_id));
@@ -402,7 +445,7 @@ impl App {
                 Event::Online => self.handle_online(),
                 Event::Offline => self.handle_offline(), 
                 Event::Node(node_message) => self.state.handle_node_message(node_message, &self.callbacks),
-                Event::Device(device_message) => self.state.handle_device_message(device_message),
+                Event::Device(device_message) => self.state.handle_device_message(device_message, &self.callbacks),
                 Event::State { host_id, payload } => (),
                 Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
             }

@@ -1,6 +1,44 @@
 use std::{collections::HashSet, sync::Arc};
 
-use srad_types::{payload::{self, DataType, MetaData}, property_set::PropertySet, MetricId, MetricValue};
+use srad_types::{payload::{self, DataType, MetaData, Metric, ToMetric}, property_set::PropertySet, traits, MetricId, MetricValue};
+
+pub struct PublishMetric 
+{
+  /* required by the metric publisher to ensure metric can only be published by correct node/device */
+  metric_identifier: MetricId,
+  value: MetricValue,
+  timestamp: Option<u64>,
+}
+
+impl PublishMetric {
+
+  pub fn new<T: traits::MetricValue> (metric_identifier: MetricId, value: T) -> Self {
+    Self {
+      metric_identifier,
+      value: value.into(),
+      timestamp: None
+    }
+  }
+
+  pub fn timestamp(mut self, timestamp: u64) -> Self {
+    self.timestamp = Some(timestamp);
+    self
+  }
+
+}
+
+impl ToMetric for PublishMetric {
+  fn to_metric(self) -> Metric {
+    let mut metric = Metric::new();
+    match self.metric_identifier {
+      MetricId::Name(name) => metric.set_name(name),
+      MetricId::Alias(alias) => metric.set_alias(alias),
+    };
+    metric.set_value(self.value.into());
+    metric.timestamp = self.timestamp;
+    metric
+  }
+}
 
 #[derive(Debug)]
 pub struct MetricBirthDetails {

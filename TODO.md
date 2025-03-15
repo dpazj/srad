@@ -49,6 +49,7 @@
   - template support
 
 ## EoN
+
 - extract common publisher logic from device and node
 - user controlled device birth and death
 - how to handle when connection is offline and user publish metrics or births device.
