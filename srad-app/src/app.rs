@@ -1,7 +1,7 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}};
 
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
-use srad_types::{constants::NODE_CONTROL_REBIRTH, payload::Payload, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::timestamp, MetricId};
+use srad_types::{constants::NODE_CONTROL_REBIRTH, payload::{Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::timestamp, MetricId};
 use tokio::task;
 
 use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, PublishMetric}};
@@ -286,16 +286,20 @@ impl AppClient {
     }
 
     pub async fn publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) {
+        let mut payload_metrics = Vec::with_capacity(metrics.len());
+        for x in metrics.into_iter() {
+            payload_metrics.push(x.to_metric());
+        }
         let payload = Payload {
             timestamp: Some(timestamp()),
-            metrics: todo!(""),
+            metrics: payload_metrics,
             seq: None,
             uuid: None,
             body: None,
         };
         match topic.0 {
-            PublishTopicKind::NodeTopic(topic) => self.0.publish_node_message(topic, payload),
-            PublishTopicKind::DeviceTopic(topic) => todo!(),
+            PublishTopicKind::NodeTopic(topic) => self.0.publish_node_message(topic, payload).await,
+            PublishTopicKind::DeviceTopic(topic) => self.0.publish_device_message(topic, payload).await,
         };
     }
 }
