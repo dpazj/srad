@@ -6,7 +6,6 @@ use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic};
 
 use crate::{error::SpgError, metric::{MetricPublisher, PublishMetric}, metric_manager::{birth::BirthInitializer, manager::DynDeviceMetricManager}, node::EoNState, registry::{self, DeviceId, MetricValidToken}, utils::{self, timestamp, BirthType}};
 
-
 pub struct DeviceInfo {
   id: DeviceId,
   device_id: Arc<String>,
@@ -20,8 +19,20 @@ pub struct DeviceHandle {
 
 impl DeviceHandle {
 
-  pub fn rebirth(&self) -> Result<(), SpgError> { todo!() }
+  pub async fn birth(&self) {
+    self.device.can_birth.store(true, Ordering::SeqCst);
+    self.device.birth(&BirthType::Birth).await
+  }
 
+  pub async fn rebirth(&self) { 
+    self.device.can_birth.store(true, Ordering::SeqCst);
+    self.device.birth(&BirthType::Rebirth).await;
+  }
+
+  pub async fn death(&self) {
+    self.device.can_birth.store(false, Ordering::SeqCst);
+    self.device.death().await
+  }
 }
 
 impl MetricPublisher for DeviceHandle {
@@ -60,6 +71,7 @@ impl MetricPublisher for DeviceHandle {
 pub struct Device {
   info: DeviceInfo,
   birthed: AtomicBool,
+  can_birth: AtomicBool,
   metrics_valid_token: Mutex<MetricValidToken>,
   eon_state: Arc<EoNState>,
   registry: Arc<Mutex<registry::MetricRegistry>>, 
@@ -88,17 +100,28 @@ impl Device {
     }
   }
 
+  fn generate_death_payload(&self) -> Payload {
+    let timestamp = utils::timestamp();
+    Payload {
+      seq: Some(self.eon_state.get_seq()),
+      timestamp: Some (timestamp),
+      metrics: Vec::new(), 
+      uuid : None,
+      body: None
+    }
+  }
+
   pub async fn death(&self) {
     if self.birthed.swap(false, Ordering::SeqCst) == false { return }
-    todo!()
-    //let payload = self.generate_death_payload()
-    // self.client.publish_device_message(
-    //   DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DDeath, &self.eon_state.edge_node_id, &self.info.device_id),
-    //   payload 
-    // ).await;
+    let payload = self.generate_death_payload();
+    self.client.publish_device_message(
+      DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DDeath, &self.eon_state.edge_node_id, &self.info.device_id),
+      payload 
+    ).await;
   }
 
   pub async fn birth(&self, birth_type: &BirthType) {
+    if !self.can_birth.load(Ordering::SeqCst) { return }
     if *birth_type == BirthType::Birth && self.birthed.swap(true, Ordering::SeqCst) { return }
     let payload = self.generate_birth_payload();
     self.client.publish_device_message(
@@ -149,6 +172,7 @@ impl DeviceMap {
     let device = Arc::new(Device {
       info: DeviceInfo { id, device_id: name.clone(), ddata_topic: ddata_topic },
       birthed: AtomicBool::new(false),
+      can_birth: AtomicBool::new(false),
       metrics_valid_token: Mutex::new(MetricValidToken::new()),
       eon_state: self.eon_state.clone(), 
       registry: self.registry.clone(),
