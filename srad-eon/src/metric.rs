@@ -10,13 +10,25 @@ use srad_types::{traits, MetricId, MetricValue};
 
 use crate::registry::{MetricValidToken, MetricValidTokenPtr};
 
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum PublishError {
+  #[error("Connection state is Offline")]
+  Offline,
+  #[error("No metrics provided.")]
+  NoMetrics,
+  #[error("Metric is no longer valid. The publisher has likely rebirthed.")]
+  InvalidMetric,
+}
+
 pub trait MetricPublisher {
 
-  fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),()>> + Send;
-  fn publish_metric(&self, metric: PublishMetric) -> impl std::future::Future<Output = Result<(),()>> + Send {
+  fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send;
+  fn publish_metric(&self, metric: PublishMetric) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     self.publish_metrics_unsorted(vec![metric])
   }
-  fn publish_metrics(&self, mut metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),()>> + Send {
+  fn publish_metrics(&self, mut metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     metrics.sort_by(|a,b| a.timestamp.cmp(&b.timestamp));
     self.publish_metrics_unsorted(metrics)
   }

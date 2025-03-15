@@ -4,7 +4,7 @@ use futures::future::join_all;
 use srad_client::{DeviceMessage, DynClient, MessageKind};
 use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic, utils::timestamp};
 
-use crate::{error::SpgError, metric::{MetricPublisher, PublishMetric}, metric_manager::{birth::BirthInitializer, manager::DynDeviceMetricManager}, node::EoNState, registry::{self, DeviceId, MetricValidToken}, BirthType};
+use crate::{error::SpgError, metric::{MetricPublisher, PublishError, PublishMetric}, metric_manager::{birth::BirthInitializer, manager::DynDeviceMetricManager}, node::EoNState, registry::{self, DeviceId, MetricValidToken}, BirthType};
 
 pub struct DeviceInfo {
   id: DeviceId,
@@ -36,14 +36,14 @@ impl DeviceHandle {
 }
 
 impl MetricPublisher for DeviceHandle {
-  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), ()>{
-    if metrics.len() == 0 { return Err(()) }
+  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError>{
+    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
 
     let timestamp = timestamp();
     let metric_ptr = {
       let metrics_valid_tok = self.device.metrics_valid_token.lock().unwrap();
       if !metrics_valid_tok.is_valid() {
-        return Err(())
+        return Err(PublishError::InvalidMetric)
       }
       metrics_valid_tok.token_ptr()
     };
@@ -51,7 +51,7 @@ impl MetricPublisher for DeviceHandle {
     let mut payload_metrics = Vec::with_capacity(metrics.len());
     for x in metrics.into_iter() {
       if *x.get_token_ptr() != metric_ptr { 
-        return Err(()) 
+        return Err(PublishError::InvalidMetric) 
       }
       payload_metrics.push(x.to_metric());
     }

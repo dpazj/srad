@@ -18,7 +18,7 @@ use srad_types::{
 use crate::builder::EoNBuilder;
 use crate::device::{DeviceHandle, DeviceMap};
 use crate::error::SpgError;
-use crate::metric::{MessageMetrics, MetricPublisher, PublishMetric};
+use crate::metric::{MessageMetrics, MetricPublisher, PublishError, PublishMetric};
 use crate::metric_manager::birth::{BirthInitializer, BirthMetricDetails};
 use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
 use crate::registry::{MetricRegistry, MetricValidToken};
@@ -67,21 +67,21 @@ impl NodeHandle {
 
 impl MetricPublisher for NodeHandle
 {
-  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), ()> {
-    if metrics.len() == 0 { return Err(()) }
+  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError> {
+    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
 
     let timestamp = timestamp();
     let metric_ptr = {
       let metrics_valid_tok = self.node.metrics_valid_token.lock().unwrap();
       if !metrics_valid_tok.is_valid() {
-        return Err(())
+        return Err(PublishError::InvalidMetric)
       }
       metrics_valid_tok.token_ptr()
     };
 
     let mut payload_metrics = Vec::with_capacity(metrics.len());
     for x in metrics.into_iter() {
-      if *x.get_token_ptr() != metric_ptr { return Err(()) }
+      if *x.get_token_ptr() != metric_ptr { return Err(PublishError::InvalidMetric) }
       payload_metrics.push(x.to_metric());
     }
 
