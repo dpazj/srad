@@ -49,7 +49,7 @@ async fn device_session_establishment() {
     eventloop.run().await
   });
   /* Add device and enable before node is online */
-  handle.register_device(device1_name, NoMetricManager::new()).unwrap().birth().await;
+  handle.register_device(device1_name, NoMetricManager::new()).await.unwrap().enable().await;
 
   test_node_online(&mut broker, &group_id, &node_id, 0).await;
 
@@ -85,7 +85,7 @@ async fn device_session_establishment() {
   verify_dbirth_payload(payload, 1);
 
   /* Add device while node is online */
-  handle.register_device(device2_name, NoMetricManager::new()).unwrap().birth().await;
+  handle.register_device(device2_name, NoMetricManager::new()).await.unwrap().enable().await;
   verify_device_birth(&mut broker, &group_id, &node_id, &device2_name, 2).await;
 }
 
@@ -128,9 +128,9 @@ async fn rebirth() {
   verify_nbirth_payload(payload, 0);
 
   // rebirth with multiple devices
-  handle.register_device(device1_name, NoMetricManager::new()).unwrap().birth().await;
+  handle.register_device(device1_name, NoMetricManager::new()).await.unwrap().enable().await;
   verify_device_birth(&mut broker, &group_id, &node_id, &device1_name, 1).await;
-  handle.register_device(device2_name, NoMetricManager::new()).unwrap().birth().await;
+  handle.register_device(device2_name, NoMetricManager::new()).await.unwrap().enable().await;
   verify_device_birth(&mut broker, &group_id, &node_id, &device2_name, 2).await;
 
   broker.tx_event.send(Some(srad_client::Event::Node(create_rebirth_message(&group_id, &node_id)))).unwrap();

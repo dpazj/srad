@@ -66,7 +66,7 @@ pub async fn test_node_online(broker: &mut Broker, group_id: &str, node_id: &str
       .unwrap();
   let filters = match subscription {
     OutboundMessage::Subscribe(filters) => filters,
-    _ => panic!()
+    message => panic!("got {message:?}")
   };
 
   let expected_filters = vec![

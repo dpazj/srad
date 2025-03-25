@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use srad_client::{DeviceMessage, DynClient, DynEventLoop, MessageKind};
-use srad_client::{Event, NodeMessage, Message};
+use srad_client::{Event, NodeMessage};
 
 use srad_types::constants::NODE_CONTROL_REBIRTH;
 use srad_types::payload::metric::Value;
@@ -21,7 +21,7 @@ use crate::error::SpgError;
 use crate::metric::{MessageMetrics, MetricPublisher, PublishError, PublishMetric};
 use crate::metric_manager::birth::{BirthInitializer, BirthMetricDetails};
 use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
-use crate::registry::{MetricRegistry, MetricValidToken};
+use crate::registry::Registry;
 use crate::BirthType;
 
 use super::registry;
@@ -44,10 +44,10 @@ impl NodeHandle {
   }
 
   pub async fn rebirth(&self){
-    self.node.rebirth().await;
+    self.node.birth(BirthType::Rebirth).await;
   }
 
-  pub fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, SpgError> 
+  pub async fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, SpgError> 
   where 
     S: Into<String>,
     M: DeviceMetricManager + Send + Sync + 'static 
@@ -57,7 +57,7 @@ impl NodeHandle {
       &self.node.state.edge_node_id, 
       name.into(),
       Arc::new(dev_impl)
-    )?;
+    ).await?;
     Ok(handle)
   }
 
@@ -69,19 +69,12 @@ impl MetricPublisher for NodeHandle
 {
   async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError> {
     if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
+    if !self.node.state.is_online() { return Err(PublishError::Offline) }
+    if !self.node.state.birthed() { return Err(PublishError::UnBirthed) }
 
     let timestamp = timestamp();
-    let metric_ptr = {
-      let metrics_valid_tok = self.node.metrics_valid_token.lock().unwrap();
-      if !metrics_valid_tok.is_valid() {
-        return Err(PublishError::InvalidMetric)
-      }
-      metrics_valid_tok.token_ptr()
-    };
-
     let mut payload_metrics = Vec::with_capacity(metrics.len());
     for x in metrics.into_iter() {
-      if *x.get_token_ptr() != metric_ptr { return Err(PublishError::InvalidMetric) }
       payload_metrics.push(x.to_metric());
     }
 
@@ -126,11 +119,6 @@ impl EoNState{
     self.birthed.load(Ordering::SeqCst)
   }
 
-  pub fn set_birthed(&self, online: bool)
-  {
-    self.birthed.store(online, Ordering::SeqCst)
-  }
-
   pub fn birth_topic(&self) -> NodeTopic {
     NodeTopic::new(&self.group_id, NodeMessageType::NBirth, &self.edge_node_id)
   }
@@ -151,9 +139,8 @@ impl EoNState{
 pub struct Node {
   state: Arc<EoNState>, 
   metric_manager: Box<DynNodeMetricManager>,
-  metrics_valid_token: Mutex<MetricValidToken>,
   devices: DeviceMap,
-  registry: Arc<Mutex<registry::MetricRegistry>>, 
+  registry: Arc<Mutex<Registry>>, 
   client: Arc<DynClient>,
   stop_tx: Sender<EoNShutdown>
 }
@@ -163,7 +150,6 @@ impl Node {
   fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
     let timestamp = timestamp();
     let mut reg = self.registry.lock().unwrap();
-    reg.clear();
 
     let mut birth_initializer = BirthInitializer::new(registry::MetricRegistryInserterType::Node, &mut reg);
     birth_initializer.create_metric(
@@ -174,15 +160,10 @@ impl Node {
     ).unwrap();
 
     self.metric_manager.initialize_birth(&mut birth_initializer);
-    let (metrics, metric_valid_token) = birth_initializer.finish();
-
-    {
-      let mut valid_token = self.metrics_valid_token.lock().unwrap();
-      *valid_token = metric_valid_token 
-    }
+    let metrics = birth_initializer.finish();
 
     Payload {
-      seq: Some(0),
+      seq: Some(seq),
       timestamp: Some (timestamp),
       metrics: metrics,
       uuid : None,
@@ -191,7 +172,6 @@ impl Node {
   }
 
   async fn node_birth(&self) {
-
     /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
     self.state.seq.store(0, Ordering::SeqCst);
     let bdseq= self.state.bdseq.load(Ordering::SeqCst) as i64;
@@ -202,18 +182,13 @@ impl Node {
     self.client.publish_node_message(topic, payload).await;
   }
 
-  async fn birth(&self, birth:BirthType) {
+  async fn birth(&self, birth_type: BirthType) {
+    self.state.birthed.store(false, Ordering::SeqCst);
     self.node_birth().await;
-    self.state.set_birthed(true);
-    self.devices.birth_devices(birth).await;
+    self.state.birthed.store(true, Ordering::SeqCst);
+    self.devices.birth_devices(birth_type).await;
   }
-
-  async fn rebirth(&self) 
-  {
-    /* while node state birthed is false device handle and node handle will not publish any metrics */
-    self.state.set_birthed(false);
-    self.birth(BirthType::Rebirth).await
-  }
+ 
 }
 
 pub struct EoN 
@@ -245,13 +220,12 @@ impl EoN
       edge_node_id: node_id,
     });
 
-    let registry = Arc::new(Mutex::new(MetricRegistry::new()));
+    let registry = Arc::new(Mutex::new(Registry::new()));
     let node = Arc::new(Node {
       metric_manager,
       client: client.clone(),
       registry: registry.clone(),
       devices: DeviceMap::new(state.clone(), registry.clone(), client),
-      metrics_valid_token: Mutex::new(MetricValidToken::new()),
       state,
       stop_tx
     });
@@ -290,9 +264,9 @@ impl EoN
     });
   }
 
-  fn on_offline(&mut self) {
+  async fn on_offline(&mut self) {
     self.node.state.set_online(false);
-    self.node.devices.death_devices();
+    self.node.devices.on_offline().await;
     self.node.state.bdseq.fetch_add(1, Ordering::SeqCst);
     self.update_last_will();
   }
@@ -340,7 +314,7 @@ impl EoN
 
         task::spawn( async move {
           node.metric_manager.on_ncmd(NodeHandle { node: node.clone() }, message_metrics).await;
-          if rebirth { node.rebirth().await }
+          if rebirth { node.birth(BirthType::Rebirth).await }
         });
       },
       _ => ()
@@ -360,7 +334,7 @@ impl EoN
     if let Some (event) = event {
       match event {
         Event::Online => self.on_online(),
-        Event::Offline => self.on_offline(), 
+        Event::Offline => self.on_offline().await, 
         Event::Node(node_message) => self.on_node_message(node_message),
         Event::Device(device_message) => self.on_device_message(device_message),
         Event::State{ host_id, payload } => (),

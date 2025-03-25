@@ -8,8 +8,6 @@ use srad_types::traits::MetaData;
 use srad_types::utils::timestamp;
 use srad_types::{traits, MetricId, MetricValue};
 
-use crate::registry::{MetricValidToken, MetricValidTokenPtr};
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -18,8 +16,8 @@ pub enum PublishError {
   Offline,
   #[error("No metrics provided.")]
   NoMetrics,
-  #[error("Metric is no longer valid. The publisher has likely rebirthed.")]
-  InvalidMetric,
+  #[error("The node or device is not birthed.")]
+  UnBirthed,
 }
 
 pub trait MetricPublisher {
@@ -37,8 +35,6 @@ pub trait MetricPublisher {
 
 pub struct PublishMetric 
 {
-  /* required by the metric publisher to ensure metric can only be published by correct node/device */
-  valid_token_ptr: MetricValidTokenPtr,
   metric_identifier: MetricId,
   value: Option<MetricValue>,
   is_transient: Option<bool>,
@@ -50,10 +46,9 @@ pub struct PublishMetric
 
 impl PublishMetric {
 
-  pub(crate) fn new<T: traits::MetricValue> (metric_valid_token: MetricValidTokenPtr, metric_identifier: MetricId, value: Option<T>) -> Self {
+  pub(crate) fn new<T: traits::MetricValue> (metric_identifier: MetricId, value: Option<T>) -> Self {
     let metadata = if let Some(v) = &value { v.publish_metadata() } else {None};
     Self {
-      valid_token_ptr: metric_valid_token, 
       metric_identifier,
       metadata: metadata,
       value: value.map(T::into),
@@ -62,10 +57,6 @@ impl PublishMetric {
       properties: None,
       timestamp: timestamp()
     }
-  }
-
-  pub(crate) fn get_token_ptr(&self) -> &MetricValidTokenPtr{
-    &self.valid_token_ptr
   }
 
   pub fn timestamp(mut self, timestamp: u64) -> Self {
@@ -129,23 +120,21 @@ impl ToMetric for PublishMetric {
 pub struct MetricToken<T> {
   phantom: PhantomData<T>,
   id: MetricId,
-  valid_token: MetricValidToken,
 }
 
 impl<T> MetricToken<T> 
 where T: 
   traits::MetricValue
 {
-  pub(crate) fn new(id: MetricId, valid_token: MetricValidToken)-> Self{
+  pub(crate) fn new(id: MetricId)-> Self{
     Self {
       phantom: PhantomData,
       id, 
-      valid_token
     }
   }
 
   pub fn create_publish_metric(&self, value: Option<T>) -> PublishMetric {
-    PublishMetric::new(self.valid_token.token_ptr(), self.id.clone(), value)
+    PublishMetric::new( self.id.clone(), value)
   }
 
   pub fn id(&self) -> &MetricId {

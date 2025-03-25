@@ -19,7 +19,7 @@ async fn main() {
     ).unwrap();
 
     let dev1_metrics = SimpleMetricManager::new();
-    let device1 = handle.register_device("dev1", dev1_metrics.clone()).unwrap();
+    let device1 = handle.register_device("dev1", dev1_metrics.clone()).await.unwrap();
     let dev1_counter = dev1_metrics.register_metric("Device Counter", 0 as i8).unwrap();
     dev1_metrics.register_metric_with_cmd_handler("B", 0 as u64, |handle, metric, value| async move {
         println! ("Got CMD for B with value {value:?}");
@@ -28,7 +28,7 @@ async fn main() {
     dev1_metrics.register_metric("U32Array", vec![1 as u32, 2, 3, 999999999, 43]).unwrap();
     dev1_metrics.register_metric("BoolArray", vec![true, false, true, true, false, false, false, false, true, false, true]).unwrap();
     dev1_metrics.register_metric("StringArray", vec!["ABC".to_string(), "Easy".to_string(), "as".to_string(), "123".to_string()]).unwrap();
-    device1.birth().await;
+    device1.enable().await;
 
     let node= handle.clone();
     tokio::spawn(async move {

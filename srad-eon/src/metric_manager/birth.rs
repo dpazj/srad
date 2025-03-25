@@ -1,7 +1,7 @@
 use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, utils::timestamp, MetricId, MetricValue};
 
 use crate::{
-  error::SpgError, metric::MetricToken, registry::{MetricRegistry, MetricRegistryInserter, MetricRegistryInserterType, MetricValidToken},
+  error::SpgError, metric::MetricToken, registry::{Registry, MetricRegistryInserter, MetricRegistryInserterType},
 };
 
 pub struct BirthMetricDetails<T> {
@@ -102,7 +102,7 @@ pub struct BirthInitializer<'a> {
 
 impl<'a> BirthInitializer<'a>{
 
-  pub(crate) fn new(inserter_type: MetricRegistryInserterType, registry: &'a mut MetricRegistry) -> Self{
+  pub(crate) fn new(inserter_type: MetricRegistryInserterType, registry: &'a mut Registry) -> Self{
     Self {
       registry: MetricRegistryInserter::new(inserter_type, registry),
       birth_metrics: Vec::new()
@@ -120,8 +120,7 @@ impl<'a> BirthInitializer<'a>{
     Ok(id)
   }
 
-  pub(crate) fn finish(self) -> (Vec<Metric>, MetricValidToken ){
-    let tok = self.registry.finish();
-    (self.birth_metrics, tok)
+  pub(crate) fn finish(self) -> Vec<Metric>{
+    self.birth_metrics
   }
 }
