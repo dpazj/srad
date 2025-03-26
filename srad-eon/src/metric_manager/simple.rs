@@ -2,7 +2,7 @@ use std::{collections::HashMap, future::Future, ops::DerefMut, pin::Pin, sync::{
 use async_trait::async_trait;
 use futures::future::join_all;
 use srad_types::{traits, MetricId};
-use crate::{device::DeviceHandle, metric::{MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishMetric}, NodeHandle};
+use crate::{device::DeviceHandle, metric::{MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishError, PublishMetric}, NodeHandle};
 use super::{birth::{BirthInitializer, BirthMetricDetails}, manager::{DeviceMetricManager, MetricManager, NodeMetricManager}};
 
 type CmdCallback<T, H> = Arc<dyn Fn(SimpleMetricManager<H>, SimpleManagerMetric<T, H>, Option<T>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
@@ -80,9 +80,12 @@ where
     let converted = match value.value {
       Some(v) => match v.try_into() {
         Ok(value) => Some(value),
-        Err(_) => todo!(),
+        Err(_) => {
+          //todo log error
+          return;
+        },
       },
-      None => todo!(),
+      None => None,
     };
 
     let x = SimpleManagerMetric { data: self.data.clone() };
@@ -182,25 +185,22 @@ where
     join_all(futures).await;
   }
 
-  pub async fn publish_metric(&self, metric: SimpleManagerPublishMetric) {
-    self.publish_metrics(vec![metric]).await;
+  pub async fn publish_metric(&self, metric: SimpleManagerPublishMetric) -> Result<(), PublishError> {
+    self.publish_metrics(vec![metric]).await
   }
 
-  pub async fn publish_metrics(&self, metrics: Vec<SimpleManagerPublishMetric>) {
+  pub async fn publish_metrics(&self, metrics: Vec<SimpleManagerPublishMetric>) -> Result<(), PublishError> {
     let handle = {
       match &self.inner.lock().unwrap().handle {
         Some(handle) => handle.clone(),
-        None => return,
+        None => return Err(PublishError::UnBirthed),
       }
     };
 
     let publish_metrics = metrics.into_iter().filter_map(|x| {
       x.0
     }).collect();
-    match handle.publish_metrics(publish_metrics).await {
-      Ok(_) => (),
-      Err(_) => (),
-    };
+    handle.publish_metrics(publish_metrics).await 
   }
 }
 

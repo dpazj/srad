@@ -22,7 +22,7 @@ async fn main() {
     let device1 = handle.register_device("dev1", dev1_metrics.clone()).await.unwrap();
     let dev1_counter = dev1_metrics.register_metric("Device Counter", 0 as i8).unwrap();
     dev1_metrics.register_metric_with_cmd_handler("B", 0 as u64, |manager, metric, value| async move {
-        manager.publish_metric(metric.update(|x|{ *x = value.unwrap_or(0)})).await;
+        _ = manager.publish_metric(metric.update(|x|{ *x = value.unwrap_or(0)})).await;
     }).unwrap();
     dev1_metrics.register_metric("U32Array", vec![1 as u32, 2, 3, 999999999, 43]).unwrap();
     dev1_metrics.register_metric("BoolArray", vec![true, false, true, true, false, false, false, false, true, false, true]).unwrap();
@@ -33,8 +33,8 @@ async fn main() {
     let dev_manager= dev1_metrics.clone();
     tokio::spawn(async move {
         loop {
-            node_manager.publish_metric(counter_metric.update(|x| { *x = x.wrapping_add(1)})).await;
-            dev_manager.publish_metric(dev1_counter.update(|x| { *x = x.wrapping_sub(1) })).await;
+            _ = node_manager.publish_metric(counter_metric.update(|x| { *x = x.wrapping_add(1)})).await;
+            _ = dev_manager.publish_metric(dev1_counter.update(|x| { *x = x.wrapping_sub(1) })).await;
             time::sleep(Duration::from_secs(1)).await;
         }
     });

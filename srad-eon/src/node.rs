@@ -297,27 +297,28 @@ impl EoN
             Some(value) => {
               if let Value::BooleanValue(val) = value {
                 if *val == true { rebirth = true; } 
-                else {
-                  //todo err
+                else { 
+                  //log error
+                  continue;
                 }
               } else {
                 //todo err
               }
-              break;
+              continue;
             },
             None => {
               //todo error
-              break;
+              continue;
             },
           }
         } 
 
-        let node= self.node.clone();
         let message_metrics:MessageMetrics = match payload.try_into() {
           Ok(metrics) => metrics,
           Err(_) => todo!(),
         };
 
+        let node= self.node.clone();
         task::spawn( async move {
           node.metric_manager.on_ncmd(NodeHandle { node: node.clone() }, message_metrics).await;
           if rebirth { node.birth(BirthType::Rebirth).await }
@@ -343,7 +344,7 @@ impl EoN
         Event::Offline => self.on_offline().await, 
         Event::Node(node_message) => self.on_node_message(node_message),
         Event::Device(device_message) => self.on_device_message(device_message),
-        Event::State{ host_id, payload } => (),
+        Event::State{ host_id: _, payload: _ } => (),
         Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
       }
     }
