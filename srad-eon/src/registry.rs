@@ -41,7 +41,7 @@ impl Registry{
     id
   }
 
-  fn remove_device(&mut self, id: DeviceId) {
+  pub fn remove_device(&mut self, id: DeviceId) {
     self.device_ids.remove(&id);
   }
 
@@ -52,20 +52,18 @@ pub enum MetricRegistryInserterType {
   Device {id : DeviceId, name: Arc<String>}
 }
 
-pub struct MetricRegistryInserter<'a> {
+pub struct MetricRegistryInserter {
   metric_names: HashSet<String>,
   metric_aliases: HashSet<u64>,
-  registry: &'a mut Registry,
   inserter_type: MetricRegistryInserterType,
 }
 
-impl<'a> MetricRegistryInserter<'a> {
+impl MetricRegistryInserter {
 
-  pub fn new(inserter_type: MetricRegistryInserterType, registry: &'a mut Registry) -> Self {
+  pub fn new(inserter_type: MetricRegistryInserterType) -> Self {
     Self {
       metric_names: HashSet::new(),
       metric_aliases: HashSet::new(),
-      registry,
       inserter_type: inserter_type,
     }
   }
@@ -86,7 +84,7 @@ impl<'a> MetricRegistryInserter<'a> {
     alias
   }
 
-  pub fn register_metric<T: Into<String>, M: traits::MetricValue>(&mut self, name: T, datatype: DataType, use_alias: bool) -> Result<MetricToken<M>, SpgError> {
+  pub fn register_metric<T: Into<String>, M: traits::MetricValue>(&mut self, name: T, use_alias: bool) -> Result<MetricToken<M>, SpgError> {
     let metric = name.into();
 
     if self.metric_names.contains(&metric) {

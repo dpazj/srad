@@ -13,11 +13,13 @@ pub trait MetricManager {
 
 #[async_trait]
 pub trait NodeMetricManager : MetricManager {
+  fn init(&self, handle: &NodeHandle) {}
   async fn on_ncmd(&self, node: NodeHandle, metrics: MessageMetrics) {}
 }
 
 #[async_trait]
 pub trait DeviceMetricManager : MetricManager {
+  fn init(&self, handle: &DeviceHandle) {}
   async fn on_dcmd(&self, device: DeviceHandle, metrics: MessageMetrics) {}
 }
 

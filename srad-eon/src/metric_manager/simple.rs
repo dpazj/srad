@@ -5,7 +5,7 @@ use srad_types::{traits, MetricId};
 use crate::{device::DeviceHandle, metric::{MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishMetric}, NodeHandle};
 use super::{birth::{BirthInitializer, BirthMetricDetails}, manager::{DeviceMetricManager, MetricManager, NodeMetricManager}};
 
-type CmdCallback<T, H> = Arc<dyn Fn(H, SimpleManagerMetric<T, H>, Option<T>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+type CmdCallback<T, H> = Arc<dyn Fn(SimpleMetricManager<H>, SimpleManagerMetric<T, H>, Option<T>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 struct MetricData<T, H> {
   value: T,
@@ -13,6 +13,7 @@ struct MetricData<T, H> {
   cb: Option<CmdCallback<T, H>>
 }
 
+pub struct SimpleManagerPublishMetric(Option<PublishMetric>);
 #[derive(Clone)]
 pub struct SimpleManagerMetric<T, H>{
   data: Arc<Mutex<MetricData<T, H>>>
@@ -21,27 +22,18 @@ pub struct SimpleManagerMetric<T, H>{
 impl<T, H> SimpleManagerMetric<T, H> 
 where T:  traits::MetricValue + Clone
 {
-  pub fn update<F1>(&self, f: F1) -> Option<PublishMetric>
+  pub fn update<F1>(&self, f: F1) -> SimpleManagerPublishMetric
   where 
     F1: Fn(&mut T) 
   {
     let mut guard = self.data.lock().unwrap();
     let x = guard.deref_mut();
     f(&mut x.value);
-    match &x.token {
+    let option = match &x.token {
       Some(h) => Some(h.create_publish_metric(Some(x.value.clone()))),
       None => None,
-    }
-  }
-
-  pub async fn update_and_publish<F1, M: MetricPublisher>(&self, f: F1, publisher: &M) 
-  where 
-    F1: Fn(&mut T) 
-  { 
-    let metric = self.update(f);
-    if let Some(metric) = metric {
-      publisher.publish_metrics(vec![metric]).await.unwrap();
-    }
+    };
+    SimpleManagerPublishMetric(option)
   }
 
 }
@@ -50,7 +42,7 @@ where T:  traits::MetricValue + Clone
 trait Stored<H>: Send {
   fn birth_metric(&self, name:&String, bi: &mut BirthInitializer) -> MetricId;
   fn has_callback(&self) -> bool;
-  async fn cmd_cb(&self, handle:H, value: MessageMetric);
+  async fn cmd_cb(&self, manager: SimpleMetricManager<H>, value: MessageMetric);
 }
 
 #[async_trait]
@@ -75,7 +67,7 @@ where
     self.data.lock().unwrap().cb.is_some()
   }
 
-  async fn cmd_cb(&self, handle:H, value: MessageMetric) {
+  async fn cmd_cb(&self, manager:SimpleMetricManager<H>, value: MessageMetric) {
     let (cb, converted) = {
       let metric = self.data.lock().unwrap();
       let cb = match &metric.cb {
@@ -94,11 +86,12 @@ where
       (cb, converted)
     };
     let x = SimpleManagerMetric { data: self.data.clone() };
-    cb(handle, x, converted).await
+    cb(manager, x, converted).await
   }
 }
 
 pub struct SimpleMetricManagerInner<H> {
+  handle: Option<H>,
   metrics : HashMap<String, Arc<dyn Stored<H> + Send + Sync>>,
   cmd_lookup: HashMap<MetricId, Arc<dyn Stored<H> + Send + Sync>>
 }
@@ -110,12 +103,13 @@ pub struct SimpleMetricManager<H> {
 
 impl<H> SimpleMetricManager<H> 
 where 
-  H: Clone + Send + Sync + 'static
+  H: MetricPublisher + Clone + Send + Sync + 'static
 {
 
   pub fn new() -> Self {
     Self {
       inner: Arc::new(Mutex::new(SimpleMetricManagerInner {
+        handle: None,
         metrics: HashMap::new(),
         cmd_lookup: HashMap::new()
       }))
@@ -156,11 +150,11 @@ where
   where 
     S : Into<String>,
     T : traits::MetricValue + Clone + Send + 'static, 
-    F : Fn(H, SimpleManagerMetric<T,H>, Option<T>) -> Fut + Send + Sync + 'static,
+    F : Fn(SimpleMetricManager<H>, SimpleManagerMetric<T,H>, Option<T>) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = ()> + Send + 'static
   {
-    let cmd_handler = Arc::new(move |handle: H, metric:SimpleManagerMetric<T, H>, value: Option<T>| -> Pin<Box<dyn Future<Output = ()> + Send>> {
-      Box::pin(cmd_handler(handle, metric, value))
+    let cmd_handler = Arc::new(move |manager: SimpleMetricManager<H>, metric:SimpleManagerMetric<T, H>, value: Option<T>| -> Pin<Box<dyn Future<Output = ()> + Send>> {
+      Box::pin(cmd_handler(manager, metric, value))
     });
     self.register::<T>(name.into(), value, Some(cmd_handler)) 
   }
@@ -177,17 +171,37 @@ where
     cbs
   }
 
-  async fn handle_cmd_metrics(&self, handle:H, metrics: MessageMetrics) {
+  async fn handle_cmd_metrics(&self, metrics: MessageMetrics) {
     let callbacks = self.get_callbacks_from_cmd_message_metrics(metrics);
     let futures: Vec<Pin<Box<dyn Future<Output = ()> + Send>>> = callbacks.into_iter().map(|(stored, value)| {
       Box::pin({
-        let handle= handle.clone();
+        let handle= self.clone();
         async move { stored.cmd_cb(handle, value).await }
       }) as Pin<Box<dyn Future<Output = ()> + Send>>
     }).collect();
     join_all(futures).await;
   }
 
+  pub async fn publish_metric(&self, metric: SimpleManagerPublishMetric) {
+    self.publish_metrics(vec![metric]).await;
+  }
+
+  pub async fn publish_metrics(&self, metrics: Vec<SimpleManagerPublishMetric>) {
+    let handle = {
+      match &self.inner.lock().unwrap().handle {
+        Some(handle) => handle.clone(),
+        None => return,
+      }
+    };
+
+    let publish_metrics = metrics.into_iter().filter_map(|x| {
+      x.0
+    }).collect();
+    match handle.publish_metrics(publish_metrics).await {
+      Ok(_) => (),
+      Err(_) => (),
+    };
+  }
 }
 
 
@@ -206,17 +220,28 @@ impl<H> MetricManager for SimpleMetricManager<H> {
 
 }
 
-
 #[async_trait]
 impl NodeMetricManager for SimpleMetricManager<NodeHandle> {
-  async fn on_ncmd(&self, node: NodeHandle, metrics: MessageMetrics) {
-    self.handle_cmd_metrics(node, metrics).await
+  
+  fn init(&self, handle: &NodeHandle) {
+    self.inner.lock().unwrap().handle = Some(handle.clone())
   }
+
+  async fn on_ncmd(&self, _: NodeHandle, metrics: MessageMetrics) {
+    self.handle_cmd_metrics(metrics).await
+  }
+
 }
 
 #[async_trait]
 impl DeviceMetricManager for SimpleMetricManager<DeviceHandle> {
-  async fn on_dcmd(&self, device: DeviceHandle, metrics: MessageMetrics) {
-    self.handle_cmd_metrics(device, metrics).await
+
+  fn init(&self, handle: &DeviceHandle) {
+    self.inner.lock().unwrap().handle = Some(handle.clone())
   }
+
+  async fn on_dcmd(&self, _: DeviceHandle, metrics: MessageMetrics) {
+    self.handle_cmd_metrics(metrics).await
+  }
+
 }

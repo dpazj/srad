@@ -1,7 +1,7 @@
 use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, utils::timestamp, MetricId, MetricValue};
 
 use crate::{
-  error::SpgError, metric::MetricToken, registry::{Registry, MetricRegistryInserter, MetricRegistryInserterType},
+  error::SpgError, metric::MetricToken, registry::{MetricRegistryInserter, MetricRegistryInserterType},
 };
 
 pub struct BirthMetricDetails<T> {
@@ -95,23 +95,23 @@ where T: traits::MetricValue
   }
 }
 
-pub struct BirthInitializer<'a> {
-  registry: MetricRegistryInserter<'a>,
+pub struct BirthInitializer {
+  registry: MetricRegistryInserter,
   birth_metrics: Vec<Metric>
 }
 
-impl<'a> BirthInitializer<'a>{
+impl BirthInitializer{
 
-  pub(crate) fn new(inserter_type: MetricRegistryInserterType, registry: &'a mut Registry) -> Self{
+  pub(crate) fn new(inserter_type: MetricRegistryInserterType) -> Self{
     Self {
-      registry: MetricRegistryInserter::new(inserter_type, registry),
+      registry: MetricRegistryInserter::new(inserter_type),
       birth_metrics: Vec::new()
     } 
   }
 
   pub fn create_metric<T: traits::MetricValue>(&mut self, details: BirthMetricDetails<T>) -> Result<MetricToken<T>, SpgError>
   {
-    let id = self.registry.register_metric(&details.name, details.datatype, details.use_alias)?;
+    let id = self.registry.register_metric(&details.name, details.use_alias)?;
     let mut metric = details.to_metric();
     if let MetricId::Alias(alias) = id.id() {
       metric.set_alias(*alias);

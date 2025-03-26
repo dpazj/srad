@@ -8,7 +8,7 @@ use crate::{error::SpgError, metric::{MetricPublisher, PublishError, PublishMetr
 
 pub struct DeviceInfo {
   id: DeviceId,
-  device_id: Arc<String>,
+  pub(crate) name: Arc<String>,
   ddata_topic: DeviceTopic 
 }
 
@@ -20,7 +20,7 @@ enum BirthState {
 
 #[derive(Clone)]
 pub struct DeviceHandle {
-  device: Arc<Device>,
+  pub(crate) device: Arc<Device>,
 }
 
 impl DeviceHandle {
@@ -75,11 +75,10 @@ impl MetricPublisher for DeviceHandle {
 }
 
 pub struct Device {
-  info: DeviceInfo,
+  pub(crate) info: DeviceInfo,
   birth_state: tokio::sync::Mutex<BirthState>,
   enabled: AtomicBool,
   eon_state: Arc<EoNState>,
-  registry: Arc<Mutex<registry::Registry>>, 
   pub dev_impl: Arc<DynDeviceMetricManager>,
   client: Arc<DynClient>,
 } 
@@ -87,8 +86,7 @@ pub struct Device {
 impl Device {
 
   fn generate_birth_payload(&self) -> Payload {
-    let mut reg = self.registry.lock().unwrap();
-    let mut birth_initializer = BirthInitializer::new( registry::MetricRegistryInserterType::Device { id: self.info.id.clone(), name: self.info.device_id.clone() }, &mut reg);
+    let mut birth_initializer = BirthInitializer::new( registry::MetricRegistryInserterType::Device { id: self.info.id.clone(), name: self.info.name.clone() });
     self.dev_impl.initialize_birth(&mut birth_initializer);
     let timestamp = timestamp();
     let metrics  = birth_initializer.finish();
@@ -115,10 +113,11 @@ impl Device {
 
   pub async fn death(&self, publish: bool) {
     let mut state = self.birth_state.lock().await;
+    if *state == BirthState::UnBirthed { return }
     if publish {
       let payload = self.generate_death_payload();
       self.client.publish_device_message(
-        DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DDeath, &self.eon_state.edge_node_id, &self.info.device_id),
+        DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DDeath, &self.eon_state.edge_node_id, &self.info.name),
         payload 
       ).await;
     }
@@ -132,7 +131,7 @@ impl Device {
     if *birth_type == BirthType::Birth && *state == BirthState::Birthed { return }
     let payload = self.generate_birth_payload();
     self.client.publish_device_message(
-      DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DBirth, &self.eon_state.edge_node_id, &self.info.device_id),
+      DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DBirth, &self.eon_state.edge_node_id, &self.info.name),
       payload 
     ).await;
     *state = BirthState::Birthed
@@ -176,20 +175,32 @@ impl DeviceMap {
     let ddata_topic = DeviceTopic::new(&group_id, srad_types::topic::DeviceMessage::DData, &node_id, &name);
 
     let device = Arc::new(Device {
-      info: DeviceInfo { id, device_id: name.clone(), ddata_topic: ddata_topic },
+      info: DeviceInfo { id, name: name.clone(), ddata_topic: ddata_topic },
       birth_state: tokio::sync::Mutex::new(BirthState::UnBirthed),
       enabled: AtomicBool::new(false),
       eon_state: self.eon_state.clone(), 
-      registry: self.registry.clone(),
       dev_impl,
       client: self.client.clone()
     });
-
     let handle = DeviceHandle { device: device.clone()};
+    device.dev_impl.init(&handle);
     state.devices.insert(name, device);
     drop(state);
-
     Ok(handle)
+  }
+
+  pub async fn remove_device(&self, device: &String) {
+    let mut state= self.state.lock().await;
+    let dev = match state.devices.remove(device) {
+      Some(dev) => dev,
+      None => return,
+    };
+
+    let mut registry= self.registry.lock().unwrap();
+    registry.remove_device(dev.info.id);
+    drop(registry);
+
+    dev.death(true).await;
   }
 
   pub async fn birth_devices(&self, birth_type: BirthType) {

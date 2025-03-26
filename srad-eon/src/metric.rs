@@ -21,7 +21,6 @@ pub enum PublishError {
 }
 
 pub trait MetricPublisher {
-
   fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send;
   fn publish_metric(&self, metric: PublishMetric) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     self.publish_metrics_unsorted(vec![metric])
@@ -30,7 +29,6 @@ pub trait MetricPublisher {
     metrics.sort_by(|a,b| a.timestamp.cmp(&b.timestamp));
     self.publish_metrics_unsorted(metrics)
   }
-
 }
 
 pub struct PublishMetric 

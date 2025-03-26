@@ -61,7 +61,13 @@ impl NodeHandle {
     Ok(handle)
   }
 
-  pub fn deregister_device(){}
+  pub async fn unregister_device(&self, handle: DeviceHandle){
+    self.unregister_device_named(&handle.device.info.name).await;
+  }
+
+  pub async fn unregister_device_named(&self, name: &String){
+    self.node.devices.remove_device(name).await
+  }
 
 }
 
@@ -149,9 +155,7 @@ impl Node {
 
   fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
     let timestamp = timestamp();
-    let mut reg = self.registry.lock().unwrap();
-
-    let mut birth_initializer = BirthInitializer::new(registry::MetricRegistryInserterType::Node, &mut reg);
+    let mut birth_initializer = BirthInitializer::new(registry::MetricRegistryInserterType::Node);
     birth_initializer.create_metric(
       BirthMetricDetails::new_with_initial_value(constants::BDSEQ,  bdseq).use_alias(false)
     ).unwrap();
@@ -221,6 +225,7 @@ impl EoN
     });
 
     let registry = Arc::new(Mutex::new(Registry::new()));
+
     let node = Arc::new(Node {
       metric_manager,
       client: client.clone(),
@@ -238,6 +243,7 @@ impl EoN
     let handle = NodeHandle {
       node: eon.node.clone(),
     };
+    eon.node.metric_manager.init(&handle);
     eon.update_last_will();
     Ok((eon, handle))
   }
