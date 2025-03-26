@@ -48,12 +48,12 @@ impl MetricPublisher for DeviceHandle {
   async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError>{
     if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
 
+    if !self.device.eon_state.is_online() { return Err(PublishError::Offline) }
+
     match self.device.birth_state.try_lock() {
       Ok(state) => if BirthState::UnBirthed == *state { return Err(PublishError::UnBirthed)},
       Err(_) => return Err(PublishError::UnBirthed),
     }
-
-    if !self.device.eon_state.is_online() { return Err(PublishError::Offline) }
 
     let timestamp = timestamp();
 

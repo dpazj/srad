@@ -13,59 +13,50 @@
 ## Client
 
 - Handle disconnections and producing Offline events
-- Add ability to return success of operations
-- multiple clients/brokers
 
-### Rumqtt
+### future 
+- multiple clients/brokers
+- Add ability to return success of operations
+
+## Rumqtt
   - handle multiple clients connected with same Id
   - client disconnection
+
+### fututre
   - add better config options
 
 ## App
 
-- user should manage list/maps of metrics
-- user reports if metric mismatch
-- data before birth
-  - check timestamp ordering
-    - timestamp gt birth timstamp,  start timer for rebirth
-    - discard premature metrics
-- app handles ordering of birth and death
-- user handles reporting decode errors and unknown metric errors.
+- add cmd publish support
+- add rebirth support
+- add rebirth issuing configuration
 
-### 0.2
+### future 
  - check sequence order and issue rebirths if invalid after timeout 
+ - wait states?
 
-## Types
+## Types 0.1
 - valid naming String
   - verify the string's name
 - why is metadata under traits
-- Zero copy for applicable array types
-- full support for types
-  - file
-  - dataset
-  - property set/ property set list
 
-### v0.2 
+### future 
   - template support
+  - dataset support
 
-## EoN
+## EoN 0.1
 
-- extract common publisher logic from device and node
-- user controlled device birth and death
-- how to handle when connection is offline and user publish metrics or births device.
+- clean up todos
+- logging
+
+### future
+
 - provide properties in MessageMetric
-- organise exports
-
-- better server cancellation method
-- use tck to test
-
-### v0.2
-
 - multi part metric message support
   - ddata and cmd
 - wait states
 
+
 ### Test
- 
-Test rebirth
-test types
+- more tests 
+- use tck to test

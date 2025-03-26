@@ -68,23 +68,23 @@ where
   }
 
   async fn cmd_cb(&self, manager:SimpleMetricManager<H>, value: MessageMetric) {
-    let (cb, converted) = {
+
+    let cb = {
       let metric = self.data.lock().unwrap();
-      let cb = match &metric.cb {
+      match &metric.cb {
         Some(cb) => cb.clone(),
         None => return,
-      };
-
-      let converted = match value.value {
-        Some(v) => match v.try_into() {
-          Ok(value) => Some(value),
-          Err(_) => todo!(),
-        },
-        None => todo!(),
-      };
-
-      (cb, converted)
+      }
     };
+
+    let converted = match value.value {
+      Some(v) => match v.try_into() {
+        Ok(value) => Some(value),
+        Err(_) => todo!(),
+      },
+      None => todo!(),
+    };
+
     let x = SimpleManagerMetric { data: self.data.clone() };
     cb(manager, x, converted).await
   }

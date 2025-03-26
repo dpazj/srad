@@ -142,7 +142,7 @@ where T:
 }
 
 pub struct MessageMetrics {
-  timestamp: u64,
+  pub timestamp: u64,
   metrics: Vec<Metric>
 }
 
@@ -224,14 +224,6 @@ impl TryFrom<Payload> for MessageMetrics {
       Some(timestamp) => timestamp,
       None => return Err(()),
     };
-
-    /*
-      tck-id-payloads-ncmd-seq and tck-id-payloads-dcmd-seq
-      message MUST NOT include a sequence number.
-    */
-    if value.seq.is_some() {
-      return Err(());
-    }
 
     Ok (MessageMetrics { timestamp: timestamp, metrics: value.metrics })
   }
