@@ -1,6 +1,7 @@
 mod node;
 mod builder;
 mod device;
+mod birth;
 mod metric;
 mod registry;
 mod error;

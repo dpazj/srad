@@ -2,8 +2,8 @@ use std::{collections::HashMap, future::Future, ops::DerefMut, pin::Pin, sync::{
 use async_trait::async_trait;
 use futures::future::join_all;
 use srad_types::{traits, MetricId};
-use crate::{device::DeviceHandle, metric::{MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishError, PublishMetric}, NodeHandle};
-use super::{birth::{BirthInitializer, BirthMetricDetails}, manager::{DeviceMetricManager, MetricManager, NodeMetricManager}};
+use crate::{birth::{BirthInitializer, BirthMetricDetails}, device::DeviceHandle, metric::{MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishError, PublishMetric}, NodeHandle};
+use super::manager::{DeviceMetricManager, MetricManager, NodeMetricManager};
 
 type CmdCallback<T, H> = Arc<dyn Fn(SimpleMetricManager<H>, SimpleManagerMetric<T, H>, Option<T>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
@@ -207,7 +207,7 @@ where
 
 impl<H> MetricManager for SimpleMetricManager<H> {
 
-  fn initialize_birth(&self, bi: &mut super::birth::BirthInitializer) {
+  fn initialize_birth(&self, bi: &mut BirthInitializer) {
     let mut manager = self.inner.lock().unwrap();
 
     let mut cmd_lookup = vec![];

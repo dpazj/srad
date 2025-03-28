@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 
-use crate::{device::DeviceHandle, metric::MessageMetrics, NodeHandle};
-
-use super::birth::BirthInitializer;
+use crate::{birth::BirthInitializer, device::DeviceHandle, metric::MessageMetrics, NodeHandle};
 
 pub type DynNodeMetricManager = dyn NodeMetricManager + Send + Sync + 'static;
 pub type DynDeviceMetricManager = dyn DeviceMetricManager + Send + Sync + 'static;

@@ -1,7 +1,9 @@
+use std::{collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, sync::Arc};
+
 use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, utils::timestamp, MetricId, MetricValue};
 
 use crate::{
-  error::SpgError, metric::MetricToken, registry::{MetricRegistryInserter, MetricRegistryInserterType},
+  error::SpgError, metric::MetricToken, registry::DeviceId
 };
 
 pub struct BirthMetricDetails<T> {
@@ -95,23 +97,74 @@ where T: traits::MetricValue
   }
 }
 
+enum AliasType {
+  Node, 
+  Device {id: DeviceId}
+}
+
+pub enum BirthObjectType {
+  Node, 
+  Device(DeviceId)
+}
+
 pub struct BirthInitializer {
-  registry: MetricRegistryInserter,
-  birth_metrics: Vec<Metric>
+  birth_metrics: Vec<Metric>,
+  metric_names: HashSet<String>,
+  metric_aliases: HashSet<u64>,
+  inserter_type: BirthObjectType,
 }
 
 impl BirthInitializer{
 
-  pub(crate) fn new(inserter_type: MetricRegistryInserterType) -> Self{
+  pub(crate) fn new(inserter_type: BirthObjectType) -> Self{
     Self {
-      registry: MetricRegistryInserter::new(inserter_type),
-      birth_metrics: Vec::new()
+      birth_metrics: Vec::new(),
+      metric_names: HashSet::new(),
+      metric_aliases: HashSet::new(),
+      inserter_type: inserter_type,
     } 
+  }
+
+  fn generate_alias(&mut self, alias_type: AliasType, metric_name: &String) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    metric_name.hash(&mut hasher);
+    let hash= hasher.finish() as u32;
+    let id_part = match alias_type {
+      AliasType::Node => 0,
+      AliasType::Device { id } => id,
+    };
+    let mut alias = ((id_part as u64) << 32) | (hash as u64);
+    while self.metric_aliases.contains(&alias) {
+      alias += 1;
+    }
+    self.metric_aliases.insert(alias.clone());
+    alias
+  }
+
+  pub fn register_metric<T: Into<String>, M: traits::MetricValue>(&mut self, name: T, use_alias: bool) -> Result<MetricToken<M>, SpgError> {
+    let metric = name.into();
+
+    if self.metric_names.contains(&metric) {
+      return Err(SpgError::DuplicateMetric);
+    }
+
+    let id = match use_alias {
+      true => {
+        let alias = match &self.inserter_type {
+          BirthObjectType::Node =>  self.generate_alias(AliasType::Node, &metric),
+          BirthObjectType::Device(id) => self.generate_alias( AliasType::Device { id: id.clone() },&metric),
+        };
+        MetricId::Alias(alias)
+      }
+      false => MetricId::Name(metric)
+    };
+
+    Ok(MetricToken::new(id))
   }
 
   pub fn create_metric<T: traits::MetricValue>(&mut self, details: BirthMetricDetails<T>) -> Result<MetricToken<T>, SpgError>
   {
-    let id = self.registry.register_metric(&details.name, details.use_alias)?;
+    let id = self.register_metric(&details.name, details.use_alias)?;
     let mut metric = details.to_metric();
     if let MetricId::Alias(alias) = id.id() {
       metric.set_alias(*alias);

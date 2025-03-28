@@ -4,18 +4,12 @@ use futures::future::join_all;
 use srad_client::{DeviceMessage, DynClient, MessageKind};
 use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic, utils::timestamp};
 
-use crate::{error::SpgError, metric::{MetricPublisher, PublishError, PublishMetric}, metric_manager::{birth::BirthInitializer, manager::DynDeviceMetricManager}, node::EoNState, registry::{self, DeviceId}, BirthType};
+use crate::{birth::{BirthInitializer, BirthObjectType}, error::SpgError, metric::{MetricPublisher, PublishError, PublishMetric}, metric_manager::manager::DynDeviceMetricManager, node::EoNState, registry::{self, DeviceId}, BirthType};
 
 pub struct DeviceInfo {
   id: DeviceId,
   pub(crate) name: Arc<String>,
   ddata_topic: DeviceTopic 
-}
-
-#[derive(PartialEq)]
-enum BirthState {
-  UnBirthed,
-  Birthed,
 }
 
 #[derive(Clone)]
@@ -49,11 +43,7 @@ impl MetricPublisher for DeviceHandle {
     if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
 
     if !self.device.eon_state.is_online() { return Err(PublishError::Offline) }
-
-    match self.device.birth_state.try_lock() {
-      Ok(state) => if BirthState::UnBirthed == *state { return Err(PublishError::UnBirthed)},
-      Err(_) => return Err(PublishError::UnBirthed),
-    }
+    if self.device.birthed.load(Ordering::Relaxed) == false { return Err(PublishError::UnBirthed) }
 
     let timestamp = timestamp();
 
@@ -76,7 +66,8 @@ impl MetricPublisher for DeviceHandle {
 
 pub struct Device {
   pub(crate) info: DeviceInfo,
-  birth_state: tokio::sync::Mutex<BirthState>,
+  birthed: AtomicBool,
+  birth_lock: tokio::sync::Mutex<()>,
   enabled: AtomicBool,
   eon_state: Arc<EoNState>,
   pub dev_impl: Arc<DynDeviceMetricManager>,
@@ -86,7 +77,7 @@ pub struct Device {
 impl Device {
 
   fn generate_birth_payload(&self) -> Payload {
-    let mut birth_initializer = BirthInitializer::new( registry::MetricRegistryInserterType::Device { id: self.info.id.clone(), name: self.info.name.clone() });
+    let mut birth_initializer = BirthInitializer::new( BirthObjectType::Device(self.info.id.clone()));
     self.dev_impl.initialize_birth(&mut birth_initializer);
     let timestamp = timestamp();
     let metrics  = birth_initializer.finish();
@@ -112,8 +103,8 @@ impl Device {
   }
 
   pub async fn death(&self, publish: bool) {
-    let mut state = self.birth_state.lock().await;
-    if *state == BirthState::UnBirthed { return }
+    let guard = self.birth_lock.lock().await;
+    if self.birthed.load(Ordering::SeqCst) == false { return }
     if publish {
       let payload = self.generate_death_payload();
       self.client.publish_device_message(
@@ -121,20 +112,22 @@ impl Device {
         payload 
       ).await;
     }
-    *state = BirthState::UnBirthed;
+    self.birthed.store(false, Ordering::SeqCst);
+    drop(guard)
   }
 
   pub async fn birth(&self, birth_type: &BirthType) {
     if !self.enabled.load(Ordering::SeqCst) { return }
-    let mut state = self.birth_state.lock().await;
+    let guard = self.birth_lock.lock().await;
     if !self.eon_state.birthed() { return }
-    if *birth_type == BirthType::Birth && *state == BirthState::Birthed { return }
+    if *birth_type == BirthType::Birth && self.birthed.load(Ordering::SeqCst) == true { return }
     let payload = self.generate_birth_payload();
     self.client.publish_device_message(
       DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DBirth, &self.eon_state.edge_node_id, &self.info.name),
       payload 
     ).await;
-    *state = BirthState::Birthed
+    self.birthed.store(true, Ordering::SeqCst);
+    drop(guard)
   }
 }
 
@@ -176,7 +169,8 @@ impl DeviceMap {
 
     let device = Arc::new(Device {
       info: DeviceInfo { id, name: name.clone(), ddata_topic: ddata_topic },
-      birth_state: tokio::sync::Mutex::new(BirthState::UnBirthed),
+      birth_lock: tokio::sync::Mutex::new(()),
+      birthed: AtomicBool::new(false),
       enabled: AtomicBool::new(false),
       eon_state: self.eon_state.clone(), 
       dev_impl,
@@ -197,7 +191,7 @@ impl DeviceMap {
     };
 
     let mut registry= self.registry.lock().unwrap();
-    registry.remove_device(dev.info.id);
+    registry.remove_device_id(dev.info.id);
     drop(registry);
 
     dev.death(true).await;

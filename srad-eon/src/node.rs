@@ -15,16 +15,14 @@ use srad_types::{
   payload::Payload
 };
 
+use crate::birth::{BirthInitializer, BirthMetricDetails, BirthObjectType};
 use crate::builder::EoNBuilder;
 use crate::device::{DeviceHandle, DeviceMap};
 use crate::error::SpgError;
 use crate::metric::{MessageMetrics, MetricPublisher, PublishError, PublishMetric};
-use crate::metric_manager::birth::{BirthInitializer, BirthMetricDetails};
 use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
 use crate::registry::Registry;
 use crate::BirthType;
-
-use super::registry;
 
 use tokio::{select, task};
 use flume::{bounded, Sender, Receiver};
@@ -129,10 +127,6 @@ impl EoNState{
     NodeTopic::new(&self.group_id, NodeMessageType::NBirth, &self.edge_node_id)
   }
 
-  pub fn death_topic(&self) -> NodeTopic {
-    NodeTopic::new(&self.group_id, NodeMessageType::NDeath, &self.edge_node_id)
-  }
-
   pub fn sub_topics(&self) -> Vec<TopicFilter> {
     vec![
       TopicFilter::new_with_qos(Topic::NodeTopic(NodeTopic::new(&self.group_id, NodeMessageType::NCmd, &self.edge_node_id)), QoS::AtLeastOnce),
@@ -146,7 +140,6 @@ pub struct Node {
   state: Arc<EoNState>, 
   metric_manager: Box<DynNodeMetricManager>,
   devices: DeviceMap,
-  registry: Arc<Mutex<Registry>>, 
   client: Arc<DynClient>,
   stop_tx: Sender<EoNShutdown>
 }
@@ -155,7 +148,7 @@ impl Node {
 
   fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
     let timestamp = timestamp();
-    let mut birth_initializer = BirthInitializer::new(registry::MetricRegistryInserterType::Node);
+    let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node);
     birth_initializer.create_metric(
       BirthMetricDetails::new_with_initial_value(constants::BDSEQ,  bdseq).use_alias(false)
     ).unwrap();
@@ -229,7 +222,6 @@ impl EoN
     let node = Arc::new(Node {
       metric_manager,
       client: client.clone(),
-      registry: registry.clone(),
       devices: DeviceMap::new(state.clone(), registry.clone(), client),
       state,
       stop_tx
