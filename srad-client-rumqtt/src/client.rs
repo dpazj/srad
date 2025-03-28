@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, error};
 use rumqttc::v5::{mqttbytes::{v5::{ConnectProperties, Filter, Packet}, QoS}, AsyncClient as RuClient, EventLoop as RuEventLoop, MqttOptions as RuMqttOptions};
 use srad_types::{payload::{Payload, Message}, topic::{DeviceTopic, TopicFilter}};
 
@@ -106,11 +106,12 @@ impl srad_client::EventLoop for EventLoop
           _ => None
         }
       },
-      Err(_) => {
+      Err(e) => {
+        error!("Client error: {e}");
         match self.state {
           ConnectionState::Connected => {
             self.state = ConnectionState::Disconnected;
-            Some(Event::Online)
+            Some(Event::Offline)
           },
           ConnectionState::Disconnected => {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

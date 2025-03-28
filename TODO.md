@@ -4,15 +4,7 @@
 
 - tests
 - samples
-- remove panics/better error handling
-  - errors in general
-
-- look at atomic operation ordering
 - logging
-
-## Client
-
-- Handle disconnections and producing Offline events
 
 ### future 
 - remove option from event

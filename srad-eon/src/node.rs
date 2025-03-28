@@ -262,7 +262,6 @@ impl EoN
 
   fn on_online(&self) {
     info!("Edge node online");
-
     self.node.state.set_online(true);
     let sub_topics = self.node.state.sub_topics();
     let node = self.node.clone();
