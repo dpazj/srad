@@ -116,29 +116,14 @@ pub(crate) fn get_metric_id_and_details_from_payload_metrics(metrics: Vec<payloa
 
 pub(crate) fn get_metric_birth_details_from_birth_metrics(metrics: Vec<payload::Metric>) -> Result<Vec<(MetricBirthDetails, MetricDetails)>,()> {
     //make sure metrics names and aliases are unique
-    let mut metric_name_map = HashSet::with_capacity(metrics.len());
-    let mut metric_alias_map = HashSet::with_capacity(metrics.len());
     let mut results= Vec::with_capacity(metrics.len());
 
     for x in metrics {
         let datatype = x.datatype.ok_or(())?.try_into()?;
         let name = x.name.ok_or(())?;
-        if metric_name_map.insert(name.clone()) == false {
-            //for now return an error, however it may be valid to provide multiple metric 
-            //values for the same metric in a birth payload? seems a bit silly tho 
-            return Err(())
-        }
-
         let alias = x.alias;
-        if let Some(alias) = alias {
-            if metric_alias_map.insert(alias) == false {
-                return Err(())
-            }
-        } 
-
         let birth_details = MetricBirthDetails::new(name, alias, datatype);
         let details = metric_details_try_from_payload_metric!(x)?;
-
         results.push((birth_details, details));
     }
 

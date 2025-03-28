@@ -789,6 +789,8 @@ dependencies = [
 name = "sample-app"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
+ "log",
  "srad",
  "tokio",
 ]
@@ -909,6 +911,7 @@ dependencies = [
 name = "srad-app"
 version = "0.1.0"
 dependencies = [
+ "log",
  "srad-client",
  "srad-types",
  "tokio",

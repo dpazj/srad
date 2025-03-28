@@ -28,9 +28,9 @@
 
 ## App
 
-- add cmd publish support
-- add rebirth support
-- add rebirth issuing configuration
+
+- add eventloop cancel
+- 
 
 ### future 
  - check sequence order and issue rebirths if invalid after timeout 

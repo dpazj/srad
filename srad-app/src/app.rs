@@ -1,5 +1,6 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}};
 
+use log::{debug, info, warn};
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
 use srad_types::{constants::NODE_CONTROL_REBIRTH, payload::{Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::timestamp, MetricId};
 use tokio::task;
@@ -38,20 +39,18 @@ struct NodeState {
    seq: u64, 
    birth_timestamp: u64,
    death_timestamp: u64,
-   last_rebirth_request: u64,
    devices: HashMap<String, DeviceState>  
 }
 
 enum SeqState {
-    OrderGood,
-    OutOfOrder 
+    OrderGood
 }
 
 impl NodeState {
 
     fn new(seq: u64, birth_timestamp: u64) -> Self {
         Self {
-            seq, birth_timestamp, death_timestamp: 0, last_rebirth_request: 0, devices: HashMap::new()
+            seq, birth_timestamp, death_timestamp: 0, devices: HashMap::new()
         } 
     }
 
@@ -86,8 +85,14 @@ impl NodeState {
 
 #[derive(Debug,PartialEq, Eq, Hash, Clone)]
 pub struct NodeIdentifier {
-    group: String,
-    node_id: String
+    pub group: String,
+    pub node_id: String
+}
+
+#[derive(Debug)]
+pub enum RebirthReason {
+    UnknownNode(NodeIdentifier),
+    UnknownDevice{node_id: NodeIdentifier, device_id:String}
 }
 
 struct State {
@@ -100,18 +105,24 @@ impl State {
         State { nodes: Mutex::new(HashMap::new()) }
     }
 
-    fn handle_node_message(&self, message: NodeMessage, callbacks: &Callbacks) {
+    fn handle_node_message(&self, message: NodeMessage, callbacks: &Callbacks) -> Option<RebirthReason> {
         let id = NodeIdentifier { group: message.group_id, node_id: message.node_id };
         let message_kind = message.message.kind;
         let payload = message.message.payload;
         let seq = match payload.seq {
             Some(seq) => seq,
-            None => return,
+            None => {
+                warn!("Message did not contain a seq number - discarding. node = {:?}", id);
+                return None
+            },
         };
 
         let timestamp= match payload.timestamp{
             Some(ts) => ts,
-            None => return,
+            None => {
+                warn!("Message did not contain a timestamp - discarding. node = {:?}", id);
+                return None
+            },
         };
 
         match message_kind {
@@ -120,9 +131,9 @@ impl State {
                 match nodes.get_mut(&id) {
                     Some(node) => {
                         node.validate_and_update_seq(seq);
-                        if !node.validate_and_update_birth_timestamp(seq) {
-                            //timestamp not new
-                            return
+                        if !node.validate_and_update_birth_timestamp(timestamp) {
+                            debug!("Birth message was older than the most recent birth or death message - Discarding. node = {:?}", id);
+                            return None
                         }
                     },
                     None => {
@@ -133,7 +144,10 @@ impl State {
 
                 let metric_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
                     Ok(details) => details,
-                    Err(_) => todo!("rebirth"),
+                    Err(e) => {
+                        warn!("Message payload was invalid - {:?}. node = {:?}", e, id);
+                        return None
+                    },
                 };
 
                 if let Some(callback) = &callbacks.nbirth { callback(id, timestamp, metric_details) };
@@ -142,18 +156,21 @@ impl State {
                 let mut nodes = self.nodes.lock().unwrap();
                 let node = match nodes.get_mut(&id) {
                     Some(node) => node,
-                    None => return,
+                    None => return None,
                 };
 
                 node.validate_and_update_seq(seq);
-                if !node.validate_and_update_death_timestamp(timestamp) { return };
+                if !node.validate_and_update_death_timestamp(timestamp) { 
+                    debug!("Death message was older than the most recent birth or death message - Discarding. node = {:?}", id);
+                    return None 
+                };
                 if let Some(callback) = &callbacks.ndeath { callback(id, timestamp) };
             },
             MessageKind::Data => {
                 let mut nodes = self.nodes.lock().unwrap();
                 let node = match nodes.get_mut(&id) {
                     Some(node) => node,
-                    None => return,
+                    None => return Some(RebirthReason::UnknownNode(id)),
                 };
 
                 node.validate_and_update_seq(seq);
@@ -161,7 +178,10 @@ impl State {
 
                 let details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
                     Ok(details) => details,
-                    Err(_) => todo!("rebirth"),
+                    Err(e) => {
+                        warn!("Message payload was invalid - {:?}. node = {:?}", e, id);
+                        return None
+                    },
                 };
 
                 if let Some(callback) = &callbacks.ndata { 
@@ -169,31 +189,37 @@ impl State {
                     task::spawn(callback(id, timestamp, details));
                 };
             },
-            _ => ()
-        }
+            _ => ()  
+        };
+        return None
     }
 
-    fn handle_device_message(&self, message: DeviceMessage, callbacks: &Callbacks) {
+    fn handle_device_message(&self, message: DeviceMessage, callbacks: &Callbacks) -> Option<RebirthReason> {
         let id = NodeIdentifier { group: message.group_id, node_id: message.node_id };
         let device_id = message.device_id;
         let message_kind = message.message.kind;
         let payload = message.message.payload;
         let seq = match payload.seq {
             Some(seq) => seq,
-            None => return,
+            None => {
+                warn!("Message did not contain a seq number - discarding. device = {:?} node = {:?}", device_id, id);
+                return None
+            },
         };
 
         let timestamp= match payload.timestamp{
             Some(ts) => ts,
-            None => return,
+            None => {
+                warn!("Message did not contain a timestamp - discarding. device = {:?} node = {:?}", device_id, id);
+                return None
+            },
         };
 
         let mut nodes = self.nodes.lock().unwrap();
         let node = match nodes.get_mut(&id) {
             Some(node) => node,
             None => {
-                todo!("rebirth");
-                return;
+                return Some(RebirthReason::UnknownNode(id));
             },
         };
         node.validate_and_update_seq(seq);
@@ -202,18 +228,22 @@ impl State {
             MessageKind::Birth => {
                 match node.get_device(&device_id) {
                     Some(device_state) => {
-                       if !device_state.validate_and_update_birth_timestamp(timestamp) { return }
+                        if !device_state.validate_and_update_birth_timestamp(timestamp) { 
+                            debug!("Birth message was older than the most recent birth or death message - Discarding. node = {:?}, device = {}", id, device_id);
+                            return None 
+                        }
                     },
                     None => {
                         let device_state = DeviceState::new(timestamp); 
                         node.add_device(device_id.clone(), device_state);
                     },
                 }
-
-                println!("metrics: {0:?}", payload.metrics);
                 let metric_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
                     Ok(details) => details,
-                    Err(_) => todo!("rebirth"),
+                    Err(e) => {
+                        warn!("Message payload was invalid - {:?}. node = {:?}, device = {}", e, id, device_id);
+                        return None
+                    },
                 };
                 if let Some(callback) = &callbacks.dbirth {
                    callback(id, device_id, timestamp, metric_details); 
@@ -222,9 +252,12 @@ impl State {
             MessageKind::Death => {
                 let device_state = match node.get_device(&device_id) {
                     Some(state) => state,
-                    None => return,
+                    None => return None,
                 };
-                if !device_state.validate_and_update_death_timestamp(timestamp) { return };
+                if !device_state.validate_and_update_death_timestamp(timestamp) { 
+                    debug!("Death message was older than the most recent birth or death message - Discarding. node = {:?}, device = {}", id, device_id);
+                    return None 
+                };
                 if let Some(callback) = &callbacks.ddeath{
                    callback(id, device_id, timestamp); 
                 }
@@ -232,13 +265,16 @@ impl State {
             MessageKind::Data => {
                 let device_state = match node.get_device(&device_id) {
                     Some(state) => state,
-                    None => todo!("rebirth"),
+                    None => return Some(RebirthReason::UnknownDevice{node_id: id, device_id}),
                 };
-                if !device_state.validate_and_update_death_timestamp(timestamp) { return };
+                if !device_state.validate_and_update_death_timestamp(timestamp) { return None };
                 drop(nodes); 
                 let details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
                     Ok(details) => details,
-                    Err(_) => todo!("rebirth"),
+                    Err(e) => {
+                        warn!("Message payload was invalid - {:?}. node = {:?}, device = {}", e, id, device_id);
+                        return None
+                    },
                 };
 
                 if let Some(callback) = &callbacks.ddata { 
@@ -248,7 +284,7 @@ impl State {
             },
             _ => () 
         }
-
+        return None;
     }
 
 }
@@ -313,6 +349,7 @@ struct Callbacks {
     dbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, String, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()>>>, 
     ddeath: Option<Pin<Box<dyn Fn(NodeIdentifier, String, u64) -> ()>>>, 
     ddata: Option<Arc<dyn Fn(NodeIdentifier, String, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
+    evaluate_rebirth_reason: Option<Arc<dyn Fn(RebirthReason) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
 }
 
 pub struct App {
@@ -341,7 +378,8 @@ impl App {
             ndata: None,
             dbirth: None,
             ddeath: None,
-            ddata: None
+            ddata: None,
+            evaluate_rebirth_reason: None,
         };
 
         let client = AppClient(Arc::new(client));
@@ -428,11 +466,24 @@ impl App {
         self
     }
 
+    pub fn register_evaluate_rebirth_reason_fn<F, Fut>(&mut self, cb: F) -> &mut Self
+    where 
+        F: Fn(RebirthReason) -> Fut + Send + 'static,
+        Fut: Future<Output=()> + Send + 'static
+    {
+        let callback = Arc::new(move |reason| {
+            Box::pin(cb(reason)) as Pin<Box<dyn Future<Output = ()> + Send>> 
+        }); 
+        self.callbacks.evaluate_rebirth_reason = Some(callback);
+        self
+    }
+
     fn update_last_will(&mut self) {
         self.eventloop.set_last_will(srad_client::LastWill::new_app(&self.host_id));
     }
 
     fn handle_online(&self) {
+        info!("App Online");
         if let Some(callback) = &self.callbacks.online { callback() };
         let client = self.client.0.clone();
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
@@ -443,6 +494,7 @@ impl App {
     }
 
     fn handle_offline(&mut self) {
+        info!("App Offline");
         if let Some(callback) = &self.callbacks.offline { callback() };
         self.update_last_will();
     }
@@ -453,8 +505,22 @@ impl App {
             match event {
                 Event::Online => self.handle_online(),
                 Event::Offline => self.handle_offline(), 
-                Event::Node(node_message) => self.state.handle_node_message(node_message, &self.callbacks),
-                Event::Device(device_message) => self.state.handle_device_message(device_message, &self.callbacks),
+                Event::Node(node_message) => {
+                    if let Some(reason) = self.state.handle_node_message(node_message, &self.callbacks) {
+                        if let Some(cb) = &self.callbacks.evaluate_rebirth_reason {
+                            let cb = cb.clone();
+                            task::spawn(cb(reason));
+                        }
+                    }
+                },
+                Event::Device(device_message) => {
+                    if let Some(reason) = self.state.handle_device_message(device_message, &self.callbacks) {
+                        if let Some(cb) = &self.callbacks.evaluate_rebirth_reason {
+                            let cb = cb.clone();
+                            task::spawn(cb(reason));
+                        }
+                    }
+                },
                 Event::State { host_id, payload } => (),
                 Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
             }
@@ -462,11 +528,13 @@ impl App {
     }
 
     pub async fn run(&mut self) {
+        info!("App Started");
         self.update_last_will();
         loop {
             let event = self.eventloop.poll().await;
             self.handle_event(event).await;
         }
+        info!("App Stopped");
     } 
 
 }
