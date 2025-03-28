@@ -3,7 +3,7 @@ use std::{collections::HashSet, hash::{DefaultHasher, Hash, Hasher}};
 use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, utils::timestamp, MetricId, MetricValue};
 
 use crate::{
-  error::SpgError, metric::MetricToken, registry::DeviceId
+  error::Error, metric::MetricToken, registry::DeviceId
 };
 
 pub struct BirthMetricDetails<T> {
@@ -141,11 +141,11 @@ impl BirthInitializer{
     alias
   }
 
-  pub fn register_metric<T: Into<String>, M: traits::MetricValue>(&mut self, name: T, use_alias: bool) -> Result<MetricToken<M>, SpgError> {
+  pub fn register_metric<T: Into<String>, M: traits::MetricValue>(&mut self, name: T, use_alias: bool) -> Result<MetricToken<M>, Error> {
     let metric = name.into();
 
     if self.metric_names.contains(&metric) {
-      return Err(SpgError::DuplicateMetric);
+      return Err(Error::DuplicateMetric);
     }
 
     let id = match use_alias {
@@ -162,7 +162,7 @@ impl BirthInitializer{
     Ok(MetricToken::new(id))
   }
 
-  pub fn create_metric<T: traits::MetricValue>(&mut self, details: BirthMetricDetails<T>) -> Result<MetricToken<T>, SpgError>
+  pub fn create_metric<T: traits::MetricValue>(&mut self, details: BirthMetricDetails<T>) -> Result<MetricToken<T>, Error>
   {
     let id = self.register_metric(&details.name, details.use_alias)?;
     let mut metric = details.to_metric();

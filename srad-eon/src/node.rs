@@ -19,7 +19,7 @@ use srad_types::{
 use crate::birth::{BirthInitializer, BirthMetricDetails, BirthObjectType};
 use crate::builder::EoNBuilder;
 use crate::device::{DeviceHandle, DeviceMap};
-use crate::error::SpgError;
+use crate::error::Error;
 use crate::metric::{MessageMetrics, MetricPublisher, PublishError, PublishMetric};
 use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
 use crate::registry::Registry;
@@ -50,7 +50,7 @@ impl NodeHandle {
     self.node.birth(BirthType::Rebirth).await;
   }
 
-  pub async fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, SpgError> 
+  pub async fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, Error> 
   where 
     S: Into<String>,
     M: DeviceMetricManager + Send + Sync + 'static 
