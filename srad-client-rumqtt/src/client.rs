@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::{debug, warn};
+use log::debug;
 use rumqttc::v5::{mqttbytes::{v5::{ConnectProperties, Filter, Packet}, QoS}, AsyncClient as RuClient, EventLoop as RuEventLoop, MqttOptions as RuMqttOptions};
 use srad_types::{payload::{Payload, Message}, topic::{DeviceTopic, TopicFilter}};
 
@@ -102,15 +102,7 @@ impl srad_client::EventLoop for EventLoop
             Some(Event::Online)
           },
           rumqttc::v5::Event::Incoming(Packet::Disconnect(_)) => Some(Event::Offline),
-          rumqttc::v5::Event::Incoming(Packet::Publish(publish)) => {
-            match topic_and_payload_to_event(&publish.topic, &publish.payload) {
-              Ok(event) => Some(event),
-              Err(e) => {
-                warn!("Incoming publish was an invalid sparkplug message: {e:?}");
-                Some(Event::InvalidPublish { reason: e, topic: publish.topic.into(), payload: publish.payload.into()})
-              },
-            }
-          },
+          rumqttc::v5::Event::Incoming(Packet::Publish(publish)) => Some(topic_and_payload_to_event(publish.topic.to_vec(), publish.payload.to_vec())),
           _ => None
         }
       },

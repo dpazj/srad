@@ -311,7 +311,10 @@ impl EoN
 
         let message_metrics:MessageMetrics = match payload.try_into() {
           Ok(metrics) => metrics,
-          Err(_) => todo!(),
+          Err(_) => {
+            warn!("Received invalid CMD payload - ignoring request");
+            return 
+          },
         };
 
         let node= self.node.clone();

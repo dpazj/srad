@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::vec::IntoIter;
 
+use log::warn;
 use srad_types::payload::ToMetric;
 use srad_types::payload::{Metric, Payload};
 use srad_types::property_set::PropertySet;
@@ -193,7 +194,7 @@ impl Iterator for MessageMetricsIterator {
       Some(metric) => match metric.try_into() {
         Ok(message_metric) => Some(message_metric),
         Err(_) => {
-          //TODO log error
+          warn!("Got invalid or badly formed metric - skipping");
           self.next()
         },
       },

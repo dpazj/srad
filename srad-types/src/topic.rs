@@ -59,7 +59,7 @@ impl NodeTopic {
       NodeMessage::NBirth => (QoS::AtMostOnce, false),
       NodeMessage::NData => (QoS::AtMostOnce, false),
       NodeMessage::NCmd => (QoS::AtMostOnce, false),
-      NodeMessage::NDeath => todo!(),
+      NodeMessage::NDeath => (QoS::AtMostOnce, false),
     }
   }
 }

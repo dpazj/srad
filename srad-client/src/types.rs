@@ -47,7 +47,7 @@ pub struct Message {
 pub enum StatePayload {
   Online {timestamp: u64},
   Offline {timestamp: u64},
-  Other()
+  Other(Vec<u8>)
 }
 
 #[derive(Debug)]

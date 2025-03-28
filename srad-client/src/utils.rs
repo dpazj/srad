@@ -36,57 +36,76 @@ fn process_topic_message(message_part: &[u8], payload: &[u8]) -> Result<(Message
   Ok ((producer, Message { payload: payload, kind: message_kind}))
 }
 
-pub fn topic_and_payload_to_event(topic: &[u8], payload: &[u8]) -> Result<Event, MessageError>
+pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event
 {
   let mut iter = topic.split(|c| *c == b'/');
 
   let spbv10= iter.next();
   if spbv10.is_none() {
-    return Err(MessageError::InvalidSparkplugTopic); 
+    return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
   }
 
   let state_or_group_id = match iter.next() {
     Some(val) => val,
-    None => return Err(MessageError::InvalidSparkplugTopic),
+    None => return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
   };
 
   if STATE.as_bytes().eq(state_or_group_id) {
 
     let host_id = match iter.next() {
-      Some(val) => String::from_utf8(val.into())?,
-      None => return Err(MessageError::InvalidSparkplugTopic),
+      Some(val) => match String::from_utf8(val.into()) {
+        Ok(id) => id,
+        Err(e) => return Event::InvalidPublish { reason: e.into(), topic, payload }
+      },
+      None => return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
     };
 
-    return Ok(Event::State { host_id: host_id, payload: StatePayload::Other()}) //TODO
+    return Event::State { host_id: host_id, payload: StatePayload::Other(payload)}
   }
 
-  let group_id= String::from_utf8(state_or_group_id.into())?;
+  let group_id= match String::from_utf8(state_or_group_id.into()) {
+    Ok(id) => id,
+    Err(e) => return Event::InvalidPublish { reason: e.into(), topic, payload }
+  };
 
   //get message type 
   let (message_producer, message) = match iter.next() {
-    Some(val) => process_topic_message(val, payload)?,
-    None => return Err(MessageError::InvalidSparkplugTopic),
+    Some(val) => match process_topic_message(val, &payload) {
+      Ok(res) => res,
+      Err(e) => return Event::InvalidPublish { reason: e, topic, payload }
+    },
+    None => return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
   };
 
   //get node _id 
   let node_id = match iter.next() {
-    Some(val) => String::from_utf8(val.into())?,
-    None => return Err(MessageError::InvalidSparkplugTopic),
+    Some(val) => match String::from_utf8(val.into()) {
+      Ok(id) => id,
+      Err(e) => return Event::InvalidPublish { reason: e.into(), topic, payload }
+    },
+    None => return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
   };
 
   let event = match message_producer {
     MessageProducer::Node => {
-      if let Some(_) = iter.next() { return Err(MessageError::InvalidSparkplugTopic) }
+      if let Some(_) = iter.next() { 
+        return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
+      }
       Event::Node(NodeMessage{ group_id: group_id, node_id: node_id, message: message })
     },
     MessageProducer::Device => {
       let device_id = match iter.next() {
-        Some(val) => String::from_utf8(val.into())?,
-        None => return Err(MessageError::InvalidSparkplugTopic),
+        Some(val) => match String::from_utf8(val.into()) {
+          Ok(id) => id,
+          Err(e) => return Event::InvalidPublish { reason: e.into(), topic, payload }
+        },
+        None => return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
       };
-      if let Some(_) = iter.next() { return Err(MessageError::InvalidSparkplugTopic) }
+      if let Some(_) = iter.next() { 
+        return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
+      }
       Event::Device(DeviceMessage { group_id: group_id, node_id: node_id, device_id: device_id, message: message})
     }
   };
-  Ok(event)
+  event
 }
