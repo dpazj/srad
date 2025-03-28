@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
-use log::{debug, info, warn};
+use log::{error, info, warn};
 use srad_client::{DeviceMessage, DynClient, DynEventLoop, MessageKind};
 use srad_client::{Event, NodeMessage};
 
@@ -39,7 +39,10 @@ impl NodeHandle {
 
   pub async fn cancel(&self){
     info!("Edge node stopping");
-    self.node.client.disconnect().await;
+    match self.node.client.disconnect().await {
+      Ok(_) => (),
+      Err(_) => (),
+    }
     self.node.stop_tx.send(EoNShutdown).unwrap();
   }
 
@@ -92,8 +95,10 @@ impl MetricPublisher for NodeHandle
       body: None 
     };
 
-    self.node.client.publish_node_message(self.node.state.ndata_topic.clone(), payload).await;
-    Ok(())
+    match self.node.client.publish_node_message(self.node.state.ndata_topic.clone(), payload).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(PublishError::Offline),
+    }
   }
 }
 
@@ -172,20 +177,22 @@ impl Node {
 
   async fn node_birth(&self) {
     /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
+    self.state.birthed.store(false, Ordering::SeqCst);
     self.state.seq.store(0, Ordering::SeqCst);
     let bdseq= self.state.bdseq.load(Ordering::SeqCst) as i64;
 
     let payload = self.generate_birth_payload(bdseq, 0);
     let topic = self.state.birth_topic();
     self.state.seq.store(1, Ordering::SeqCst);
-    self.client.publish_node_message(topic, payload).await;
+    match self.client.publish_node_message(topic, payload).await {
+      Ok(_) => self.state.birthed.store(true, Ordering::SeqCst),
+      Err(_) => error!("Publishing birth message failed"),
+    }
   }
 
   async fn birth(&self, birth_type: BirthType) {
     info!("Birthing Node. Type: {:?}", birth_type);
-    self.state.birthed.store(false, Ordering::SeqCst);
     self.node_birth().await;
-    self.state.birthed.store(true, Ordering::SeqCst);
     self.devices.birth_devices(birth_type).await;
   }
  
@@ -261,8 +268,9 @@ impl EoN
     let node = self.node.clone();
 
     tokio::spawn(async move {
-      node.client.subscribe_many(sub_topics).await;
-      node.birth(BirthType::Birth).await
+      if let Ok(_) = node.client.subscribe_many(sub_topics).await {
+        node.birth(BirthType::Birth).await
+      };
     });
   }
 

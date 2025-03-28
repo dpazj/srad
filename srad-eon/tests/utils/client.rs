@@ -21,20 +21,32 @@ pub struct Client {
 #[async_trait]
 impl srad_client::Client for Client {
 
-  async fn disconnect(&self) {
-    self.tx.send(OutboundMessage::Disconnect).unwrap();
+  async fn disconnect(&self) -> Result<(),()> {
+    match self.tx.send(OutboundMessage::Disconnect) {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 
-  async fn publish_node_message(&self, topic: NodeTopic, payload: Payload) {
-    self.tx.send(OutboundMessage::NodeMessage { topic, payload }).unwrap();
+  async fn publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(),()> {
+    match self.tx.send(OutboundMessage::NodeMessage { topic, payload }) {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 
-  async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) {
-    self.tx.send(OutboundMessage::DeviceMessage { topic, payload }).unwrap();
+  async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(),()> {
+    match self.tx.send(OutboundMessage::DeviceMessage { topic, payload }) {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 
-  async fn subscribe_many(&self, topics: Vec<TopicFilter>) {
-    self.tx.send(OutboundMessage::Subscribe(topics)).unwrap();
+  async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(),()> {
+    match self.tx.send(OutboundMessage::Subscribe(topics)) {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 }
 

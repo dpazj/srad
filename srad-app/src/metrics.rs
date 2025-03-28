@@ -1,5 +1,3 @@
-use std::{collections::HashSet, sync::Arc};
-
 use srad_types::{payload::{self, DataType, MetaData, Metric, ToMetric}, property_set::PropertySet, traits, MetricId, MetricValue};
 
 pub struct PublishMetric 

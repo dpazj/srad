@@ -1,4 +1,4 @@
-use std::{collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, sync::Arc};
+use std::{collections::HashSet, hash::{DefaultHasher, Hash, Hasher}};
 
 use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, utils::timestamp, MetricId, MetricValue};
 

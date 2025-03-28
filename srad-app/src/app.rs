@@ -314,14 +314,15 @@ impl PublishTopic {
 }
 
 impl AppClient {
-    pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) 
+
+    pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) -> Result<(),()> 
     {
         let topic = PublishTopic::new_node_cmd(group_id, node_id);
         let rebirth_cmd = PublishMetric::new(MetricId::Name(NODE_CONTROL_REBIRTH.into()), true);
         self.publish_metrics(topic, vec![rebirth_cmd]).await
     }
 
-    pub async fn publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) {
+    pub async fn publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) -> Result<(),()> {
         let mut payload_metrics = Vec::with_capacity(metrics.len());
         for x in metrics.into_iter() {
             payload_metrics.push(x.to_metric());
@@ -336,7 +337,7 @@ impl AppClient {
         match topic.0 {
             PublishTopicKind::NodeTopic(topic) => self.0.publish_node_message(topic, payload).await,
             PublishTopicKind::DeviceTopic(topic) => self.0.publish_device_message(topic, payload).await,
-        };
+        }
     }
 }
 
@@ -521,7 +522,7 @@ impl App {
                         }
                     }
                 },
-                Event::State { host_id, payload } => (),
+                Event::State { host_id: _, payload: _} => (),
                 Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
             }
         }

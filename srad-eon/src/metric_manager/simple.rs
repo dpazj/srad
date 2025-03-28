@@ -4,7 +4,6 @@ use futures::future::join_all;
 use srad_types::{traits, MetricId};
 use crate::{birth::{BirthInitializer, BirthMetricDetails}, device::DeviceHandle, metric::{MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishError, PublishMetric}, NodeHandle};
 use super::manager::{DeviceMetricManager, MetricManager, NodeMetricManager};
-use log::error;
 
 type CmdCallback<T, H> = Arc<dyn Fn(SimpleMetricManager<H>, SimpleManagerMetric<T, H>, Option<T>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 

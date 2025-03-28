@@ -121,9 +121,3 @@ impl LastWill {
 
 }
 
-#[derive(PartialEq)]
-enum PendingOfflineEventState {
-  None, 
-  PendingEvent,
-  EventSent
-}

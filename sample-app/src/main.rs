@@ -49,7 +49,7 @@ async fn main() {
                     srad::app::RebirthReason::UnknownDevice { node_id, device_id : _} => node_id,
                 };
                 info!("Issuing rebirth request to node {id:?}");
-                client.publish_node_rebirth(&id.group, &id.node_id).await
+                _ = client.publish_node_rebirth(&id.group, &id.node_id).await;
             }
         });
     application.run().await;

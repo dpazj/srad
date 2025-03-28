@@ -27,31 +27,49 @@ pub struct Client {
 #[async_trait]
 impl srad_client::Client for Client {
 
-  async fn disconnect(&self) {
-    self.client.disconnect().await.unwrap()
+  async fn disconnect(&self) -> Result<(),()> {
+    match self.client.disconnect().await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 
-  async fn publish_node_message(&self, topic: srad_types::topic::NodeTopic, payload: srad_types::payload::Payload) {
-    debug!("Publish message: seq = {}, metric count = {}, topic = {}", payload.seq.unwrap_or(0), payload.metrics.len(), topic.topic);
+  async fn publish_node_message(&self, topic: srad_types::topic::NodeTopic, payload: srad_types::payload::Payload) -> Result<(),()> {
+    debug!("Outgoing Publish message: seq = {}, metric count = {}, topic = {}", payload.seq.unwrap_or(0), payload.metrics.len(), topic.topic);
     let (qos, retain) = topic.get_publish_quality_retain();
-    self.client.publish(topic.topic, qos_to_mqtt_qos(qos), retain, payload.encode_to_vec()).await.unwrap()
+    match self.client.publish(topic.topic, qos_to_mqtt_qos(qos), retain, payload.encode_to_vec()).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 
-  async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) {
-    debug!("Publish message: seq = {}, metric count = {}, topic = {}", payload.seq.unwrap_or(0), payload.metrics.len(), topic.topic);
+  async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(),()> {
+    debug!("Outgoing Publish message: seq = {}, metric count = {}, topic = {}", payload.seq.unwrap_or(0), payload.metrics.len(), topic.topic);
     let (qos, retain) = topic.get_publish_quality_retain();
-    self.client.publish(topic.topic, qos_to_mqtt_qos(qos), retain, payload.encode_to_vec()).await.unwrap()
+    match self.client.publish(topic.topic, qos_to_mqtt_qos(qos), retain, payload.encode_to_vec()).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 
-  async fn subscribe_many(&self, topics: Vec<TopicFilter>) {
-    debug!("Subscribe: topics = {:?}", topics);
+  async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(),()> {
+    debug!("Outgoing Subscribe: topics = {:?}", topics);
     let filters: Vec<Filter> = topics.into_iter().map(|x| {topic_filter_to_mqtt_filter(x)}).collect();
-    self.client.subscribe_many(filters).await.unwrap()
+    match self.client.subscribe_many(filters).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
   }
 
 }
 
+enum ConnectionState {
+  Disconnected,
+  Connected
+}
+
 pub struct EventLoop {
+  state: ConnectionState,
   el: RuEventLoop 
 }
 
@@ -67,7 +85,7 @@ impl EventLoop {
       .set_connect_properties(connect_properties);
 
     let (client, eventloop) = RuClient::new(options, 0);
-    (EventLoop{el: eventloop}, Client{client})
+    (EventLoop{el: eventloop, state: ConnectionState::Disconnected}, Client{client})
   }
 }
 
@@ -79,7 +97,10 @@ impl srad_client::EventLoop for EventLoop
     match event {
       Ok(event) => {
         return match event {
-          rumqttc::v5::Event::Incoming(Packet::ConnAck(_)) => Some(Event::Online),
+          rumqttc::v5::Event::Incoming(Packet::ConnAck(_)) => {
+            self.state = ConnectionState::Connected;
+            Some(Event::Online)
+          },
           rumqttc::v5::Event::Incoming(Packet::Disconnect(_)) => Some(Event::Offline),
           rumqttc::v5::Event::Incoming(Packet::Publish(publish)) => {
             match topic_and_payload_to_event(&publish.topic, &publish.payload) {
@@ -94,8 +115,16 @@ impl srad_client::EventLoop for EventLoop
         }
       },
       Err(_) => {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        None
+        match self.state {
+          ConnectionState::Connected => {
+            self.state = ConnectionState::Disconnected;
+            Some(Event::Online)
+          },
+          ConnectionState::Disconnected => {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            None
+          }
+        }
       },
     }
   }
@@ -105,4 +134,5 @@ impl srad_client::EventLoop for EventLoop
     let mqtt_will = rumqttc::v5::mqttbytes::v5::LastWill::new(will.topic, will.payload, qos, will.retain, None);
     self.el.options.set_last_will(mqtt_will);
   }
+
 }

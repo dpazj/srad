@@ -60,8 +60,10 @@ impl MetricPublisher for DeviceHandle {
       uuid: None, 
       body: None 
     };
-    self.device.client.publish_device_message(self.device.info.ddata_topic.clone(), payload).await;
-    Ok(())
+    match self.device.client.publish_device_message(self.device.info.ddata_topic.clone(), payload).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(PublishError::Offline),
+    }
   }
 }
 
@@ -110,11 +112,13 @@ impl Device {
     if *birth_type == BirthType::Birth && self.birthed.load(Ordering::SeqCst) == true { return }
     debug!("Device {} birthing. Type: {:?}", self.info.name, birth_type);
     let payload = self.generate_birth_payload();
-    self.client.publish_device_message(
+    match self.client.publish_device_message(
       DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DBirth, &self.eon_state.edge_node_id, &self.info.name),
       payload 
-    ).await;
-    self.birthed.store(true, Ordering::SeqCst);
+    ).await {
+      Ok(_) => self.birthed.store(true, Ordering::SeqCst),
+      Err(_) => (),
+    };
     drop(guard)
   }
 
@@ -123,10 +127,13 @@ impl Device {
     if self.birthed.load(Ordering::SeqCst) == false { return }
     if publish {
       let payload = self.generate_death_payload();
-      self.client.publish_device_message(
+      match self.client.publish_device_message(
         DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DDeath, &self.eon_state.edge_node_id, &self.info.name),
         payload 
-      ).await;
+      ).await {
+        Ok(_) => (),
+        Err(_) => (),
+      };
     }
     self.birthed.store(false, Ordering::SeqCst);
     debug!("Device {} dead", self.info.name);
