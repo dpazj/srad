@@ -7,6 +7,7 @@ edition = "2021"
 srad-types = { path = "../srad-types" }
 srad-client = { path = "../srad-client" }
 tokio = { workspace = true }
+log = { workspace = true }
 futures = { workspace = true }
 flume = { workspace = true }
 thiserror = { workspace = true }

@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
+use log::{debug, info, warn};
 use srad_client::{DeviceMessage, DynClient, DynEventLoop, MessageKind};
 use srad_client::{Event, NodeMessage};
 
@@ -37,6 +38,7 @@ pub struct NodeHandle {
 impl NodeHandle {
 
   pub async fn cancel(&self){
+    info!("Edge node stopping");
     self.node.client.disconnect().await;
     self.node.stop_tx.send(EoNShutdown).unwrap();
   }
@@ -180,6 +182,7 @@ impl Node {
   }
 
   async fn birth(&self, birth_type: BirthType) {
+    info!("Birthing Node. Type: {:?}", birth_type);
     self.state.birthed.store(false, Ordering::SeqCst);
     self.node_birth().await;
     self.state.birthed.store(true, Ordering::SeqCst);
@@ -251,8 +254,9 @@ impl EoN
   }
 
   fn on_online(&self) {
-    self.node.state.set_online(true);
+    info!("Edge node online");
 
+    self.node.state.set_online(true);
     let sub_topics = self.node.state.sub_topics();
     let node = self.node.clone();
 
@@ -263,6 +267,7 @@ impl EoN
   }
 
   async fn on_offline(&mut self) {
+    info!("Edge node offline");
     self.node.state.set_online(false);
     self.node.devices.on_offline().await;
     self.node.state.bdseq.fetch_add(1, Ordering::SeqCst);
@@ -277,31 +282,22 @@ impl EoN
 
         let mut rebirth = false;
         for x in &payload.metrics {
-          if x.alias.is_some() {continue;}
+          if x.alias.is_some() { continue; }
           let metric_name = match &x.name  {
             Some(name) => name,
             None => continue,
           };
 
-          if metric_name != NODE_CONTROL_REBIRTH {continue;} 
+          if metric_name != NODE_CONTROL_REBIRTH { continue } 
 
-          match &x.value {
+          rebirth = match &x.value {
             Some(value) => {
-              if let Value::BooleanValue(val) = value {
-                if *val == true { rebirth = true; } 
-                else { 
-                  //log error
-                  continue;
-                }
-              } else {
-                //todo err
-              }
-              continue;
+              if let Value::BooleanValue(val) = value { *val == true } else { false }
             },
-            None => {
-              //todo error
-              continue;
-            },
+            None => false
+          };
+          if rebirth != true {
+            warn!("Received invalid CMD Rebirth metric - ignoring request")
           }
         } 
 
@@ -313,7 +309,10 @@ impl EoN
         let node= self.node.clone();
         task::spawn( async move {
           node.metric_manager.on_ncmd(NodeHandle { node: node.clone() }, message_metrics).await;
-          if rebirth { node.birth(BirthType::Rebirth).await }
+          if rebirth { 
+            info!("Got Rebirth CMD - Rebirthing Node");
+            node.birth(BirthType::Rebirth).await 
+          }
         });
       },
       _ => ()
@@ -343,6 +342,7 @@ impl EoN
   }
 
   pub async fn run(&mut self) {
+    info!("Edge node running");
     self.update_last_will();
     loop {
       select!{
@@ -350,6 +350,7 @@ impl EoN
         Ok(_) = self.stop_rx.recv_async() => break,
       }
     }
+    info!("Edge node stopped");
   } 
 
 }

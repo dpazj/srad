@@ -3,8 +3,17 @@ use srad::{client::mqtt_client::rumqtt, eon::{self, EoNBuilder, SimpleMetricMana
 
 use tokio::time;
 
+use env_logger;
+use log::LevelFilter;
+
 #[tokio::main(flavor="current_thread")]
 async fn main() {
+
+    env_logger::Builder::new()
+    .filter_level(LevelFilter::Trace)
+    .init();
+
+
     let opts = rumqtt::MqttOptions::new("node", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts);
     let node_metrics = SimpleMetricManager::new();

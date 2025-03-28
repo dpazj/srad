@@ -7,5 +7,6 @@ edition = "2021"
 srad-types = { path = "../srad-types" }
 srad-client = { path = "../srad-client" }
 async-trait = { workspace = true }
+log = { workspace = true }
 rumqttc = { workspace = true }
 tokio = { workspace = true }

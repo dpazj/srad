@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex}};
 
 use futures::future::join_all;
+use log::{debug, info, warn};
 use srad_client::{DeviceMessage, DynClient, MessageKind};
 use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic, utils::timestamp};
 
@@ -102,6 +103,21 @@ impl Device {
     }
   }
 
+  pub async fn birth(&self, birth_type: &BirthType) {
+    if !self.enabled.load(Ordering::SeqCst) { return }
+    let guard = self.birth_lock.lock().await;
+    if !self.eon_state.birthed() { return }
+    if *birth_type == BirthType::Birth && self.birthed.load(Ordering::SeqCst) == true { return }
+    debug!("Device {} birthing. Type: {:?}", self.info.name, birth_type);
+    let payload = self.generate_birth_payload();
+    self.client.publish_device_message(
+      DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DBirth, &self.eon_state.edge_node_id, &self.info.name),
+      payload 
+    ).await;
+    self.birthed.store(true, Ordering::SeqCst);
+    drop(guard)
+  }
+
   pub async fn death(&self, publish: bool) {
     let guard = self.birth_lock.lock().await;
     if self.birthed.load(Ordering::SeqCst) == false { return }
@@ -113,22 +129,10 @@ impl Device {
       ).await;
     }
     self.birthed.store(false, Ordering::SeqCst);
+    debug!("Device {} dead", self.info.name);
     drop(guard)
   }
 
-  pub async fn birth(&self, birth_type: &BirthType) {
-    if !self.enabled.load(Ordering::SeqCst) { return }
-    let guard = self.birth_lock.lock().await;
-    if !self.eon_state.birthed() { return }
-    if *birth_type == BirthType::Birth && self.birthed.load(Ordering::SeqCst) == true { return }
-    let payload = self.generate_birth_payload();
-    self.client.publish_device_message(
-      DeviceTopic::new(&self.eon_state.group_id, srad_types::topic::DeviceMessage::DBirth, &self.eon_state.edge_node_id, &self.info.name),
-      payload 
-    ).await;
-    self.birthed.store(true, Ordering::SeqCst);
-    drop(guard)
-  }
 }
 
 pub struct DeviceMapInner {
@@ -198,6 +202,7 @@ impl DeviceMap {
   }
 
   pub async fn birth_devices(&self, birth_type: BirthType) {
+    info!("Birthing Devices. Type: {:?}", birth_type);
     let device_map = self.state.lock().await;
     let futures: Vec<_> = device_map.devices.values()
       .map(|x| {
@@ -219,15 +224,15 @@ impl DeviceMap {
 
   pub async fn handle_device_message(&self, message: DeviceMessage) {
     let dev = {
-      let state = match self.state.try_lock() {
-        Ok(state) => state,
-        Err(_) => return,
-      };
-
+      let state = self.state.lock().await;
       let dev = state.devices.get(&message.device_id);
       match dev {
         Some(dev) => dev.clone(),
-        None => return,
+        None => 
+        {
+          warn!("Got message for unknown device '{}'", message.device_id);
+          return
+        },
       }
     };
 
@@ -237,9 +242,12 @@ impl DeviceMap {
       MessageKind::Cmd => {
         let message_metrics= match payload.try_into() {
           Ok(metrics) => metrics,
-          Err(_) => todo!(),
+          Err(_) => {
+            warn!("Got invalid CMD payload for device '{}' - ignoring", message.device_id);
+            return;
+          },
         };
-        dev.dev_impl.on_dcmd(DeviceHandle { device: dev.clone() } ,message_metrics).await
+        dev.dev_impl.on_dcmd(DeviceHandle { device: dev.clone() }, message_metrics).await
       }
       _ => ()
     }

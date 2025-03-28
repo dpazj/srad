@@ -15,6 +15,7 @@
 - Handle disconnections and producing Offline events
 
 ### future 
+- remove option from event
 - multiple clients/brokers
 - Add ability to return success of operations
 

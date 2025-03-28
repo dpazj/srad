@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use log::{debug, warn};
 use rumqttc::v5::{mqttbytes::{v5::{ConnectProperties, Filter, Packet}, QoS}, AsyncClient as RuClient, EventLoop as RuEventLoop, MqttOptions as RuMqttOptions};
 use srad_types::{payload::{Payload, Message}, topic::{DeviceTopic, TopicFilter}};
 
@@ -31,16 +32,19 @@ impl srad_client::Client for Client {
   }
 
   async fn publish_node_message(&self, topic: srad_types::topic::NodeTopic, payload: srad_types::payload::Payload) {
+    debug!("Publish message: seq = {}, metric count = {}, topic = {}", payload.seq.unwrap_or(0), payload.metrics.len(), topic.topic);
     let (qos, retain) = topic.get_publish_quality_retain();
     self.client.publish(topic.topic, qos_to_mqtt_qos(qos), retain, payload.encode_to_vec()).await.unwrap()
   }
 
   async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) {
+    debug!("Publish message: seq = {}, metric count = {}, topic = {}", payload.seq.unwrap_or(0), payload.metrics.len(), topic.topic);
     let (qos, retain) = topic.get_publish_quality_retain();
     self.client.publish(topic.topic, qos_to_mqtt_qos(qos), retain, payload.encode_to_vec()).await.unwrap()
   }
 
   async fn subscribe_many(&self, topics: Vec<TopicFilter>) {
+    debug!("Subscribe: topics = {:?}", topics);
     let filters: Vec<Filter> = topics.into_iter().map(|x| {topic_filter_to_mqtt_filter(x)}).collect();
     self.client.subscribe_many(filters).await.unwrap()
   }
@@ -80,7 +84,10 @@ impl srad_client::EventLoop for EventLoop
           rumqttc::v5::Event::Incoming(Packet::Publish(publish)) => {
             match topic_and_payload_to_event(&publish.topic, &publish.payload) {
               Ok(event) => Some(event),
-              Err(e) => Some(Event::InvalidPublish { reason: e, topic: publish.topic.into(), payload: publish.payload.into()}),
+              Err(e) => {
+                warn!("Incoming publish was an invalid sparkplug message: {e:?}");
+                Some(Event::InvalidPublish { reason: e, topic: publish.topic.into(), payload: publish.payload.into()})
+              },
             }
           },
           _ => None
