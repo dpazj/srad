@@ -1,11 +1,9 @@
 use async_trait::async_trait;
 use log::{debug, error};
-use rumqttc::v5::{mqttbytes::{v5::{ConnectProperties, Filter, Packet}, QoS}, AsyncClient as RuClient, EventLoop as RuEventLoop, MqttOptions as RuMqttOptions};
+use rumqttc::v5::{mqttbytes::{v5::{ConnectProperties, Filter, Packet}, QoS}, AsyncClient as RuClient, EventLoop as RuEventLoop, MqttOptions};
 use srad_types::{payload::{Payload, Message}, topic::{DeviceTopic, TopicFilter}};
 
 use srad_client::{Event, LastWill, topic_and_payload_to_event};
-
-use crate::MqttOptions;
 
 fn qos_to_mqtt_qos(qos: srad_types::topic::QoS) -> QoS {
   match qos {
@@ -74,17 +72,26 @@ pub struct EventLoop {
 }
 
 impl EventLoop {
-  pub fn new(options: MqttOptions) -> (Self, Client) {
-    
-    let mut connect_properties = ConnectProperties::new();
-    connect_properties.session_expiry_interval = Some(0);
 
-    let mut options = RuMqttOptions::new(options.client_id, options.broker_addr, options.port);
+  /// Create a new `Eventloop`.
+  /// 
+  /// `options` are the mqtt options to create the rummqtt client with. Some options will be overwritten to ensure sparkplug compliance.
+  /// 
+  /// `cap` specifies the capacity of the bounded async channel for the client handle.
+  pub fn new(options: MqttOptions, cap: usize) -> (Self, Client) {
+    let mut options = options;
+    let mut connection_properties = match options.connect_properties() {
+      Some(p) => p,
+      None => ConnectProperties::new(),
+    };
+    /* Sparkplug requires session expiry interval to be 0 */
+    connection_properties.session_expiry_interval = Some(0);
+
     options
       .set_clean_start(true)
-      .set_connect_properties(connect_properties);
+      .set_connect_properties(connection_properties);
 
-    let (client, eventloop) = RuClient::new(options, 0);
+    let (client, eventloop) = RuClient::new(options, cap);
     (EventLoop{el: eventloop, state: ConnectionState::Disconnected}, Client{client})
   }
 }

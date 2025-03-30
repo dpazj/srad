@@ -15,7 +15,8 @@ async fn main() {
 
 
     let opts = rumqtt::MqttOptions::new("node", "localhost", 1883);
-    let (eventloop, client) = rumqtt::EventLoop::new(opts);
+    
+    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
     let node_metrics = SimpleMetricManager::new();
     let counter_metric = node_metrics.register_metric("Counter", 0 as u64).unwrap();
     node_metrics.register_metric("A", 0 as u64).unwrap();

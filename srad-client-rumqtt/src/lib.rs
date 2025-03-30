@@ -1,7 +1,7 @@
 mod client;
-mod options;
+
+pub use rumqttc::v5::{mqttbytes::v5::ConnectProperties, MqttOptions};
 
 pub use client::*;
-pub use options::*;
 
 

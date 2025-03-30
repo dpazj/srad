@@ -11,7 +11,7 @@ async fn main() {
     .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
-    let (eventloop, client) = rumqtt::EventLoop::new(opts);
+    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
     let (mut application, client) = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
 
     let shutdown_handle = client.clone();
