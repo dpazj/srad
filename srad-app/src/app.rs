@@ -3,9 +3,10 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}};
 use log::{debug, info, warn};
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
 use srad_types::{constants::NODE_CONTROL_REBIRTH, payload::{Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::timestamp, MetricId};
-use tokio::task;
 
 use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, PublishMetric}};
+
+use tokio::{select, sync::mpsc::{self, Receiver}, task};
 
 struct DeviceState {
     birth_timestamp: u64,
@@ -289,8 +290,7 @@ impl State {
 
 }
 
-#[derive(Clone)]
-pub struct AppClient(Arc<DynClient>);
+struct Shutdown;
 
 #[derive(Debug, Clone)]
 enum PublishTopicKind {
@@ -313,10 +313,16 @@ impl PublishTopic {
 
 }
 
+#[derive(Clone)]
+pub struct AppClient(Arc<DynClient>, mpsc::Sender<Shutdown>);
+
 impl AppClient {
 
-    pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) -> Result<(),()> 
-    {
+    pub async fn cancel(&self) {
+        _ = self.1.send(Shutdown).await;
+    }
+
+    pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) -> Result<(),()> {
         let topic = PublishTopic::new_node_cmd(group_id, node_id);
         let rebirth_cmd = PublishMetric::new(MetricId::Name(NODE_CONTROL_REBIRTH.into()), true);
         self.publish_metrics(topic, vec![rebirth_cmd]).await
@@ -360,6 +366,7 @@ pub struct App {
     eventloop: Box<DynEventLoop>,
     state: State,
     callbacks: Callbacks,
+    shutdown_rx: Receiver<Shutdown>
 }
 
 impl App {
@@ -382,15 +389,16 @@ impl App {
             ddata: None,
             evaluate_rebirth_reason: None,
         };
-
-        let client = AppClient(Arc::new(client));
+        let (tx, rx) = mpsc::channel(1);
+        let client = AppClient(Arc::new(client), tx);
         let app = Self {
             host_id: host_id.into(),
             client: client.clone(),
             eventloop: Box::new(eventloop),
             subscription_config,
             state: State::new(),
-            callbacks
+            callbacks,
+            shutdown_rx: rx
         };
         (app, client)
     }
@@ -532,8 +540,10 @@ impl App {
         info!("App Started");
         self.update_last_will();
         loop {
-            let event = self.eventloop.poll().await;
-            self.handle_event(event).await;
+            select! {
+                event = self.eventloop.poll() => self.handle_event(event).await,
+                Some(_) = self.shutdown_rx.recv() => break,
+            }
         }
         info!("App Stopped");
     } 

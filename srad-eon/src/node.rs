@@ -25,9 +25,9 @@ use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
 use crate::registry::Registry;
 use crate::BirthType;
 
-use tokio::{select, task};
-use flume::{bounded, Sender, Receiver};
+use tokio::{select, task, sync::mpsc};
 
+#[derive(Debug)]
 struct EoNShutdown;
 
 #[derive(Clone)]
@@ -43,7 +43,7 @@ impl NodeHandle {
       Ok(_) => (),
       Err(_) => (),
     }
-    self.node.stop_tx.send(EoNShutdown).unwrap();
+    _ = self.node.stop_tx.send(EoNShutdown).await;
   }
 
   pub async fn rebirth(&self){
@@ -148,7 +148,7 @@ pub struct Node {
   metric_manager: Box<DynNodeMetricManager>,
   devices: DeviceMap,
   client: Arc<DynClient>,
-  stop_tx: Sender<EoNShutdown>
+  stop_tx: mpsc::Sender<EoNShutdown>
 }
 
 impl Node {
@@ -202,7 +202,7 @@ pub struct EoN
 {
   node: Arc<Node>,
   eventloop: Box<DynEventLoop>,
-  stop_rx: Receiver<EoNShutdown>
+  stop_rx: mpsc::Receiver<EoNShutdown>
 }
 
 impl EoN 
@@ -215,7 +215,7 @@ impl EoN
     let metric_manager = builder.metric_manager;
     let (eventloop, client) = builder.eventloop_client;
 
-    let (stop_tx, stop_rx) = bounded(1);
+    let (stop_tx, stop_rx) = mpsc::channel(1);
 
     let state = Arc::new(EoNState{
       seq: AtomicU8::new(0), 
@@ -357,7 +357,7 @@ impl EoN
     loop {
       select!{
         event = self.eventloop.poll() => self.handle_event(event).await,
-        Ok(_) = self.stop_rx.recv_async() => break,
+        Some(_) = self.stop_rx.recv() => break,
       }
     }
     info!("Edge node stopped");

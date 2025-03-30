@@ -1,7 +1,6 @@
 # TODO v0.1
 
 ## General
-
 - tests
 - samples
 - logging
@@ -12,17 +11,15 @@
 - Add ability to return success of operations
 
 ## Rumqtt
-  - handle multiple clients connected with same Id
-  - client disconnection
+  - rumqtt options from srad options.
 
 ### fututre
-  - add better config options
+  - better ensuring of operation success
+    - make sure response to subscription request is made 
+    - ensure metric publish has been sent
 
 ## App
-
-
 - add eventloop cancel
-- 
 
 ### future 
  - check sequence order and issue rebirths if invalid after timeout 
@@ -39,16 +36,14 @@
 
 ## EoN 0.1
 
-- clean up todos
-- logging
-
 ### future
 
 - provide properties in MessageMetric
 - multi part metric message support
   - ddata and cmd
 - wait states
-
+- handle client errors better
+  - handle subscriptions failing
 
 ### Test
 - more tests 

@@ -14,6 +14,15 @@ async fn main() {
     let (eventloop, client) = rumqtt::EventLoop::new(opts);
     let (mut application, client) = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
 
+    let shutdown_handle = client.clone();
+    tokio::spawn(async move {
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            println!("Failed to register CTRL-C handler: {e}");
+            return;
+        }
+        shutdown_handle.cancel().await;
+    });
+
     application
         .on_online(||{ println!("App online") })
         .on_offline(||{ println!("App offline") })
