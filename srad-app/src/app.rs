@@ -126,13 +126,6 @@ impl State {
         let id = NodeIdentifier { group: message.group_id, node: message.node_id };
         let message_kind = message.message.kind;
         let payload = message.message.payload;
-        let seq = match payload.seq {
-            Some(seq) => seq as u8,
-            None => {
-                warn!("Message did not contain a seq number - discarding. node = {:?}", id);
-                return None
-            },
-        };
 
         let timestamp= match payload.timestamp{
             Some(ts) => ts,
@@ -144,6 +137,13 @@ impl State {
 
         match message_kind {
             MessageKind::Birth => {
+                let seq = match payload.seq {
+                    Some(seq) => seq as u8,
+                    None => {
+                        warn!("Message did not contain a seq number - discarding. node = {:?}", id);
+                        return None
+                    },
+                };
                 let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
                     Ok(bdseq) => bdseq,
                     Err(_) => {
@@ -197,8 +197,6 @@ impl State {
                     None => return None,
                 };
 
-                node.validate_and_update_seq(seq);
-
                 if bdseq != node.bdseq {
                     debug!("Death bdseq did not match current known birth bdseq - ignoring. node = {:?}", id);
                     return None
@@ -206,6 +204,13 @@ impl State {
                 if let Some(callback) = &callbacks.ndeath { callback(id, utils::timestamp()) };
             },
             MessageKind::Data => {
+                let seq = match payload.seq {
+                    Some(seq) => seq as u8,
+                    None => {
+                        warn!("Message did not contain a seq number - discarding. node = {:?}", id);
+                        return None
+                    },
+                };
                 let mut nodes = self.nodes.lock().unwrap();
                 let node = match nodes.get_mut(&id) {
                     Some(node) => node,
