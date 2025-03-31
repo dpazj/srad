@@ -1,46 +1,17 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}};
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
-use srad_types::{constants::NODE_CONTROL_REBIRTH, payload::{Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::timestamp, MetricId};
+use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{Metric, Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils, MetricId, MetricValue};
 
 use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, PublishMetric}};
 
 use tokio::{select, sync::mpsc::{self, Receiver}, task};
 
-struct DeviceState {
-    birth_timestamp: u64,
-    death_timestamp: u64,
-}
-
-impl DeviceState {
-    fn new(birth_timestamp: u64) -> Self {
-        Self {
-            birth_timestamp,
-            death_timestamp: 0,
-        }
-    }
-
-    fn validate_and_update_birth_timestamp(&mut self, birth_timestamp: u64) -> bool {
-        if birth_timestamp <= self.birth_timestamp { return false }
-        if birth_timestamp < self.death_timestamp { return false }
-        self.birth_timestamp = birth_timestamp;
-        true
-    }
-
-    fn validate_and_update_death_timestamp(&mut self, death_timestamp: u64) -> bool {
-        if death_timestamp <= self.death_timestamp { return false }
-        if death_timestamp < self.birth_timestamp { return false }
-        self.death_timestamp = death_timestamp;
-        true
-    }
-}
-
 struct NodeState {
-   seq: u64, 
-   birth_timestamp: u64,
-   death_timestamp: u64,
-   devices: HashMap<String, DeviceState>  
+   seq: u8, 
+   bdseq: u8,
+   devices: HashMap<String, ()>  
 }
 
 enum SeqState {
@@ -49,37 +20,27 @@ enum SeqState {
 
 impl NodeState {
 
-    fn new(seq: u64, birth_timestamp: u64) -> Self {
+    fn new(seq: u8, bdseq: u8) -> Self {
         Self {
-            seq, birth_timestamp, death_timestamp: 0, devices: HashMap::new()
+            seq, bdseq, devices: HashMap::new()
         } 
     }
 
-    fn validate_and_update_seq(&mut self, seq: u64) -> SeqState {
+    fn reset_seq(&mut self) {
+        self.seq = 0
+    }
+
+    fn validate_and_update_seq(&mut self, seq: u8) -> SeqState {
         self.seq = seq;
         SeqState::OrderGood
     }
 
-    fn validate_and_update_birth_timestamp(&mut self, birth_timestamp: u64) -> bool {
-        if birth_timestamp <= self.birth_timestamp { return false }
-        if birth_timestamp < self.death_timestamp { return false }
-        self.birth_timestamp = birth_timestamp;
-        true
+    fn has_device(&mut self, device_name: &String) -> bool {
+        self.devices.contains_key(device_name)
     }
 
-    fn validate_and_update_death_timestamp(&mut self, death_timestamp: u64) -> bool {
-        if death_timestamp <= self.death_timestamp { return false }
-        if death_timestamp < self.birth_timestamp { return false }
-        self.death_timestamp = death_timestamp;
-        true
-    }
-
-    fn get_device(&mut self, device_name: &String) -> Option<&mut DeviceState> {
-        self.devices.get_mut(device_name)
-    }
-
-    fn add_device(&mut self, name: String, device: DeviceState) {
-        self.devices.insert(name, device);
+    fn add_device(&mut self, name: String) {
+        self.devices.insert(name, ());
     }
 
 }
@@ -87,13 +48,35 @@ impl NodeState {
 #[derive(Debug,PartialEq, Eq, Hash, Clone)]
 pub struct NodeIdentifier {
     pub group: String,
-    pub node_id: String
+    pub node: String
 }
 
 #[derive(Debug)]
-pub enum RebirthReason {
-    UnknownNode(NodeIdentifier),
-    UnknownDevice{node_id: NodeIdentifier, device_id:String}
+pub enum RebirthReasonKind {
+    UnknownNode,
+    UnknownDevice,
+    SeqOutOfOrder,
+}
+
+pub struct RebirthReason {
+    pub node_id: NodeIdentifier,
+    pub device: Option<String>,
+    pub reason: RebirthReasonKind
+}
+
+impl RebirthReason {
+    fn new(node_id: NodeIdentifier, reason: RebirthReasonKind) -> Self {
+        Self {
+            node_id,
+            device: None,
+            reason
+        }
+    }
+
+    fn with_device(mut self, device: String) -> Self {
+        self.device = Some(device);
+        self
+    }
 }
 
 struct State {
@@ -106,12 +89,45 @@ impl State {
         State { nodes: Mutex::new(HashMap::new()) }
     }
 
+    fn bdseq_from_payload_metrics(vec: &Vec<Metric>) -> Result<u8, ()> {
+        for x in vec {
+            match &x.name {
+                Some(name) => if name != BDSEQ { continue; },
+                None => continue,
+            }
+            match &x.value {
+                Some(x) => {
+                    match i64::try_from(MetricValue::from(x.clone())) {
+                        Ok(v) => 
+                        {
+                            if v > u8::MAX as i64 || v < 0 {
+                                error!("Got invalid bdseq value = {v}");
+                                return Err(())
+                            }
+                            return Ok(v as u8)
+                        },
+                        Err(_) => {
+                            debug!("Could not decode Payload metrics bdseq metric value as i64");
+                            return Err(())
+                        },
+                    }
+                },
+                None => {
+                    debug!("Payload metrics bdseq metric did not have a value");
+                    return Err(()) 
+                },
+            };
+        };
+        debug!("Payload metrics did not contain a bdseq metric");
+        return Err(())
+    }
+
     fn handle_node_message(&self, message: NodeMessage, callbacks: &Callbacks) -> Option<RebirthReason> {
-        let id = NodeIdentifier { group: message.group_id, node_id: message.node_id };
+        let id = NodeIdentifier { group: message.group_id, node: message.node_id };
         let message_kind = message.message.kind;
         let payload = message.message.payload;
         let seq = match payload.seq {
-            Some(seq) => seq,
+            Some(seq) => seq as u8,
             None => {
                 warn!("Message did not contain a seq number - discarding. node = {:?}", id);
                 return None
@@ -128,17 +144,31 @@ impl State {
 
         match message_kind {
             MessageKind::Birth => {
+                let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
+                    Ok(bdseq) => bdseq,
+                    Err(_) => {
+                        warn!("Birth Message contained an invalid bdseq metric - discarding payload. node = {:?}", id);
+                        return None
+                    },
+                };
+
                 let mut nodes = self.nodes.lock().unwrap();
                 match nodes.get_mut(&id) {
                     Some(node) => {
-                        node.validate_and_update_seq(seq);
-                        if !node.validate_and_update_birth_timestamp(timestamp) {
-                            debug!("Birth message was older than the most recent birth or death message - Discarding. node = {:?}", id);
+                        if seq != 0 {
+                            warn!("Birth payload sequence value is not zero - Discarding. node = {:?}", id);
                             return None
                         }
+                        node.reset_seq();
+
+                        if node.bdseq == bdseq {
+                            debug!("Birth message bdseq equal to the most recent birth message - ignoring. node = {:?}", id);
+                            return None
+                        }
+                        node.bdseq = bdseq
                     },
                     None => {
-                        let node = NodeState::new(seq, timestamp);
+                        let node = NodeState::new(seq, bdseq);
                         nodes.insert(id.clone(), node);
                     },
                 };
@@ -154,6 +184,13 @@ impl State {
                 if let Some(callback) = &callbacks.nbirth { callback(id, timestamp, metric_details) };
             },
             MessageKind::Death => {
+                let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
+                    Ok(bdseq) => bdseq,
+                    Err(_) => {
+                        warn!("Birth Message contained an invalid bdseq metric - discarding payload. node = {:?}", id);
+                        return None
+                    },
+                };
                 let mut nodes = self.nodes.lock().unwrap();
                 let node = match nodes.get_mut(&id) {
                     Some(node) => node,
@@ -161,17 +198,18 @@ impl State {
                 };
 
                 node.validate_and_update_seq(seq);
-                if !node.validate_and_update_death_timestamp(timestamp) { 
-                    debug!("Death message was older than the most recent birth or death message - Discarding. node = {:?}", id);
-                    return None 
-                };
-                if let Some(callback) = &callbacks.ndeath { callback(id, timestamp) };
+
+                if bdseq != node.bdseq {
+                    debug!("Death bdseq did not match current known birth bdseq - ignoring. node = {:?}", id);
+                    return None
+                }
+                if let Some(callback) = &callbacks.ndeath { callback(id, utils::timestamp()) };
             },
             MessageKind::Data => {
                 let mut nodes = self.nodes.lock().unwrap();
                 let node = match nodes.get_mut(&id) {
                     Some(node) => node,
-                    None => return Some(RebirthReason::UnknownNode(id)),
+                    None => return Some(RebirthReason::new(id, RebirthReasonKind::UnknownNode)),
                 };
 
                 node.validate_and_update_seq(seq);
@@ -196,12 +234,12 @@ impl State {
     }
 
     fn handle_device_message(&self, message: DeviceMessage, callbacks: &Callbacks) -> Option<RebirthReason> {
-        let id = NodeIdentifier { group: message.group_id, node_id: message.node_id };
+        let id = NodeIdentifier { group: message.group_id, node: message.node_id };
         let device_id = message.device_id;
         let message_kind = message.message.kind;
         let payload = message.message.payload;
         let seq = match payload.seq {
-            Some(seq) => seq,
+            Some(seq) => seq as u8,
             None => {
                 warn!("Message did not contain a seq number - discarding. device = {:?} node = {:?}", device_id, id);
                 return None
@@ -220,24 +258,15 @@ impl State {
         let node = match nodes.get_mut(&id) {
             Some(node) => node,
             None => {
-                return Some(RebirthReason::UnknownNode(id));
+                return Some(RebirthReason::new(id, RebirthReasonKind::UnknownNode));
             },
         };
         node.validate_and_update_seq(seq);
 
         match message_kind {
             MessageKind::Birth => {
-                match node.get_device(&device_id) {
-                    Some(device_state) => {
-                        if !device_state.validate_and_update_birth_timestamp(timestamp) { 
-                            debug!("Birth message was older than the most recent birth or death message - Discarding. node = {:?}, device = {}", id, device_id);
-                            return None 
-                        }
-                    },
-                    None => {
-                        let device_state = DeviceState::new(timestamp); 
-                        node.add_device(device_id.clone(), device_state);
-                    },
+                if node.has_device(&device_id) == false {
+                    node.add_device(device_id.clone());
                 }
                 let metric_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
                     Ok(details) => details,
@@ -251,24 +280,17 @@ impl State {
                 }
             },
             MessageKind::Death => {
-                let device_state = match node.get_device(&device_id) {
-                    Some(state) => state,
-                    None => return None,
-                };
-                if !device_state.validate_and_update_death_timestamp(timestamp) { 
-                    debug!("Death message was older than the most recent birth or death message - Discarding. node = {:?}, device = {}", id, device_id);
-                    return None 
+                if node.has_device(&device_id) == false {
+                    return None
                 };
                 if let Some(callback) = &callbacks.ddeath{
-                   callback(id, device_id, timestamp); 
+                   callback(id, device_id, utils::timestamp()); 
                 }
             },
             MessageKind::Data => {
-                let device_state = match node.get_device(&device_id) {
-                    Some(state) => state,
-                    None => return Some(RebirthReason::UnknownDevice{node_id: id, device_id}),
+                if node.has_device(&device_id) == false {
+                    return Some(RebirthReason::new(id, RebirthReasonKind::UnknownDevice).with_device(device_id))
                 };
-                if !device_state.validate_and_update_death_timestamp(timestamp) { return None };
                 drop(nodes); 
                 let details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
                     Ok(details) => details,
@@ -334,7 +356,7 @@ impl AppClient {
             payload_metrics.push(x.to_metric());
         }
         let payload = Payload {
-            timestamp: Some(timestamp()),
+            timestamp: Some(utils::timestamp()),
             metrics: payload_metrics,
             seq: None,
             uuid: None,

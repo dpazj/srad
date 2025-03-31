@@ -17,7 +17,7 @@ async fn main() {
     let shutdown_handle = client.clone();
     tokio::spawn(async move {
         if let Err(e) = tokio::signal::ctrl_c().await {
-            println!("Failed to register CTRL-C handler: {e}");
+            info!("Failed to register CTRL-C handler: {e}");
             return;
         }
         shutdown_handle.cancel().await;
@@ -27,10 +27,7 @@ async fn main() {
         .on_online(||{ println!("App online") })
         .on_offline(||{ println!("App offline") })
         .on_nbirth(|id, timestamp, metrics| {
-            info!("Node {id:?} born at {timestamp}");
-            for (birth, details) in metrics {
-                info!("Metric: {:?}, Details: {:?}", birth, details);
-            }
+            info!("Node {id:?} born at {timestamp} metrics = {metrics:?}");
         })
         .on_ndeath(|id, timestamp| {
             info!("Node {id:?} death at {timestamp}");
@@ -39,10 +36,7 @@ async fn main() {
             info!("Node {id:?} timestamp {timestamp} metrics = {metrics:?}");
         })
         .on_dbirth(|id, dev, timestamp, metrics| {
-            info!("Device {dev} Node {id:?} born at {timestamp}");
-            for (birth, details) in metrics {
-                info!("Metric: {:?}, Details: {:?}", birth, details);
-            }
+            info!("Device {dev} Node {id:?} born at {timestamp} metrics = {metrics:?}");
         })
         .on_ddeath(|id, dev, timestamp| {
             info!("Device {dev} Node {id:?} death at {timestamp}");
@@ -50,15 +44,11 @@ async fn main() {
         .on_ddata(|id, dev, timestamp, metrics| async move {
             info!("Device {dev} Node {id:?} timestamp {timestamp} metrics = {metrics:?}");
         })
-        .register_evaluate_rebirth_reason_fn(move |rebirth_reason| {
+        .register_evaluate_rebirth_reason_fn(move |reason| {
             let client= client.clone();
             async move {
-                let id = match rebirth_reason {
-                    srad::app::RebirthReason::UnknownNode(node_identifier) => node_identifier,
-                    srad::app::RebirthReason::UnknownDevice { node_id, device_id : _} => node_id,
-                };
-                info!("Issuing rebirth request to node {id:?}");
-                _ = client.publish_node_rebirth(&id.group, &id.node_id).await;
+                info!("Issuing rebirth request to node {0:?}, reason = {1:?}", reason.node_id, reason.reason);
+                _ = client.publish_node_rebirth(&reason.node_id.group, &reason.node_id.node).await;
             }
         });
     application.run().await;
