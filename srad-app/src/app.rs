@@ -127,14 +127,6 @@ impl State {
         let message_kind = message.message.kind;
         let payload = message.message.payload;
 
-        let timestamp= match payload.timestamp{
-            Some(ts) => ts,
-            None => {
-                warn!("Message did not contain a timestamp - discarding. node = {:?}", id);
-                return None
-            },
-        };
-
         match message_kind {
             MessageKind::Birth => {
                 let seq = match payload.seq {
@@ -144,6 +136,14 @@ impl State {
                         return None
                     },
                 };
+                let timestamp= match payload.timestamp{
+                    Some(ts) => ts,
+                    None => {
+                        warn!("Message did not contain a timestamp - discarding. node = {:?}", id);
+                        return None
+                    },
+                };
+
                 let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
                     Ok(bdseq) => bdseq,
                     Err(_) => {
@@ -208,6 +208,13 @@ impl State {
                     Some(seq) => seq as u8,
                     None => {
                         warn!("Message did not contain a seq number - discarding. node = {:?}", id);
+                        return None
+                    },
+                };
+                let timestamp= match payload.timestamp{
+                    Some(ts) => ts,
+                    None => {
+                        warn!("Message did not contain a timestamp - discarding. node = {:?}", id);
                         return None
                     },
                 };
