@@ -353,6 +353,8 @@ pub struct AppClient(Arc<DynClient>, mpsc::Sender<Shutdown>);
 impl AppClient {
 
     pub async fn cancel(&self) {
+        info!("App Stopping");
+        _ = self.0.disconnect().await;
         _ = self.1.send(Shutdown).await;
     }
 

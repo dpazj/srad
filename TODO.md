@@ -23,7 +23,9 @@
 
 ### future 
  - check sequence order and issue rebirths if invalid after timeout 
- - wait states?
+ - how to handle out of order bdsequences
+ - wait states
+ - multi part metric message support
 
 ## Types 0.1
 - valid naming String

@@ -24,8 +24,8 @@ async fn main() {
     });
 
     application
-        .on_online(||{ println!("App online") })
-        .on_offline(||{ println!("App offline") })
+        .on_online(||{ info!("App online") })
+        .on_offline(||{ info!("App offline") })
         .on_nbirth(|id, timestamp, metrics| {
             info!("Node {id:?} born at {timestamp} metrics = {metrics:?}");
         })
@@ -33,7 +33,7 @@ async fn main() {
             info!("Node {id:?} death at {timestamp}");
         })
         .on_ndata(|id, timestamp, metrics| async move {
-            info!("Node {id:?} timestamp {timestamp} metrics = {metrics:?}");
+            info!("Node {id:?} data timestamp = {timestamp} metrics = {metrics:?}");
         })
         .on_dbirth(|id, dev, timestamp, metrics| {
             info!("Device {dev} Node {id:?} born at {timestamp} metrics = {metrics:?}");
