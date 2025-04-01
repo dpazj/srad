@@ -57,6 +57,10 @@ impl NodeHandle {
     S: Into<String>,
     M: DeviceMetricManager + Send + Sync + 'static 
   {
+    let name = name.into();
+    if let Err(e) = srad_types::utils::validate_name(&name) {
+      return Err(Error::InvalidName(e));
+    }
     let handle = self.node.devices.add_device(
       &self.node.state.group_id,
       &self.node.state.edge_node_id, 
@@ -227,6 +231,9 @@ impl EoN
   {
     let group_id = builder.group_id.ok_or("group id must be provided".to_string())?;
     let node_id = builder.node_id.ok_or("node id must be provided".to_string())?;
+    srad_types::utils::validate_name(&group_id)?;
+    srad_types::utils::validate_name(&node_id)?;
+
     let metric_manager = builder.metric_manager;
     let (eventloop, client) = builder.eventloop_client;
 

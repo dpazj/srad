@@ -31,9 +31,7 @@
  - wait states
  - multi part metric message support
 
-## Types 0.1
-- valid naming String
-  - verify the string's name
+## Types
 
 ### future 
   - template support

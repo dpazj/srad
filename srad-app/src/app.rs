@@ -125,13 +125,14 @@ impl RebirthReasonDetails {
 }
 
 struct State {
+    will_timestamp: u64,
     nodes: Mutex<HashMap<NodeIdentifier, NodeState>>,
 }
 
 impl State {
 
     fn new() -> Self {
-        State { nodes: Mutex::new(HashMap::new()) }
+        State { nodes: Mutex::new(HashMap::new()), will_timestamp: 0 }
     }
 
     fn bdseq_from_payload_metrics(vec: &Vec<Metric>) -> Result<u8, ()> {
@@ -502,6 +503,11 @@ impl App {
         };
         let (tx, rx) = mpsc::channel(1);
         let host_id: Arc<String> = host_id.into().into();
+
+        if let Err(e) = utils::validate_name(&host_id) {
+            panic!("Invalid host id: {e}");
+        };
+
         let client = AppClient(Arc::new(client), tx, host_id.clone());
         let app = Self {
             host_id: host_id,
@@ -600,7 +606,8 @@ impl App {
     }
 
     fn update_last_will(&mut self) {
-        self.eventloop.set_last_will(srad_client::LastWill::new_app(&self.host_id));
+        self.state.will_timestamp = timestamp();
+        self.eventloop.set_last_will(srad_client::LastWill::new_app(&self.host_id, self.state.will_timestamp));
     }
 
     fn handle_online(&self) {
@@ -609,8 +616,9 @@ impl App {
         let client = self.client.0.clone();
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
         let state_topic = StateTopic::new_host(&self.host_id);
+        let timestamp = self.state.will_timestamp;
         task::spawn(async move {
-            _ = client.publish_state_message(state_topic.clone(), srad_client::StatePayload::Online { timestamp: timestamp() }).await;
+            _ = client.publish_state_message(state_topic.clone(), srad_client::StatePayload::Online { timestamp }).await;
             topics.push(TopicFilter::new_with_qos(Topic::State(state_topic), QoS::AtMostOnce));
             client.subscribe_many(topics).await
         });

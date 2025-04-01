@@ -8,5 +8,7 @@ pub enum Error {
   #[error("Duplicate device")]
   DuplicateDevice,
   #[error("Old Device: no longer registered")]
-  OldDevice
+  OldDevice,
+  #[error("Invalid Device name: {0}")]
+  InvalidName(String) 
 }

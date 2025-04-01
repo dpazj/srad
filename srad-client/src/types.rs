@@ -119,12 +119,12 @@ impl LastWill {
     }
   }
 
-  pub fn new_app(host_id: &str) -> Self {
+  pub fn new_app(host_id: &str, timestamp: u64) -> Self {
     Self {
       topic: state_host_topic(host_id),
       retain: true,
       qos: QoS::AtLeastOnce,
-      payload: StatePayload::Offline { timestamp: timestamp() }.into() 
+      payload: StatePayload::Offline { timestamp }.into() 
     }
 
   }
