@@ -59,7 +59,7 @@ impl NodeTopic {
       NodeMessage::NBirth => (QoS::AtMostOnce, false),
       NodeMessage::NData => (QoS::AtMostOnce, false),
       NodeMessage::NCmd => (QoS::AtMostOnce, false),
-      NodeMessage::NDeath => (QoS::AtMostOnce, false),
+      NodeMessage::NDeath => (QoS::AtLeastOnce, false),
     }
   }
 }
@@ -91,7 +91,7 @@ impl DeviceTopic {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct StateTopic {
-  topic: String,
+  pub topic: String,
 }
 
 impl StateTopic {

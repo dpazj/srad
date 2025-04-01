@@ -20,6 +20,8 @@
 ## Client
    
    - investiagted on clean disconnect sending will manually.
+### future 
+ - decoding of state online/offline messages - do this with the wait for states update
 
 ## App
 - node and device birth tokens

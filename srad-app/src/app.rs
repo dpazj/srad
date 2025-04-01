@@ -2,7 +2,7 @@ use std::{collections::HashMap, future::Future, pin::Pin, sync::{atomic::AtomicB
 
 use log::{debug, error, info, warn};
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
-use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{Metric, Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils, MetricId, MetricValue};
+use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{Metric, Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::{self, timestamp}, MetricId, MetricValue};
 
 use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, PublishMetric}};
 
@@ -38,7 +38,7 @@ impl BirthToken {
         Arc::ptr_eq(&self.0, &other.0) 
     }
 
-    pub fn is_dead(&self) -> bool {
+    fn is_dead(&self) -> bool {
         self.0.load(std::sync::atomic::Ordering::SeqCst)
     }
 
@@ -418,12 +418,17 @@ impl PublishTopic {
 }
 
 #[derive(Clone)]
-pub struct AppClient(Arc<DynClient>, mpsc::Sender<Shutdown>);
+pub struct AppClient(Arc<DynClient>, mpsc::Sender<Shutdown>, Arc<String>);
 
 impl AppClient {
 
     pub async fn cancel(&self) {
         info!("App Stopping");
+        let topic = StateTopic::new_host(&self.2);
+        match self.0.publish_state_message(topic, srad_client::StatePayload::Offline { timestamp: timestamp() }).await {
+            Ok(_) => _ = self.0.disconnect().await,
+            Err(_) => (),
+        };
         _ = self.0.disconnect().await;
         _ = self.1.send(Shutdown).await;
     }
@@ -466,7 +471,7 @@ struct Callbacks {
 }
 
 pub struct App {
-    host_id: String,
+    host_id: Arc<String>,
     subscription_config: SubscriptionConfig,
     client: AppClient,
     eventloop: Box<DynEventLoop>,
@@ -496,9 +501,10 @@ impl App {
             evaluate_rebirth_reason: None,
         };
         let (tx, rx) = mpsc::channel(1);
-        let client = AppClient(Arc::new(client), tx);
+        let host_id: Arc<String> = host_id.into().into();
+        let client = AppClient(Arc::new(client), tx, host_id.clone());
         let app = Self {
-            host_id: host_id.into(),
+            host_id: host_id,
             client: client.clone(),
             eventloop: Box::new(eventloop),
             subscription_config,
@@ -602,9 +608,11 @@ impl App {
         if let Some(callback) = &self.callbacks.online { callback() };
         let client = self.client.0.clone();
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
-        topics.push(TopicFilter::new_with_qos(Topic::State(StateTopic::new_host(&self.host_id)), QoS::AtMostOnce));
+        let state_topic = StateTopic::new_host(&self.host_id);
         task::spawn(async move {
-           client.subscribe_many(topics).await
+            _ = client.publish_state_message(state_topic.clone(), srad_client::StatePayload::Online { timestamp: timestamp() }).await;
+            topics.push(TopicFilter::new_with_qos(Topic::State(state_topic), QoS::AtMostOnce));
+            client.subscribe_many(topics).await
         });
     }
 

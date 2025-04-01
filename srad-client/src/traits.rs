@@ -1,11 +1,12 @@
 use async_trait::async_trait;
-use srad_types::{payload::Payload, topic::{DeviceTopic, NodeTopic, TopicFilter}};
+use srad_types::{payload::Payload, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, TopicFilter}};
 
-use crate::{Event, LastWill};
+use crate::{Event, LastWill, StatePayload};
 
 #[async_trait]
 pub trait Client {
   async fn disconnect(&self) -> Result<(),()>; 
+  async fn publish_state_message(&self, topic: StateTopic, payload: StatePayload) -> Result<(),()>;
   async fn publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(),()>;
   async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(),()>;
   async fn subscribe(&self, topic: TopicFilter) -> Result<(),()> {self.subscribe_many(vec![topic]).await}

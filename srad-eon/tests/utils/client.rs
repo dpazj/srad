@@ -1,13 +1,14 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use srad_client::{Event, LastWill};
-use srad_types::{payload::Payload, topic::{DeviceTopic, NodeTopic, TopicFilter}};
+use srad_client::{Event, LastWill, StatePayload};
+use srad_types::{payload::Payload, topic::{DeviceTopic, NodeTopic, StateTopic, TopicFilter}};
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum OutboundMessage {
   Disconnect,
+  StateMessage {topic: StateTopic, payload: StatePayload},
   NodeMessage{topic: NodeTopic, payload: Payload},
   DeviceMessage{topic: DeviceTopic, payload: Payload},
   Subscribe (Vec<TopicFilter>)
@@ -23,6 +24,13 @@ impl srad_client::Client for Client {
 
   async fn disconnect(&self) -> Result<(),()> {
     match self.tx.send(OutboundMessage::Disconnect) {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
+  }
+
+  async fn publish_state_message(&self, topic: StateTopic, payload: StatePayload) -> Result<(),()> {
+    match self.tx.send(OutboundMessage::StateMessage { topic,  payload }) {
       Ok(_) => Ok(()),
       Err(_) => Err(()),
     }

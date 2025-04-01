@@ -1,6 +1,6 @@
 use std::string::FromUtf8Error;
 
-use srad_types::{constants, payload::{Metric, Payload}, topic::{self, node_topic, state_host_topic, QoS}};
+use srad_types::{payload::Payload, topic::{state_host_topic, NodeTopic, NodeMessage as NodeMessageType, QoS}, utils::timestamp};
 
 
 #[derive(Debug)]
@@ -43,11 +43,31 @@ pub struct Message {
   pub kind: MessageKind
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StatePayload {
   Online {timestamp: u64},
   Offline {timestamp: u64},
   Other(Vec<u8>)
+}
+
+impl StatePayload {
+  pub fn get_publish_quality_retain(&self) -> (QoS, bool) {
+    match self {
+        StatePayload::Online { timestamp: _ } => (QoS::AtLeastOnce, false),
+        StatePayload::Offline { timestamp: _ } => (QoS::AtLeastOnce, true),
+        StatePayload::Other(_) => (QoS::AtMostOnce, false),
+    }
+  }
+}
+
+impl From<StatePayload> for Vec<u8> {
+    fn from(value: StatePayload) -> Self {
+      match value {
+        StatePayload::Online { timestamp } => format!("{{\"online\" : true, \"timestamp\" : {}}}", timestamp).into(),
+        StatePayload::Offline { timestamp } => format!("{{\"offline\" : true, \"timestamp\" : {}}}", timestamp).into(),
+        StatePayload::Other (data) => data,
+      } 
+    }
 }
 
 #[derive(Debug)]
@@ -88,33 +108,23 @@ pub struct LastWill {
 
 impl LastWill {
 
-  pub fn new_node(group: &str, node_id: &str, bdseq: u8) -> Self {
-    let topic = node_topic(group, &topic::NodeMessage::NDeath, node_id);
-    let mut metric = Metric::new(); 
-    metric.set_name(constants::BDSEQ.to_string())
-      .set_value(srad_types::payload::metric::Value::LongValue(bdseq as u64));
-    let payload = Payload {
-      seq: None, 
-      metrics: vec![metric],
-      uuid: None,
-      timestamp: None,
-      body: None
-    };
+  pub fn new_node(group: &str, node_id: &str, payload: Payload) -> Self {
+    let topic = NodeTopic::new(group, NodeMessageType::NDeath, node_id);
+    let (qos, retain) = topic.get_publish_quality_retain();
     Self {
-      topic,
-      retain: false, 
-      qos: QoS::AtLeastOnce,
-      payload: payload.into()
+      retain: retain, 
+      qos: qos,
+      payload: payload.into(),
+      topic: topic.topic,
     }
   }
 
   pub fn new_app(host_id: &str) -> Self {
-    let payload = "{\"online\" : true, \"timestamp\" : 0}";
     Self {
       topic: state_host_topic(host_id),
       retain: true,
       qos: QoS::AtLeastOnce,
-      payload: payload.into()
+      payload: StatePayload::Offline { timestamp: timestamp() }.into() 
     }
 
   }

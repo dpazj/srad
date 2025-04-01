@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use log::{error, info, warn};
-use srad_client::{DeviceMessage, DynClient, DynEventLoop, MessageKind};
+use srad_client::{DeviceMessage, DynClient, DynEventLoop, LastWill, MessageKind};
 use srad_client::{Event, NodeMessage};
 
 use srad_types::constants::NODE_CONTROL_REBIRTH;
@@ -39,10 +39,12 @@ impl NodeHandle {
 
   pub async fn cancel(&self){
     info!("Edge node stopping");
-    match self.node.client.disconnect().await {
-      Ok(_) => (),
-      Err(_) => (),
-    }
+    let topic = NodeTopic::new(&self.node.state.group_id, NodeMessageType::NDeath, &self.node.state.edge_node_id);
+    let payload = self.node.generate_death_payload();
+    match self.node.client.publish_node_message(topic, payload).await {
+        Ok(_) => _ = self.node.client.disconnect().await,
+        Err(_) => (),
+    };
     _ = self.node.stop_tx.send(EoNShutdown).await;
   }
 
@@ -153,6 +155,19 @@ pub struct Node {
 
 impl Node {
 
+  fn generate_death_payload(&self) -> Payload {
+      let mut metric = srad_types::payload::Metric::new(); 
+      metric.set_name(constants::BDSEQ.to_string())
+        .set_value(srad_types::payload::metric::Value::LongValue(self.state.bdseq.load(Ordering::SeqCst) as u64));
+      Payload {
+        seq: None, 
+        metrics: vec![metric],
+        uuid: None,
+        timestamp: None,
+        body: None
+      }
+  }
+
   fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
     let timestamp = timestamp();
     let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node);
@@ -255,7 +270,7 @@ impl EoN
       srad_client::LastWill::new_node(
         &self.node.state.group_id, 
         &self.node.state.edge_node_id, 
-        self.node.state.bdseq.load(Ordering::SeqCst) 
+        self.node.generate_death_payload()
       )
     );
   }

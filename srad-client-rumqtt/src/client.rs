@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use log::{debug, error};
 use rumqttc::v5::{mqttbytes::{v5::{ConnectProperties, Filter, Packet}, QoS}, AsyncClient as RuClient, EventLoop as RuEventLoop, MqttOptions};
-use srad_types::{payload::{Payload, Message}, topic::{DeviceTopic, TopicFilter}};
+use srad_types::{payload::{Message, Payload}, topic::{DeviceTopic, StateTopic, TopicFilter}};
 
-use srad_client::{Event, LastWill, topic_and_payload_to_event};
+use srad_client::{topic_and_payload_to_event, Event, LastWill, StatePayload};
 
 fn qos_to_mqtt_qos(qos: srad_types::topic::QoS) -> QoS {
   match qos {
@@ -27,6 +27,15 @@ impl srad_client::Client for Client {
 
   async fn disconnect(&self) -> Result<(),()> {
     match self.client.disconnect().await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(()),
+    }
+  }
+
+  async fn publish_state_message(&self, topic: StateTopic, payload: StatePayload) -> Result<(),()> {
+    debug!("Outgoing Client Publish message: topic = {}", topic.topic);
+    let (qos, retain) = payload.get_publish_quality_retain();
+    match self.client.publish(topic.topic, qos_to_mqtt_qos(qos), retain, Vec::<u8>::from(payload)).await {
       Ok(_) => Ok(()),
       Err(_) => Err(()),
     }
