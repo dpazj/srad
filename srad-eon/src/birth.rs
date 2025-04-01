@@ -1,6 +1,6 @@
 use std::{collections::HashSet, hash::{DefaultHasher, Hash, Hasher}};
 
-use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits::{self, MetaData}, utils::timestamp, MetricId, MetricValue};
+use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits, metadata::MetaData, utils::timestamp, MetricId, MetricValue};
 
 use crate::{
   error::Error, metric::MetricToken, registry::DeviceId

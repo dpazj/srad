@@ -18,13 +18,11 @@
     - ensure metric publish has been sent
 
 ## Client
-   
-   - investiagted on clean disconnect sending will manually.
+
 ### future 
  - decoding of state online/offline messages - do this with the wait for states update
 
 ## App
-- node and device birth tokens
 
 ### future 
  - check sequence order and issue rebirths if invalid after timeout 
@@ -36,7 +34,6 @@
 ## Types 0.1
 - valid naming String
   - verify the string's name
-- why is metadata under traits
 
 ### future 
   - template support

@@ -5,7 +5,7 @@ use log::warn;
 use srad_types::payload::ToMetric;
 use srad_types::payload::{Metric, Payload};
 use srad_types::property_set::PropertySet;
-use srad_types::traits::MetaData;
+use srad_types::metadata::MetaData;
 use srad_types::utils::timestamp;
 use srad_types::{traits, MetricId, MetricValue};
 
