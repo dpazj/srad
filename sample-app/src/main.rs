@@ -26,29 +26,33 @@ async fn main() {
     application
         .on_online(||{ info!("App online") })
         .on_offline(||{ info!("App offline") })
-        .on_nbirth(|id, timestamp, metrics| {
+        .on_nbirth(|id, _,timestamp, metrics| {
             info!("Node {id:?} born at {timestamp} metrics = {metrics:?}");
         })
-        .on_ndeath(|id, timestamp| {
-            info!("Node {id:?} death at {timestamp}");
+        .on_ndeath(|id, _| {
+            info!("Node {id:?} death");
         })
-        .on_ndata(|id, timestamp, metrics| async move {
+        .on_ndata(|id, _, timestamp, metrics| async move {
             info!("Node {id:?} data timestamp = {timestamp} metrics = {metrics:?}");
         })
-        .on_dbirth(|id, dev, timestamp, metrics| {
+        .on_dbirth(|id, dev, _, timestamp, metrics| {
             info!("Device {dev} Node {id:?} born at {timestamp} metrics = {metrics:?}");
         })
-        .on_ddeath(|id, dev, timestamp| {
-            info!("Device {dev} Node {id:?} death at {timestamp}");
+        .on_ddeath(|id, dev, _| {
+            info!("Device {dev} Node {id:?} death");
         })
-        .on_ddata(|id, dev, timestamp, metrics| async move {
+        .on_ddata(|id, dev, _, timestamp, metrics| async move {
             info!("Device {dev} Node {id:?} timestamp {timestamp} metrics = {metrics:?}");
         })
-        .register_evaluate_rebirth_reason_fn(move |reason| {
+        .register_evaluate_rebirth_reason_fn(move |details| {
             let client= client.clone();
             async move {
-                info!("Issuing rebirth request to node {0:?}, reason = {1:?}", reason.node_id, reason.reason);
-                _ = client.publish_node_rebirth(&reason.node_id.group, &reason.node_id.node).await;
+                match details.reason {
+                    srad::app::RebirthReason::MalformedPayload => return,
+                    _ => ()
+                }
+                info!("Issuing rebirth request to node {0:?}, reason = {1:?}", details.node_id, details.reason);
+                _ = client.publish_node_rebirth(&details.node_id.group, &details.node_id.node).await;
             }
         });
     application.run().await;

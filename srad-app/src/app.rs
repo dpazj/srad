@@ -1,4 +1,4 @@
-use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::{atomic::AtomicBool, Arc, Mutex}};
 
 use log::{debug, error, info, warn};
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
@@ -8,10 +8,51 @@ use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_
 
 use tokio::{select, sync::mpsc::{self, Receiver}, task};
 
+/// A token used to help track birth death lifecycles.
+///
+/// `BirthToken` allows implementing applications to determine if a message for device or node belongs to the 
+/// current or previous birth death lifecycle. This is required due to the async nature of the app 
+/// where data messages might arrive after an object has produced a death or rebirthed.
+pub struct BirthToken(Arc<AtomicBool>);
+
+impl BirthToken {
+
+    fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+
+    fn refresh(&mut self) {
+        self.invalidate();
+        self.0 = Arc::new(AtomicBool::new(false))
+    }
+
+    fn invalidate(&self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn eq(&self, other: &BirthToken) -> bool {
+        Arc::ptr_eq(&self.0, &other.0) 
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+}
+
+struct DeviceState {
+    birth_token: BirthToken
+}
+
 struct NodeState {
-   seq: u8, 
-   bdseq: u8,
-   devices: HashMap<String, ()>  
+    seq: u8, 
+    bdseq: u8,
+    birth_token: BirthToken,
+    devices: HashMap<String, DeviceState>  
 }
 
 enum SeqState {
@@ -22,7 +63,7 @@ impl NodeState {
 
     fn new(seq: u8, bdseq: u8) -> Self {
         Self {
-            seq, bdseq, devices: HashMap::new()
+            seq, bdseq, devices: HashMap::new(), birth_token: BirthToken::new()
         } 
     }
 
@@ -35,12 +76,14 @@ impl NodeState {
         SeqState::OrderGood
     }
 
-    fn has_device(&mut self, device_name: &String) -> bool {
-        self.devices.contains_key(device_name)
+    fn get_device(&mut self, device_name: &String) -> Option<&mut DeviceState>{
+        self.devices.get_mut(device_name)
     }
 
-    fn add_device(&mut self, name: String) {
-        self.devices.insert(name, ());
+    fn add_device(&mut self, name: String) -> BirthToken {
+        let tok = BirthToken::new();
+        self.devices.insert(name, DeviceState { birth_token: tok.clone() });
+        tok
     }
 
 }
@@ -52,20 +95,22 @@ pub struct NodeIdentifier {
 }
 
 #[derive(Debug)]
-pub enum RebirthReasonKind {
+pub enum RebirthReason {
     UnknownNode,
     UnknownDevice,
     SeqOutOfOrder,
+    MalformedPayload
 }
 
-pub struct RebirthReason {
+pub struct RebirthReasonDetails {
     pub node_id: NodeIdentifier,
     pub device: Option<String>,
-    pub reason: RebirthReasonKind
+    pub reason: RebirthReason
 }
 
-impl RebirthReason {
-    fn new(node_id: NodeIdentifier, reason: RebirthReasonKind) -> Self {
+impl RebirthReasonDetails {
+
+    fn new(node_id: NodeIdentifier, reason: RebirthReason) -> Self {
         Self {
             node_id,
             device: None,
@@ -122,7 +167,7 @@ impl State {
         return Err(())
     }
 
-    fn handle_node_message(&self, message: NodeMessage, callbacks: &Callbacks) -> Option<RebirthReason> {
+    fn handle_node_message(&self, message: NodeMessage, callbacks: &Callbacks) -> Option<RebirthReasonDetails> {
         let id = NodeIdentifier { group: message.group_id, node: message.node_id };
         let message_kind = message.message.kind;
         let payload = message.message.payload;
@@ -133,14 +178,14 @@ impl State {
                     Some(seq) => seq as u8,
                     None => {
                         warn!("Message did not contain a seq number - discarding. node = {:?}", id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
                 let timestamp= match payload.timestamp{
                     Some(ts) => ts,
                     None => {
                         warn!("Message did not contain a timestamp - discarding. node = {:?}", id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
 
@@ -148,28 +193,7 @@ impl State {
                     Ok(bdseq) => bdseq,
                     Err(_) => {
                         warn!("Birth Message contained an invalid bdseq metric - discarding payload. node = {:?}", id);
-                        return None
-                    },
-                };
-
-                let mut nodes = self.nodes.lock().unwrap();
-                match nodes.get_mut(&id) {
-                    Some(node) => {
-                        if seq != 0 {
-                            warn!("Birth payload sequence value is not zero - Discarding. node = {:?}", id);
-                            return None
-                        }
-                        node.reset_seq();
-
-                        if node.bdseq == bdseq {
-                            debug!("Birth message bdseq equal to the most recent birth message - ignoring. node = {:?}", id);
-                            return None
-                        }
-                        node.bdseq = bdseq
-                    },
-                    None => {
-                        let node = NodeState::new(seq, bdseq);
-                        nodes.insert(id.clone(), node);
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
 
@@ -177,18 +201,37 @@ impl State {
                     Ok(details) => details,
                     Err(e) => {
                         warn!("Message payload was invalid - {:?}. node = {:?}", e, id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
 
-                if let Some(callback) = &callbacks.nbirth { callback(id, timestamp, metric_details) };
+                let mut nodes = self.nodes.lock().unwrap();
+                let tok = match nodes.get_mut(&id) {
+                    Some(node) => {
+                        if seq != 0 {
+                            warn!("Birth payload sequence value is not zero - Discarding. node = {:?}", id);
+                            return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
+                        }
+                        node.reset_seq();
+                        node.bdseq = bdseq;
+                        node.birth_token.refresh();
+                        node.birth_token.clone()
+                    },
+                    None => {
+                        let node = NodeState::new(seq, bdseq);
+                        let tok = node.birth_token.clone();
+                        nodes.insert(id.clone(), node);
+                        tok
+                    },
+                };
+                if let Some(callback) = &callbacks.nbirth { callback(id, tok, timestamp, metric_details) };
             },
             MessageKind::Death => {
                 let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
                     Ok(bdseq) => bdseq,
                     Err(_) => {
                         warn!("Birth Message contained an invalid bdseq metric - discarding payload. node = {:?}", id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
                 let mut nodes = self.nodes.lock().unwrap();
@@ -201,43 +244,55 @@ impl State {
                     debug!("Death bdseq did not match current known birth bdseq - ignoring. node = {:?}", id);
                     return None
                 }
-                if let Some(callback) = &callbacks.ndeath { callback(id, utils::timestamp()) };
+
+                /* Duplicate death */
+                if node.birth_token.is_dead() {
+                    debug!("Death message already received for bdseq {} - ignoring. node = {:?}", bdseq, id);
+                    return None
+                }
+                node.birth_token.invalidate();
+                for (_, x) in &node.devices {
+                    x.birth_token.invalidate();
+                }
+                let tok = node.birth_token.clone();
+                if let Some(callback) = &callbacks.ndeath { callback(id, tok) };
             },
             MessageKind::Data => {
                 let seq = match payload.seq {
                     Some(seq) => seq as u8,
                     None => {
                         warn!("Message did not contain a seq number - discarding. node = {:?}", id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
                 let timestamp= match payload.timestamp{
                     Some(ts) => ts,
                     None => {
                         warn!("Message did not contain a timestamp - discarding. node = {:?}", id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
                 let mut nodes = self.nodes.lock().unwrap();
                 let node = match nodes.get_mut(&id) {
                     Some(node) => node,
-                    None => return Some(RebirthReason::new(id, RebirthReasonKind::UnknownNode)),
+                    None => return Some(RebirthReasonDetails::new(id, RebirthReason::UnknownNode)),
                 };
 
                 node.validate_and_update_seq(seq);
+                let tok = node.birth_token.clone();
                 drop(nodes);
 
                 let details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
                     Ok(details) => details,
                     Err(e) => {
                         warn!("Message payload was invalid - {:?}. node = {:?}", e, id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload));
                     },
                 };
 
                 if let Some(callback) = &callbacks.ndata { 
                     let callback =  callback.clone();
-                    task::spawn(callback(id, timestamp, details));
+                    task::spawn(callback(id, tok, timestamp, details));
                 };
             },
             _ => ()  
@@ -245,7 +300,7 @@ impl State {
         return None
     }
 
-    fn handle_device_message(&self, message: DeviceMessage, callbacks: &Callbacks) -> Option<RebirthReason> {
+    fn handle_device_message(&self, message: DeviceMessage, callbacks: &Callbacks) -> Option<RebirthReasonDetails> {
         let id = NodeIdentifier { group: message.group_id, node: message.node_id };
         let device_id = message.device_id;
         let message_kind = message.message.kind;
@@ -254,7 +309,7 @@ impl State {
             Some(seq) => seq as u8,
             None => {
                 warn!("Message did not contain a seq number - discarding. device = {:?} node = {:?}", device_id, id);
-                return None
+                return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload).with_device(device_id));
             },
         };
 
@@ -262,7 +317,7 @@ impl State {
             Some(ts) => ts,
             None => {
                 warn!("Message did not contain a timestamp - discarding. device = {:?} node = {:?}", device_id, id);
-                return None
+                return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload).with_device(device_id));
             },
         };
 
@@ -270,51 +325,66 @@ impl State {
         let node = match nodes.get_mut(&id) {
             Some(node) => node,
             None => {
-                return Some(RebirthReason::new(id, RebirthReasonKind::UnknownNode));
+                return Some(RebirthReasonDetails::new(id, RebirthReason::UnknownNode));
             },
         };
         node.validate_and_update_seq(seq);
 
         match message_kind {
             MessageKind::Birth => {
-                if node.has_device(&device_id) == false {
-                    node.add_device(device_id.clone());
-                }
                 let metric_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
                     Ok(details) => details,
                     Err(e) => {
                         warn!("Message payload was invalid - {:?}. node = {:?}, device = {}", e, id, device_id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload).with_device(device_id));
                     },
                 };
+
+                let tok = match node.get_device(&device_id) {
+                    Some(dev) => {
+                        dev.birth_token.refresh();
+                        dev.birth_token.clone()
+                    },
+                    None => node.add_device(device_id.clone()),
+                };
+
                 if let Some(callback) = &callbacks.dbirth {
-                   callback(id, device_id, timestamp, metric_details); 
+                   callback(id, device_id, tok, timestamp, metric_details); 
                 }
             },
             MessageKind::Death => {
-                if node.has_device(&device_id) == false {
-                    return None
+                let tok = match node.get_device(&device_id) {
+                    Some(dev) => {
+                        dev.birth_token.clone()
+                    },
+                    None => return None,
                 };
+                if tok.is_dead() { 
+                    debug!("Duplicate death for device - ignoring. device = {} node = {:?}", device_id, id);
+                    return None 
+                }
+                tok.invalidate();
                 if let Some(callback) = &callbacks.ddeath{
-                   callback(id, device_id, utils::timestamp()); 
+                   callback(id, device_id, tok); 
                 }
             },
             MessageKind::Data => {
-                if node.has_device(&device_id) == false {
-                    return Some(RebirthReason::new(id, RebirthReasonKind::UnknownDevice).with_device(device_id))
+                let tok = match node.get_device(&device_id) {
+                    Some(dev) => dev.birth_token.clone(),
+                    None => return Some(RebirthReasonDetails::new(id, RebirthReason::UnknownDevice).with_device(device_id))
                 };
                 drop(nodes); 
                 let details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
                     Ok(details) => details,
                     Err(e) => {
                         warn!("Message payload was invalid - {:?}. node = {:?}, device = {}", e, id, device_id);
-                        return None
+                        return Some(RebirthReasonDetails::new(id, RebirthReason::MalformedPayload).with_device(device_id));
                     },
                 };
 
                 if let Some(callback) = &callbacks.ddata { 
                     let callback =  callback.clone();
-                    task::spawn(callback(id, device_id,timestamp, details));
+                    task::spawn(callback(id, device_id, tok, timestamp, details));
                 };
             },
             _ => () 
@@ -386,13 +456,13 @@ impl AppClient {
 struct Callbacks {
     online: Option<Pin<Box<dyn Fn() -> ()>>>,
     offline: Option<Pin<Box<dyn Fn() -> ()>>>, 
-    nbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()>>>, 
-    ndeath: Option<Pin<Box<dyn Fn(NodeIdentifier, u64) -> ()>>>, 
-    ndata: Option<Arc<dyn Fn(NodeIdentifier, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
-    dbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, String, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()>>>, 
-    ddeath: Option<Pin<Box<dyn Fn(NodeIdentifier, String, u64) -> ()>>>, 
-    ddata: Option<Arc<dyn Fn(NodeIdentifier, String, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
-    evaluate_rebirth_reason: Option<Arc<dyn Fn(RebirthReason) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
+    nbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()>>>, 
+    ndeath: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken) -> ()>>>, 
+    ndata: Option<Arc<dyn Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
+    dbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()>>>, 
+    ddeath: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken) -> ()>>>, 
+    ddata: Option<Arc<dyn Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
+    evaluate_rebirth_reason: Option<Arc<dyn Fn(RebirthReasonDetails) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
 }
 
 pub struct App {
@@ -457,7 +527,7 @@ impl App {
 
     pub fn on_nbirth<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + 'static
+        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + 'static
     {
         self.callbacks.nbirth = Some(Box::pin(cb));
         self
@@ -465,7 +535,7 @@ impl App {
 
     pub fn on_ndeath<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, u64) -> () + 'static
+        F: Fn(NodeIdentifier, BirthToken) -> () + 'static
     {
         self.callbacks.ndeath = Some(Box::pin(cb));
         self
@@ -473,11 +543,11 @@ impl App {
 
     pub fn on_ndata<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + 'static,
+        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + 'static,
         Fut: Future<Output=()> + Send + 'static
     {
-        let callback = Arc::new(move |id, time, data| {
-            Box::pin(cb(id, time, data)) as Pin<Box<dyn Future<Output = ()> + Send>> 
+        let callback = Arc::new(move |id, tok,time, data| {
+            Box::pin(cb(id, tok, time, data)) as Pin<Box<dyn Future<Output = ()> + Send>> 
         }); 
         self.callbacks.ndata = Some(callback);
         self
@@ -485,7 +555,7 @@ impl App {
     
     pub fn on_dbirth<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, String, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + 'static
+        F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + 'static
     {
         self.callbacks.dbirth = Some(Box::pin(cb));
         self
@@ -493,7 +563,7 @@ impl App {
 
     pub fn on_ddeath<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, String, u64) -> () + 'static
+        F: Fn(NodeIdentifier, String, BirthToken) -> () + 'static
     {
         self.callbacks.ddeath = Some(Box::pin(cb));
         self
@@ -501,11 +571,11 @@ impl App {
 
     pub fn on_ddata<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, String, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + 'static,
+        F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + 'static,
         Fut: Future<Output=()> + Send + 'static
     {
-        let callback = Arc::new(move |id, device, time, data| {
-            Box::pin(cb(id, device, time, data)) as Pin<Box<dyn Future<Output = ()> + Send>> 
+        let callback = Arc::new(move |id, device, tok, time, data| {
+            Box::pin(cb(id, device, tok, time, data)) as Pin<Box<dyn Future<Output = ()> + Send>> 
         }); 
         self.callbacks.ddata = Some(callback);
         self
@@ -513,7 +583,7 @@ impl App {
 
     pub fn register_evaluate_rebirth_reason_fn<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(RebirthReason) -> Fut + Send + 'static,
+        F: Fn(RebirthReasonDetails) -> Fut + Send + 'static,
         Fut: Future<Output=()> + Send + 'static
     {
         let callback = Arc::new(move |reason| {

@@ -11,18 +11,22 @@
 - Add ability to return success of operations
 
 ## Rumqtt
-  - rumqtt options from srad options.
 
 ### fututre
   - better ensuring of operation success
     - make sure response to subscription request is made 
     - ensure metric publish has been sent
 
+## Client
+   
+   - investiagted on clean disconnect sending will manually.
+
 ## App
-- add eventloop cancel
+- node and device birth tokens
 
 ### future 
  - check sequence order and issue rebirths if invalid after timeout 
+  - add ability to reorder out of sequence messages
  - how to handle out of order bdsequences
  - wait states
  - multi part metric message support
