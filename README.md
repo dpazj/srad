@@ -1,4 +1,4 @@
-# Srad
+# srad
 
 >_Scottish Gaelic:_ **srad** /sdrad/ _vb._ (_v. n._ -adh) - **1.** _spark, emit sparks!_ **2.** _sparkle_
 
