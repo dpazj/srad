@@ -1,7 +1,5 @@
 # srad
 
->_Scottish Gaelic:_ **srad** /sdrad/ _vb._ (_v. n._ -adh) - **1.** _spark, emit sparks!_ **2.** _sparkle_
-
 `srad` is an async implementation of the [Sparkplug B](https://sparkplug.eclipse.org/) specification providing an edge node and application development framework in Rust.
 
 [![Crates.io][crates-badge]][crates-url]
