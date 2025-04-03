@@ -15,7 +15,7 @@
 
 ## Overview
 
-Srad aims to make it easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.
+`srad` aims to make it easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.
 
 ## Getting Started
 
