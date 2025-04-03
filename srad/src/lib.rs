@@ -9,8 +9,5 @@ pub mod client {
   }
 }
 
-#[doc = include_str!("../README.md")]
-struct _ReadMeCrate;
-
 #[doc = include_str!("../../README.md")]
-struct _ReadMeRepo;
+struct _ReadMeDocTest;

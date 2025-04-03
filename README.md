@@ -2,27 +2,28 @@
 
 >_Scottish Gaelic:_ **srad** /sdrad/ _vb._ (_v. n._ -adh) - **1.** _spark, emit sparks!_ **2.** _sparkle_
 
-`srad` is an implementation of the [Sparkplug](https://sparkplug.eclipse.org/) specification providing a node/application development framework in Rust.
+`srad` is an async implementation of the [Sparkplug B](https://sparkplug.eclipse.org/) specification providing an edge node and application development framework in Rust.
 
-## High Level Features
+[![Crates.io][crates-badge]][crates-url]
+[![MIT licensed][mit-badge]][mit-url]
+[![Apache-2.0 licensed][apache-badge]][apache-url]
 
-- Async (tokio)
-- No unsafe
-- Pluggable MQTT client layer, with a standard implementation backed by [rumqtt](https://github.com/bytebeamio/rumqtt)
-- Implements Sparkplug B specification
+[crates-badge]: https://img.shields.io/crates/v/srad.svg
+[crates-url]: https://crates.io/crates/srad
+[mit-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[mit-url]: https://github.com/dpazj/srad/blob/master/LICENSE-MIT
+[apache-badge]: https://img.shields.io/badge/License-Apache_2.0-blue.svg
+[apache-url]: https://github.com/dpazj/srad/blob/master/LICENSE-APACHE
 
 ## Overview
 
-- [srad](./srad/README.md) the general high level crate that most users will use. Mainly just re-exports the other crates under one crate.
-- [srad-eon](./srad-eon/README.md) contains an SDK for building Sparkplug Edge Nodes.
-- [srad-app](./srad-app/README.md) contains an SDK for building Sparkplug Applications.
-- [srad-client](./srad-client/README.md) types and trait definitions for implementing clients to interact with Sparkplug  
-- [srad-client-rumqtt](./srad-client-rumqtt/README.md) client implementation using [rumqtt](https://github.com/bytebeamio/rumqtt)
-- [srad-types](./srad-types/README.md) contains common and Protobuf generated types, and some utilities
+Srad aims to make it easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.
 
-## Examples
+## Getting Started
 
-### A simple Edge Node
+### Examples
+
+#### A simple Edge Node
 
 ```rust no_run
 use srad::{client::mqtt_client::rumqtt, eon::{EoN, EoNBuilder, NoMetricManager}};
@@ -44,7 +45,7 @@ async fn main() {
 }
 ```
 
-### A simple Application
+#### A simple Application
 
 ```rust no_run
 use srad::app::{App, SubscriptionConfig};
@@ -74,7 +75,21 @@ async fn main() {
 
 ```
 
-See [Examples](./examples) for more.
+More examples can be found in [Examples](./examples).
+
+### Dependencies
+
+[`srad-types`](./srad-types) uses `protoc` [Protocol Buffers compiler](https://protobuf.dev/downloads/) to generate types.
+
+## Project Layout
+
+- [`srad`](./README.md): Re-exports the following crates under one package.
+- [`srad-eon`](./srad-eon/README.md): SDK for building Sparkplug Edge Nodes.
+- [`srad-app`](./srad-app/README.md): SDK for building Sparkplug Applications.
+- [`srad-client`](./srad-client/README.md): Trait and type definitions for implementing clients to interact with Sparkplug.  
+- [`srad-client-rumqtt`](./srad-client-rumqtt/README.md): Client implementation using [rumqtt](https://github.com/bytebeamio/rumqtt).
+- [`srad-types`](./srad-types/README.md): Utility and Protobuf generated types.
+- [`examples`](./examples): Example Edge Node and application implementations.
 
 ## License
 

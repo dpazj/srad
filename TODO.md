@@ -1,11 +1,13 @@
 # TODO 
 
 ## General
-- tests
-- samples
-- logging
 
-### future 
+- tests
+- use tck to test
+- examples
+
+### future
+
 - remove option from event
 - multiple clients/brokers
 - Add ability to return success of operations
@@ -18,24 +20,25 @@
 ## Rumqtt client
 
 ### future
+
   - better ensuring of operation success
     - make sure response to subscription request is made
     - ensure metric publish has been sent
 
 ## Client
 
-
 ### future 
  - decoding of state online/offline messages - do this with the wait for states update
 
 ## App
 
-- subscribe to own state and publish online message if it see's its own death cert
-- need to make app struct Send
 - cant exit if started while disconnected from broker
+- subscribe to own state and publish online message if it see's its own death cert
+- need to make app struct Send (Need to be able to give app to a tokio task)
 
-### future 
- - check sequence order and issue rebirths if invalid after timeout 
+### future
+
+ - check sequence order and issue rebirths if invalid after timeout
   - add ability to reorder out of sequence messages
  - wait states
  - multi part metric message support
@@ -43,10 +46,11 @@
 ## Types
 
 ### future 
+
   - template support
   - dataset support
 
-## EoN 0.1
+## EoN
 
 ### future
 
@@ -57,6 +61,3 @@
 - handle client errors better
   - handle subscriptions failing
 
-### Test
-- more tests 
-- use tck to test

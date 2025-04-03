@@ -6,7 +6,7 @@ description = "Sparkplug development framework"
 homepage = "https://github.com/dpazj/srad"
 repository = "https://github.com/dpazj/srad"
 license = "MIT OR Apache-2.0"
-readme = "README.md"
+readme = "../README.md"
 keywords = ["sparkplug"]
 categories = ["embedded", "network-programming", "iot", "mqtt"]
 
