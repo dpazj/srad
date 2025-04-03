@@ -81,7 +81,7 @@ More examples can be found in [Examples](./examples).
 
 ## Project Layout
 
-- [`srad`](./README.md): Re-exports the following crates under one package.
+- [`srad`](./README.md): Re-exports the `srad-*` crates under one package.
 - [`srad-eon`](./srad-eon/README.md): SDK for building Sparkplug Edge Nodes.
 - [`srad-app`](./srad-app/README.md): SDK for building Sparkplug Applications.
 - [`srad-client`](./srad-client/README.md): Trait and type definitions for implementing clients to interact with Sparkplug.  
