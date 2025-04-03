@@ -1,9 +1,10 @@
 [workspace]
 resolver = "2"
 
-members = [ "srad", "sample", "sample-app", "srad-client", "srad-client-rumqtt", "srad-eon", 
-  "srad-types"
-, "srad-app"]
+members = [ "srad", "srad-client", "srad-client-rumqtt", "srad-eon", "srad-types", "srad-app",
+  "examples/simple-app",
+  "examples/simple-node"
+]
 
 [workspace.dependencies]
 prost = "0.13.0"

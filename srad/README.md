@@ -1,24 +1,10 @@
 # Srad
 
->_Scottish Gaelic:_ **srad** /sdrad/ _vb._ (_v. n._ -adh) - **1.** _spark, emit sparks!_ **2.** _sparkle_
+A general purpose [Sparkplug](https://sparkplug.eclipse.org/) library in rust.
 
-`srad` is an implementation of the [Sparkplug](https://sparkplug.eclipse.org/) specification providing a node/application development framework in Rust.
+This library defines a framework for implementing Sparkplug Applications.
 
-## High Level Features
-
-- Async (tokio)
-- No unsafe
-- Pluggable MQTT client layer, with a standard implementation backed by [rumqtt](https://github.com/bytebeamio/rumqtt)
-- Implements Sparkplug B specification
-
-## Overview
-
-- [srad](./srad/README.md) the general high level crate that most users will use. Mainly just re-exports the other crates under one crate.
-- [srad-eon](./srad-eon/README.md) contains an SDK for building Sparkplug Edge Nodes.
-- [srad-app](./srad-app/README.md) contains an SDK for building Sparkplug Applications.
-- [srad-client](./srad-client/README.md) types and trait definitions for implementing clients to interact with Sparkplug  
-- [srad-client-rumqtt](./srad-client-rumqtt/README.md) client implementation using [rumqtt](https://github.com/bytebeamio/rumqtt)
-- [srad-types](./srad-types/README.md) contains common and Protobuf generated types, and some utilities
+## Features
 
 ## Examples
 
@@ -74,11 +60,4 @@ async fn main() {
 
 ```
 
-See [Examples](./examples) for more.
-
-## License
-
-This project is dual licensed under the [MIT] and [APACHE] licenses.
-
-[MIT]: https://github.com/dpazj/srad/blob/master/LICENSE-MIT
-[APACHE]: https://github.com/dpazj/srad/blob/master/LICENSE-APACHE
+See [Examples](https://github.com/dpazj/srad/blob/master/examples) for more.

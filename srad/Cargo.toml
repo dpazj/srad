@@ -2,6 +2,13 @@
 name = "srad"
 version = "0.1.0"
 edition = "2021"
+description = "Sparkplug development framework"
+homepage = "https://github.com/dpazj/srad"
+repository = "https://github.com/dpazj/srad"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["sparkplug"]
+categories = ["embedded", "network-programming", "iot", "mqtt"]
 
 [dependencies]
 srad-eon = { path = "../srad-eon" }
@@ -9,3 +16,6 @@ srad-app = { path = "../srad-app" }
 srad-client = { path = "../srad-client" }
 srad-client-rumqtt = { path = "../srad-client-rumqtt" }
 srad-types = { path = "../srad-types" }
+
+[dev-dependencies]
+tokio = { workspace = true }

@@ -8,3 +8,9 @@ pub mod client {
     pub use srad_client_rumqtt as rumqtt;
   }
 }
+
+#[doc = include_str!("../README.md")]
+struct _ReadMeCrate;
+
+#[doc = include_str!("../../README.md")]
+struct _ReadMeRepo;

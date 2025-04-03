@@ -748,26 +748,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sample"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "srad",
- "tokio",
-]
-
-[[package]]
-name = "sample-app"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "srad",
- "tokio",
-]
-
-[[package]]
 name = "schannel"
 version = "0.1.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -841,6 +821,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple-app"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "srad",
+ "tokio",
+]
+
+[[package]]
+name = "simple-node"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "srad",
+ "tokio",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -877,6 +877,7 @@ dependencies = [
  "srad-client-rumqtt",
  "srad-eon",
  "srad-types",
+ "tokio",
 ]
 
 [[package]]

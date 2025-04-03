@@ -2,6 +2,13 @@
 name = "srad-app"
 version = "0.1.0"
 edition = "2021"
+description = "Sparkplug Application SDK"
+homepage = "https://github.com/dpazj/srad"
+repository = "https://github.com/dpazj/srad"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["sparkplug"]
+categories = ["embedded", "network-programming", "iot", "mqtt"]
 
 [dependencies]
 srad-types = { path = "../srad-types" }
