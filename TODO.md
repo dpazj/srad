@@ -32,8 +32,10 @@
 
 ## App
 
-- cant exit if started while disconnected from broker
 - subscribe to own state and publish online message if it see's its own death cert
+  - add application state subscription config 
+  - expose application state messages in callback api
+
 - need to make app struct Send (Need to be able to give app to a tokio task)
 
 ### future

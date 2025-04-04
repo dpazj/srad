@@ -36,6 +36,10 @@ impl srad_client::Client for Client {
     }
   }
 
+  async fn try_publish_state_message(&self, topic: StateTopic, payload: StatePayload) -> Result<(),()> {
+    self.publish_state_message(topic, payload).await
+  }
+
   async fn publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(),()> {
     match self.tx.send(OutboundMessage::NodeMessage { topic, payload }) {
       Ok(_) => Ok(()),
@@ -43,11 +47,19 @@ impl srad_client::Client for Client {
     }
   }
 
+  async fn try_publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(),()> {
+    self.publish_node_message(topic, payload).await
+  }
+
   async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(),()> {
     match self.tx.send(OutboundMessage::DeviceMessage { topic, payload }) {
       Ok(_) => Ok(()),
       Err(_) => Err(()),
     }
+  }
+
+  async fn try_publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(),()> {
+    self.publish_device_message(topic, payload).await
   }
 
   async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(),()> {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, future::Future, pin::Pin, sync::{atomic::AtomicBool, Arc, Mutex}};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::{atomic::AtomicBool, Arc, Mutex}, time::Duration};
 
 use log::{debug, error, info, warn};
 use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
@@ -6,7 +6,7 @@ use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{Metric, Pay
 
 use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, PublishMetric}};
 
-use tokio::{select, sync::mpsc::{self, Receiver}, task};
+use tokio::{select, sync::mpsc::{self, Receiver}, task, time::timeout};
 
 /// A token used to help track birth death lifecycles.
 ///
@@ -426,12 +426,12 @@ impl AppClient {
     pub async fn cancel(&self) {
         info!("App Stopping");
         let topic = StateTopic::new_host(&self.2);
-        match self.0.publish_state_message(topic, srad_client::StatePayload::Offline { timestamp: timestamp() }).await {
-            Ok(_) => _ = self.0.disconnect().await,
-            Err(_) => (),
+        match self.0.try_publish_state_message(topic, srad_client::StatePayload::Offline { timestamp: timestamp() }).await {
+            Ok(_) => (),
+            Err(_) => debug!("Unable to publish state offline on exit"),
         };
-        _ = self.0.disconnect().await;
         _ = self.1.send(Shutdown).await;
+        _ = self.0.disconnect().await;
     }
 
     pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) -> Result<(),()> {
@@ -440,18 +440,30 @@ impl AppClient {
         self.publish_metrics(topic, vec![rebirth_cmd]).await
     }
 
-    pub async fn publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) -> Result<(),()> {
+    fn metrics_to_payload(metrics: Vec<PublishMetric>) -> Payload {
         let mut payload_metrics = Vec::with_capacity(metrics.len());
         for x in metrics.into_iter() {
             payload_metrics.push(x.to_metric());
         }
-        let payload = Payload {
+        Payload {
             timestamp: Some(utils::timestamp()),
             metrics: payload_metrics,
             seq: None,
             uuid: None,
             body: None,
-        };
+        }
+    }
+
+    pub async fn try_publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) -> Result<(),()> {
+        let payload = Self::metrics_to_payload(metrics);
+        match topic.0 {
+            PublishTopicKind::NodeTopic(topic) => self.0.try_publish_node_message(topic, payload).await,
+            PublishTopicKind::DeviceTopic(topic) => self.0.try_publish_device_message(topic, payload).await,
+        }
+    }
+
+    pub async fn publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) -> Result<(),()> {
+        let payload = Self::metrics_to_payload(metrics);
         match topic.0 {
             PublishTopicKind::NodeTopic(topic) => self.0.publish_node_message(topic, payload).await,
             PublishTopicKind::DeviceTopic(topic) => self.0.publish_device_message(topic, payload).await,
@@ -477,6 +489,7 @@ pub struct App {
     client: AppClient,
     eventloop: Box<DynEventLoop>,
     state: State,
+    online: AtomicBool,
     callbacks: Callbacks,
     shutdown_rx: Receiver<Shutdown>
 }
@@ -516,7 +529,8 @@ impl App {
             subscription_config,
             state: State::new(),
             callbacks,
-            shutdown_rx: rx
+            shutdown_rx: rx,
+            online: AtomicBool::new(false)
         };
         (app, client)
     }
@@ -612,20 +626,22 @@ impl App {
 
     fn handle_online(&self) {
         info!("App Online");
+        self.online.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(callback) = &self.callbacks.online { callback() };
         let client = self.client.0.clone();
-        let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
         let state_topic = StateTopic::new_host(&self.host_id);
+        let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
+        topics.push(TopicFilter::new_with_qos(Topic::State(state_topic.clone()), QoS::AtMostOnce));
         let timestamp = self.state.will_timestamp;
         task::spawn(async move {
-            _ = client.publish_state_message(state_topic.clone(), srad_client::StatePayload::Online { timestamp }).await;
-            topics.push(TopicFilter::new_with_qos(Topic::State(state_topic), QoS::AtMostOnce));
+            _ = client.publish_state_message(state_topic, srad_client::StatePayload::Online { timestamp }).await;
             client.subscribe_many(topics).await
         });
     }
 
     fn handle_offline(&mut self) {
         info!("App Offline");
+        self.online.store(false, std::sync::atomic::Ordering::SeqCst);
         if let Some(callback) = &self.callbacks.offline { callback() };
         self.update_last_will();
     }
@@ -658,6 +674,22 @@ impl App {
         }
     }
 
+    async fn poll_until_offline(&mut self) -> bool {
+        while self.online.load(std::sync::atomic::Ordering::Relaxed) {
+            if let Some(event) = self.eventloop.poll().await {
+                if Event::Offline == event {
+                    self.handle_offline()
+                }
+            }
+        }
+        return true;
+    }
+
+    async fn poll_until_offline_with_timeout(&mut self){
+        _ = timeout(Duration::from_secs(1), self.poll_until_offline()).await;
+    }
+
+
     pub async fn run(&mut self) {
         info!("App Started");
         self.update_last_will();
@@ -667,6 +699,7 @@ impl App {
                 Some(_) = self.shutdown_rx.recv() => break,
             }
         }
+        self.poll_until_offline_with_timeout().await;
         info!("App Stopped");
     } 
 

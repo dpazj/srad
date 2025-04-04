@@ -1,4 +1,4 @@
-use crate::{metadata::MetaData, payload::{self, DataType}, value};
+use crate::{metadata::MetaData, payload::DataType, value};
 
 pub trait HasDataType {
   fn supported_datatypes() -> &'static [DataType];

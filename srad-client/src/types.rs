@@ -1,9 +1,9 @@
 use std::string::FromUtf8Error;
 
-use srad_types::{payload::Payload, topic::{state_host_topic, NodeTopic, NodeMessage as NodeMessageType, QoS}, utils::timestamp};
+use srad_types::{payload::Payload, topic::{state_host_topic, NodeTopic, NodeMessage as NodeMessageType, QoS}};
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MessageError {
   InvalidPayload,
   InvalidSparkplugTopic,
@@ -28,7 +28,7 @@ impl From<MessageError> for ClientError {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum MessageKind {
   Birth,
   Death,
@@ -37,7 +37,7 @@ pub enum MessageKind {
   Other(String)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Message {
   pub payload: Payload,
   pub kind: MessageKind
@@ -70,14 +70,14 @@ impl From<StatePayload> for Vec<u8> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct NodeMessage {
   pub group_id: String,
   pub node_id: String,
   pub message: Message,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DeviceMessage{
   pub group_id: String,
   pub node_id: String,
@@ -85,7 +85,7 @@ pub struct DeviceMessage{
   pub message: Message,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Event {
   Offline,
   Online,

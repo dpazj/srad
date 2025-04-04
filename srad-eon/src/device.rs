@@ -37,34 +37,49 @@ impl DeviceHandle {
     };
     self.device.death(true).await
   }
-}
 
-impl MetricPublisher for DeviceHandle {
-  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError>{
-    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
-
+  fn check_publish_state(&self) -> Result<(), PublishError> {
     if !self.device.eon_state.is_online() { return Err(PublishError::Offline) }
     if self.device.birthed.load(Ordering::Relaxed) == false { return Err(PublishError::UnBirthed) }
+    Ok(())
+  }
 
+  fn publish_metrics_to_payload(&self, metrics: Vec<PublishMetric>) -> Payload {
     let timestamp = timestamp();
-
     let mut payload_metrics = Vec::with_capacity(metrics.len());
     for x in metrics.into_iter() {
       payload_metrics.push(x.to_metric());
     }
-
-    let payload = Payload { 
+    Payload { 
       timestamp: Some(timestamp), 
       metrics: payload_metrics, 
       seq: Some(self.device.eon_state.get_seq()), 
       uuid: None, 
       body: None 
-    };
-    match self.device.client.publish_device_message(self.device.info.ddata_topic.clone(), payload).await {
+    }
+  }
+}
+
+impl MetricPublisher for DeviceHandle {
+
+  async fn try_publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError>{
+    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
+    self.check_publish_state()?;
+    match self.device.client.try_publish_device_message(self.device.info.ddata_topic.clone(), self.publish_metrics_to_payload(metrics)).await {
       Ok(_) => Ok(()),
       Err(_) => Err(PublishError::Offline),
     }
   }
+
+  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError>{
+    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
+    self.check_publish_state()?;
+    match self.device.client.publish_device_message(self.device.info.ddata_topic.clone(), self.publish_metrics_to_payload(metrics)).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(PublishError::Offline),
+    }
+  }
+
 }
 
 pub struct Device {

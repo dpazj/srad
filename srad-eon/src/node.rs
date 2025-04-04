@@ -1,8 +1,9 @@
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use log::{error, info, warn};
-use srad_client::{DeviceMessage, DynClient, DynEventLoop, LastWill, MessageKind};
+use log::{debug, error, info, warn};
+use srad_client::{DeviceMessage, DynClient, DynEventLoop, MessageKind};
 use srad_client::{Event, NodeMessage};
 
 use srad_types::constants::NODE_CONTROL_REBIRTH;
@@ -15,6 +16,7 @@ use srad_types::{
   topic::{DeviceMessage as DeviceMessageType, NodeMessage as NodeMessageType},
   payload::Payload
 };
+use tokio::time::timeout;
 
 use crate::birth::{BirthInitializer, BirthMetricDetails, BirthObjectType};
 use crate::builder::EoNBuilder;
@@ -41,11 +43,12 @@ impl NodeHandle {
     info!("Edge node stopping");
     let topic = NodeTopic::new(&self.node.state.group_id, NodeMessageType::NDeath, &self.node.state.edge_node_id);
     let payload = self.node.generate_death_payload();
-    match self.node.client.publish_node_message(topic, payload).await {
-        Ok(_) => _ = self.node.client.disconnect().await,
-        Err(_) => (),
+    match self.node.client.try_publish_node_message(topic, payload).await {
+        Ok(_) => (),
+        Err(_) => debug!("Unable to publish node death certificate on exit"),
     };
     _ = self.node.stop_tx.send(EoNShutdown).await;
+    _ = self.node.client.disconnect().await;
   }
 
   pub async fn rebirth(&self){
@@ -78,30 +81,45 @@ impl NodeHandle {
     self.node.devices.remove_device(name).await
   }
 
-}
-
-impl MetricPublisher for NodeHandle
-{
-  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError> {
-    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
+  fn check_publish_state(&self) -> Result<(), PublishError> {
     if !self.node.state.is_online() { return Err(PublishError::Offline) }
     if !self.node.state.birthed() { return Err(PublishError::UnBirthed) }
+    Ok(())
+  }
 
+  fn publish_metrics_to_payload(&self, metrics: Vec<PublishMetric>) -> Payload {
     let timestamp = timestamp();
     let mut payload_metrics = Vec::with_capacity(metrics.len());
     for x in metrics.into_iter() {
       payload_metrics.push(x.to_metric());
     }
-
-    let payload = Payload { 
+    Payload { 
       timestamp: Some(timestamp), 
       metrics: payload_metrics, 
       seq: Some(self.node.state.get_seq()), 
       uuid: None, 
       body: None 
-    };
+    }
+  }
 
-    match self.node.client.publish_node_message(self.node.state.ndata_topic.clone(), payload).await {
+}
+
+impl MetricPublisher for NodeHandle
+{
+
+  async fn try_publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError> {
+    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
+    self.check_publish_state()?; 
+    match self.node.client.try_publish_node_message(self.node.state.ndata_topic.clone(), self.publish_metrics_to_payload(metrics)).await {
+      Ok(_) => Ok(()),
+      Err(_) => Err(PublishError::Offline),
+    }
+  }
+
+  async fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> Result<(), PublishError> {
+    if metrics.len() == 0 { return Err(PublishError::NoMetrics) }
+    self.check_publish_state()?; 
+    match self.node.client.publish_node_message(self.node.state.ndata_topic.clone(), self.publish_metrics_to_payload(metrics)).await {
       Ok(_) => Ok(()),
       Err(_) => Err(PublishError::Offline),
     }
@@ -373,6 +391,21 @@ impl EoN
     }
   }
 
+  async fn poll_until_offline(&mut self) -> bool {
+    while self.node.state.is_online() {
+      if let Some(event) = self.eventloop.poll().await {
+        if Event::Offline == event {
+          self.on_offline().await
+        }
+      }
+    }
+    return true;
+  }
+
+  async fn poll_until_offline_with_timeout(&mut self){
+    _ = timeout(Duration::from_secs(1), self.poll_until_offline()).await;
+  }
+
   pub async fn run(&mut self) {
     info!("Edge node running");
     self.update_last_will();
@@ -382,6 +415,7 @@ impl EoN
         Some(_) = self.stop_rx.recv() => break,
       }
     }
+    self.poll_until_offline_with_timeout().await;
     info!("Edge node stopped");
   } 
 

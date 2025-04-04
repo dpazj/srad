@@ -137,8 +137,7 @@ impl Into<String> for Topic {
 #[derive(Clone, Debug, PartialEq)]
 pub enum QoS {
   AtMostOnce,
-  AtLeastOnce,
-  ExactlyOnce
+  AtLeastOnce
 }
 
 #[derive(Clone, Debug, PartialEq)]
