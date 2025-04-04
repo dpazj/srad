@@ -23,7 +23,7 @@
 
   - better ensuring of operation success
     - make sure response to subscription request is made
-    - ensure metric publish has been sent
+    - ensure metric publish has been sent/acked
 
 ## Client
 
@@ -32,14 +32,11 @@
 
 ## App
 
-- subscribe to own state and publish online message if it see's its own death cert
-  - add application state subscription config 
-  - expose application state messages in callback api
-
-- need to make app struct Send (Need to be able to give app to a tokio task)
-
 ### future
 
+- subscribe to own state and publish online message if it see's its own death cert
+- add application state subscription config 
+  - expose application state messages in callback api
  - check sequence order and issue rebirths if invalid after timeout
   - add ability to reorder out of sequence messages
  - wait states

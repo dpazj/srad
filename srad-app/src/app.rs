@@ -472,15 +472,15 @@ impl AppClient {
 }
 
 struct Callbacks {
-    online: Option<Pin<Box<dyn Fn() -> ()>>>,
-    offline: Option<Pin<Box<dyn Fn() -> ()>>>, 
-    nbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()>>>, 
-    ndeath: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken) -> ()>>>, 
-    ndata: Option<Arc<dyn Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
-    dbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()>>>, 
-    ddeath: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken) -> ()>>>, 
-    ddata: Option<Arc<dyn Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
-    evaluate_rebirth_reason: Option<Arc<dyn Fn(RebirthReasonDetails) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>>, 
+    online: Option<Pin<Box<dyn Fn() -> () + Send>>>,
+    offline: Option<Pin<Box<dyn Fn() -> () + Send>>>, 
+    nbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + Send>>>, 
+    ndeath: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken) -> () + Send>>>, 
+    ndata: Option<Arc<dyn Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>, 
+    dbirth: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + Send>>>, 
+    ddeath: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken) -> () + Send>>>, 
+    ddata: Option<Arc<dyn Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricId, MetricDetails)>) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>, 
+    evaluate_rebirth_reason: Option<Arc<dyn Fn(RebirthReasonDetails) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>, 
 }
 
 pub struct App {
@@ -537,7 +537,7 @@ impl App {
 
     pub fn on_online<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn() -> () + 'static
+        F: Fn() -> () + Send + 'static
     {
         self.callbacks.online = Some(Box::pin(cb));
         self
@@ -545,7 +545,7 @@ impl App {
 
     pub fn on_offline<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn() -> () + 'static
+        F: Fn() -> () + Send + 'static
     {
         self.callbacks.offline = Some(Box::pin(cb));
         self
@@ -553,7 +553,7 @@ impl App {
 
     pub fn on_nbirth<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + 'static
+        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + Send + 'static
     {
         self.callbacks.nbirth = Some(Box::pin(cb));
         self
@@ -561,7 +561,7 @@ impl App {
 
     pub fn on_ndeath<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, BirthToken) -> () + 'static
+        F: Fn(NodeIdentifier, BirthToken) -> () + Send + 'static
     {
         self.callbacks.ndeath = Some(Box::pin(cb));
         self
@@ -569,7 +569,7 @@ impl App {
 
     pub fn on_ndata<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + 'static,
+        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output=()> + Send + 'static
     {
         let callback = Arc::new(move |id, tok,time, data| {
@@ -581,7 +581,7 @@ impl App {
     
     pub fn on_dbirth<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + 'static
+        F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + Send + 'static
     {
         self.callbacks.dbirth = Some(Box::pin(cb));
         self
@@ -589,7 +589,7 @@ impl App {
 
     pub fn on_ddeath<F>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, String, BirthToken) -> () + 'static
+        F: Fn(NodeIdentifier, String, BirthToken) -> () + Send + 'static
     {
         self.callbacks.ddeath = Some(Box::pin(cb));
         self
@@ -597,7 +597,7 @@ impl App {
 
     pub fn on_ddata<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + 'static,
+        F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output=()> + Send + 'static
     {
         let callback = Arc::new(move |id, device, tok, time, data| {
@@ -609,7 +609,7 @@ impl App {
 
     pub fn register_evaluate_rebirth_reason_fn<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
-        F: Fn(RebirthReasonDetails) -> Fut + Send + 'static,
+        F: Fn(RebirthReasonDetails) -> Fut + Send + Sync + 'static,
         Fut: Future<Output=()> + Send + 'static
     {
         let callback = Arc::new(move |reason| {
