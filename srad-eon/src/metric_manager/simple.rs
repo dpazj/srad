@@ -55,7 +55,7 @@ where
   fn birth_metric(&self, name: &String, bi: &mut BirthInitializer) -> MetricId {
     let mut metric = self.data.lock().unwrap();
     let val = metric.value.clone(); 
-    let token = bi.create_metric(
+    let token = bi.register_metric(
       BirthMetricDetails::new_with_initial_value(name, val).use_alias(true)
     ).unwrap();
     let id = token.id().clone();
@@ -90,12 +90,44 @@ where
   }
 }
 
-pub struct SimpleMetricManagerInner<H> {
+struct SimpleMetricManagerInner<H> {
   handle: Option<H>,
   metrics : HashMap<String, Arc<dyn Stored<H> + Send + Sync>>,
   cmd_lookup: HashMap<MetricId, Arc<dyn Stored<H> + Send + Sync>>
 }
 
+/// A [MetricManager] implementation that provides simple metric registration and handling.
+///
+/// `SimpleMetricManager` provides a simple way to manage metrics with support for
+/// command callbacks and metric publishing.
+/// # Example
+/// ```no_run
+/// use srad_eon::SimpleMetricManager;
+/// # use srad_eon::DeviceHandle;
+/// 
+/// # fn create_device_with_manager(manager: &SimpleMetricManager<DeviceHandle>) {
+/// #   unimplemented!()
+/// # }
+/// //Create a new simple metric manager
+/// let manager = SimpleMetricManager::new(); 
+/// 
+/// // Assume we successfully create a device with a SimpleMetricManager as it's metrics manager
+/// create_device_with_manager(&manager);
+/// 
+/// // Register a simple metric 
+/// let counter = manager.register_metric("Counter", 0 as i32).unwrap();
+/// 
+/// // Register a metric with a command handler
+/// let temperature = manager.register_metric_with_cmd_handler(
+///     "temperature",
+///     25.5,
+///     |mgr, metric, new_value| async move {
+///         if let Some(value) = new_value {
+///           mgr.publish_metric(metric.update(|x|{ *x = value })).await;
+///         }
+///     }
+/// );
+/// ```
 #[derive(Clone)]
 pub struct SimpleMetricManager<H> {
   inner: Arc<Mutex<SimpleMetricManagerInner<H>>>
@@ -105,7 +137,9 @@ impl<H> SimpleMetricManager<H>
 where 
   H: MetricPublisher + Clone + Send + Sync + 'static
 {
-
+  /// Creates a new empty `SimpleMetricManager`.
+  ///
+  /// This initialises a new metric manager with no registered metrics.
   pub fn new() -> Self {
     Self {
       inner: Arc::new(Mutex::new(SimpleMetricManagerInner {
@@ -138,6 +172,10 @@ where
     Some(metric)
   }
 
+  /// Registers a new metric with the given name and initial value.
+  ///
+  /// Returns `None` if a metric with the same name already exists, otherwise
+  /// returns the newly created metric.
   pub fn register_metric<S, T>(&self, name : S, value: T) -> Option<SimpleManagerMetric<T, H>>
   where 
     S : Into<String>,
@@ -146,6 +184,15 @@ where
     self.register::<T>(name.into(), value, None) 
   }
 
+  /// Registers a new metric with a command handler that will be called when
+  /// commands for this metric are received.
+  ///
+  /// The command handler is an async function that receives the manager, the metric,
+  /// and an optional new value for the metric. If the value is "None" that indicates the CMD metric 'is_null' 
+  /// field was true 
+  ///
+  /// Returns `None` if a metric with the same name already exists, otherwise
+  /// returns the newly created metric.
   pub fn register_metric_with_cmd_handler<S, T, F, Fut>(&self, name : S, value: T, cmd_handler: F) -> Option<SimpleManagerMetric<T,H>>
   where 
     S : Into<String>,
@@ -182,10 +229,16 @@ where
     join_all(futures).await;
   }
 
+  /// Publishes a single metric.
+  ///
+  /// Returns an error if the metric was not published.
   pub async fn publish_metric(&self, metric: SimpleManagerPublishMetric) -> Result<(), PublishError> {
     self.publish_metrics(vec![metric]).await
   }
 
+  /// Publishes a multiple metric in a single batch.
+  ///
+  /// Returns an error if the metrics were not published.
   pub async fn publish_metrics(&self, metrics: Vec<SimpleManagerPublishMetric>) -> Result<(), PublishError> {
     let handle = {
       match &self.inner.lock().unwrap().handle {
@@ -204,7 +257,7 @@ where
 
 impl<H> MetricManager for SimpleMetricManager<H> {
 
-  fn initialize_birth(&self, bi: &mut BirthInitializer) {
+  fn initialise_birth(&self, bi: &mut BirthInitializer) {
     let mut manager = self.inner.lock().unwrap();
 
     let mut cmd_lookup = vec![];

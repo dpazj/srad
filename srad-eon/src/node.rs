@@ -193,14 +193,14 @@ impl Node {
   fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
     let timestamp = timestamp();
     let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node);
-    birth_initializer.create_metric(
+    birth_initializer.register_metric(
       BirthMetricDetails::new_with_initial_value(constants::BDSEQ,  bdseq).use_alias(false)
     ).unwrap();
-    birth_initializer.create_metric(
+    birth_initializer.register_metric(
       BirthMetricDetails::new_with_initial_value(constants::NODE_CONTROL_REBIRTH,  false).use_alias(false)
     ).unwrap();
 
-    self.metric_manager.initialize_birth(&mut birth_initializer);
+    self.metric_manager.initialise_birth(&mut birth_initializer);
     let metrics = birth_initializer.finish();
 
     Payload {
@@ -245,7 +245,8 @@ pub struct EoN
 impl EoN 
 {
 
-  pub fn new_from_builder(builder: EoNBuilder) -> Result<(Self, NodeHandle), String>
+
+  pub(crate) fn new_from_builder(builder: EoNBuilder) -> Result<(Self, NodeHandle), String>
   {
     let group_id = builder.group_id.ok_or("group id must be provided".to_string())?;
     let node_id = builder.node_id.ok_or("node id must be provided".to_string())?;
@@ -406,6 +407,9 @@ impl EoN
     _ = timeout(Duration::from_secs(1), self.poll_until_offline()).await;
   }
 
+  /// Run the Edge Node
+  /// 
+  /// Runs the Edge Node until `cancel()` is called on the [NodeHandle]
   pub async fn run(&mut self) {
     info!("Edge node running");
     self.update_last_will();

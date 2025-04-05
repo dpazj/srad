@@ -21,8 +21,8 @@ pub enum PublishError {
   UnBirthed,
 }
 
-pub trait MetricPublisher {
 
+pub trait MetricPublisher {
   fn try_publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send;
   fn try_publish_metric(&self, metric: PublishMetric) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     self.try_publish_metrics_unsorted(vec![metric])
@@ -80,11 +80,6 @@ impl PublishMetric {
 
   pub fn historical(mut self, is_historical: bool) -> Self {
     self.is_historical = Some(is_historical);
-    self
-  }
-
-  pub fn metadata_from_value<T: traits::MetricValue> (mut self, val: &T) -> Self {
-    self.metadata = val.publish_metadata();
     self
   }
 

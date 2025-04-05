@@ -96,7 +96,7 @@ impl Device {
 
   fn generate_birth_payload(&self) -> Payload {
     let mut birth_initializer = BirthInitializer::new( BirthObjectType::Device(self.info.id.clone()));
-    self.dev_impl.initialize_birth(&mut birth_initializer);
+    self.dev_impl.initialise_birth(&mut birth_initializer);
     let timestamp = timestamp();
     let metrics  = birth_initializer.finish();
   

@@ -3,7 +3,7 @@ mod utils;
 use std::time::Duration;
 
 use srad_client::NodeMessage;
-use srad_eon::{EoN, EoNBuilder, NoMetricManager};
+use srad_eon::{EoNBuilder, NoMetricManager};
 use srad_types::{constants::NODE_CONTROL_REBIRTH, payload::{Metric, Payload}, topic::{DeviceMessage, DeviceTopic, NodeTopic}};
 use tokio::time::timeout;
 use utils::{client::{EventLoop, OutboundMessage}, tester::{test_node_online, verify_dbirth_payload, verify_device_birth, verify_nbirth_payload}};
@@ -15,10 +15,11 @@ async fn node_session_establishment() {
   let node_id = "bar";
 
   let (channel_eventloop, client, mut broker) = EventLoop::new();
-  let builder= EoNBuilder::new(channel_eventloop, client)
+  let (mut eventloop, _)  = EoNBuilder::new(channel_eventloop, client)
     .with_group_id(group_id)
-    .with_node_id(node_id);
-  let (mut eventloop, _)  = EoN::new_from_builder(builder).unwrap();
+    .with_node_id(node_id)
+    .build().unwrap();
+
   tokio::spawn(async move {
     eventloop.run().await
   });
@@ -40,10 +41,10 @@ async fn device_session_establishment() {
   let device2_name = "device2";
 
   let (channel_eventloop, client, mut broker) = EventLoop::new();
-  let builder= EoNBuilder::new(channel_eventloop, client)
+  let (mut eventloop, handle)  = EoNBuilder::new(channel_eventloop, client)
     .with_group_id(group_id)
-    .with_node_id(node_id);
-  let (mut eventloop, handle)  = EoN::new_from_builder(builder).unwrap();
+    .with_node_id(node_id)
+    .build().unwrap();
 
   tokio::spawn(async move {
     eventloop.run().await
@@ -108,10 +109,11 @@ async fn rebirth() {
   let device2_name = "dev2";
 
   let (channel_eventloop, client, mut broker) = EventLoop::new();
-  let builder= EoNBuilder::new(channel_eventloop, client)
+  let (mut eventloop, handle)  = EoNBuilder::new(channel_eventloop, client)
     .with_group_id(group_id)
-    .with_node_id(node_id);
-  let (mut eventloop, handle)  = EoN::new_from_builder(builder).unwrap();
+    .with_node_id(node_id)
+    .build().unwrap();
+
   tokio::spawn(async move {
     eventloop.run().await
   });

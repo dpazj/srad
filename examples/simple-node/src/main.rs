@@ -1,5 +1,5 @@
 use std::time::Duration;
-use srad::{client::mqtt_client::rumqtt, eon::{self, EoNBuilder, SimpleMetricManager}};
+use srad::{client::mqtt_client::rumqtt, eon::{EoNBuilder, SimpleMetricManager}};
 
 use tokio::time;
 
@@ -21,12 +21,11 @@ async fn main() {
     let counter_metric = node_metrics.register_metric("Counter", 0 as u64).unwrap();
     node_metrics.register_metric("A", 0 as u64).unwrap();
 
-    let (mut eon, handle)  = eon::EoN::new_from_builder(
-        EoNBuilder::new(eventloop, client)
-            .with_group_id("foo")
-            .with_node_id("bar")
-            .with_metric_manager(node_metrics.clone())
-    ).unwrap();
+    let (mut eon, handle)  = EoNBuilder::new(eventloop, client)
+        .with_group_id("foo")
+        .with_node_id("bar")
+        .with_metric_manager(node_metrics.clone())
+        .build().unwrap();
 
     let dev1_metrics = SimpleMetricManager::new();
     let device1 = handle.register_device("dev1", dev1_metrics.clone()).await.unwrap();

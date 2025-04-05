@@ -141,7 +141,7 @@ impl BirthInitializer{
     alias
   }
 
-  pub fn register_metric<T: Into<String>, M: traits::MetricValue>(&mut self, name: T, use_alias: bool) -> Result<MetricToken<M>, Error> {
+  fn create_metric_token<T: traits::MetricValue>(&mut self, name: &String, use_alias: bool) -> Result<MetricToken<T>, Error> {
     let metric = name.into();
 
     if self.metric_names.contains(&metric) {
@@ -162,15 +162,15 @@ impl BirthInitializer{
     Ok(MetricToken::new(id))
   }
 
-  pub fn create_metric<T: traits::MetricValue>(&mut self, details: BirthMetricDetails<T>) -> Result<MetricToken<T>, Error>
+  pub fn register_metric<T: traits::MetricValue>(&mut self, details: BirthMetricDetails<T>) -> Result<MetricToken<T>, Error>
   {
-    let id = self.register_metric(&details.name, details.use_alias)?;
+    let tok = self.create_metric_token(&details.name, details.use_alias)?;
     let mut metric = details.to_metric();
-    if let MetricId::Alias(alias) = id.id() {
+    if let MetricId::Alias(alias) = tok.id() {
       metric.set_alias(*alias);
     }
     self.birth_metrics.push(metric); 
-    Ok(id)
+    Ok(tok)
   }
 
   pub(crate) fn finish(self) -> Vec<Metric>{

@@ -32,12 +32,11 @@ async fn main() {
     let opts = rumqtt::MqttOptions::new("foo:bar", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
-    let (mut eon, handle) = EoN::new_from_builder(
-        EoNBuilder::new(eventloop, client)
-            .with_group_id("foo")
-            .with_node_id("bar")
-            .with_metric_manager(NoMetricManager::new())
-    ).unwrap();
+    let (mut eon, handle) = EoNBuilder::new(eventloop, client)
+        .with_group_id("foo")
+        .with_node_id("bar")
+        .with_metric_manager(NoMetricManager::new())
+        .build().unwrap();
 
     eon.run().await;
 }
