@@ -1,27 +1,29 @@
-use srad_types::{payload::{self, DataType, MetaData, Metric, ToMetric}, property_set::PropertySet, traits, MetricId, MetricValue};
+use srad_types::{payload::{self, DataType, MetaData, Metric, ToMetric}, PropertySet, traits, MetricId, MetricValue};
 
+/// Represents a metric value to be published
 pub struct PublishMetric 
 {
-  /* required by the metric publisher to ensure metric can only be published by correct node/device */
-  metric_identifier: MetricId,
-  value: MetricValue,
-  timestamp: Option<u64>,
+    metric_identifier: MetricId,
+    value: MetricValue,
+    timestamp: Option<u64>,
 }
 
 impl PublishMetric {
 
-  pub fn new<T: traits::MetricValue> (metric_identifier: MetricId, value: T) -> Self {
-    Self {
-      metric_identifier,
-      value: value.into(),
-      timestamp: None
+    /// Creates a new metric for publishing with the specified identifier and value.
+    pub fn new<T: traits::MetricValue> (metric_identifier: MetricId, value: T) -> Self {
+        Self {
+            metric_identifier,
+            value: value.into(),
+            timestamp: None
+        }
     }
-  }
 
-  pub fn timestamp(mut self, timestamp: u64) -> Self {
-    self.timestamp = Some(timestamp);
-    self
-  }
+    /// Sets a timestamp for the published metric
+    pub fn timestamp(mut self, timestamp: u64) -> Self {
+        self.timestamp = Some(timestamp);
+        self
+    }
 
 }
 
@@ -38,11 +40,15 @@ impl ToMetric for PublishMetric {
   }
 }
 
+/// Information about a metric provided from a birth message  
 #[derive(Debug)]
 pub struct MetricBirthDetails {
-   pub name: String,
-   pub alias: Option<u64>,
-   pub datatype: DataType,
+    /// The name of the metric
+    pub name: String,
+    /// An optional alias. If set, all future CMD publishes should use this value when referring to the metric.
+    pub alias: Option<u64>,
+    /// The datatype of the metric.
+    pub datatype: DataType,
 }
 
 impl MetricBirthDetails {
@@ -57,13 +63,18 @@ impl MetricBirthDetails {
 
 }
 
+/// Information about a metric from a message
 #[derive(Debug)]
 pub struct MetricDetails {
+    /// The value of the metric
     pub value: Option<MetricValue>,
     pub properties: Option<PropertySet>,
     pub metadata: Option<MetaData>,
+    /// The timestamp associated with the value of the metric
     pub timestamp: u64,
+    /// Is the metric a historical metric
     pub is_historical: bool,
+    /// Should the metric be persisted 
     pub is_transient: bool
 }
 

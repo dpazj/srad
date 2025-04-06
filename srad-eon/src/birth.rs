@@ -1,13 +1,14 @@
 use std::{collections::HashSet, hash::{DefaultHasher, Hash, Hasher}};
 
-use srad_types::{payload::{DataType, Metric, ToMetric}, property_set::PropertySet, traits, metadata::MetaData, utils::timestamp, MetricId, MetricValue};
+use srad_types::{payload::{DataType, Metric, ToMetric}, PropertySet, traits, MetaData, utils::timestamp, MetricId, MetricValue};
 
 use crate::{
   error::Error, metric::MetricToken, registry::DeviceId
 };
 
+/// Details about a metric to be included in a birth message
 pub struct BirthMetricDetails<T> {
-  pub name: String,
+  name: String,
   use_alias: bool,
   datatype: DataType,
   initial_value: Option<T>,

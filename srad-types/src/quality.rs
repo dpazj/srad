@@ -1,6 +1,6 @@
 use crate::{payload::DataType, traits, FromValueTypeError, PropertyValue};
 
-/// Enum to represent the different quality codes 
+/// Represents the different quality property values of a metric
 pub enum Quality {
   Good = 0,
   Bad = 192,

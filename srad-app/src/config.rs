@@ -1,7 +1,6 @@
 use srad_types::topic::{QoS, Topic, TopicFilter};
 
-
-
+/// Subscription configuration to allow for fine-grain control of what group or node to receive messages from 
 #[derive(Clone)]
 pub enum NamespaceSubConfig {
     Group {group_id: String},
@@ -21,10 +20,14 @@ impl From<NamespaceSubConfig> for TopicFilter {
     }
 }
 
+/// Subscription configuration for the topics the application will subscribe to for node and device messages
 #[derive(Clone)]
 pub enum SubscriptionConfig{
+    /// Subscribe to all groups messages
     AllGroups,
+    /// Subscribe to a single group's messages
     SingleGroup{group_id: String},
+    /// Custom subscription configuration
     Custom(Vec<NamespaceSubConfig>)
 }
 

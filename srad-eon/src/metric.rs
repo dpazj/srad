@@ -4,8 +4,8 @@ use std::vec::IntoIter;
 use log::warn;
 use srad_types::payload::ToMetric;
 use srad_types::payload::{Metric, Payload};
-use srad_types::property_set::PropertySet;
-use srad_types::metadata::MetaData;
+use srad_types::PropertySet;
+use srad_types::MetaData;
 use srad_types::utils::timestamp;
 use srad_types::{traits, MetricId, MetricValue};
 
@@ -24,7 +24,10 @@ pub enum PublishError {
 /// A trait for publishing metrics to the network.
 ///
 /// `MetricPublisher` defines a set of methods for publishing single metrics
-/// or batches of metrics. It provides "try_" variants that may fail immediately.
+/// or batches of metrics. It provides "try_" variants that may fail immediately. 
+/// 
+/// "try_publish" variants will use the "try_publish" variants from the [srad_client::Client] trait.
+/// Similarly, the "publish" variants will use the "publish" from the [srad_client::Client] trait.
 pub trait MetricPublisher {
 
   /// Attempts to publish a batch of metrics without modifying their order.

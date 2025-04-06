@@ -245,7 +245,7 @@ impl Node {
  
 }
 
-/// Structure that represents a Edge Node instance
+/// Structure that represents a Sparkplug Edge Node instance
 pub struct EoN 
 {
   node: Arc<Node>,
@@ -414,7 +414,7 @@ impl EoN
 
   /// Run the Edge Node
   /// 
-  /// Runs the Edge Node until [NodeHandle::cancel()} is called 
+  /// Runs the Edge Node until [NodeHandle::cancel()] is called 
   pub async fn run(&mut self) {
     info!("Edge node running");
     self.update_last_will();

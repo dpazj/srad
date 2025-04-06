@@ -7,12 +7,13 @@ use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic, utils::timest
 
 use crate::{birth::{BirthInitializer, BirthObjectType}, error::Error, metric::{MetricPublisher, PublishError, PublishMetric}, metric_manager::manager::DynDeviceMetricManager, node::EoNState, registry::{self, DeviceId}, BirthType};
 
-pub struct DeviceInfo {
+pub(crate) struct DeviceInfo {
   id: DeviceId,
   pub(crate) name: Arc<String>,
   ddata_topic: DeviceTopic 
 }
 
+/// A handle for interacting with an Edge Device
 #[derive(Clone)]
 pub struct DeviceHandle {
   pub(crate) device: Arc<Device>,
@@ -20,16 +21,25 @@ pub struct DeviceHandle {
 
 impl DeviceHandle {
 
+  /// Enabled the device
+  /// 
+  /// Will attempt to birth the device. If the node is not online, the device will be birthed when it is next online. 
   pub async fn enable(&self) {
     self.device.enabled.store(true, Ordering::SeqCst);
     self.device.birth(&BirthType::Birth).await;
   }
 
+  /// Rebirth the device
+  /// 
+  /// Manually trigger a rebirth for the device. 
   pub async fn rebirth(&self) { 
     self.device.enabled.store(true, Ordering::SeqCst);
     self.device.birth(&BirthType::Rebirth).await;
   }
 
+  /// Disable the device
+  /// 
+  /// Will produce a death message for the device. The node will no longer attempt to birth the device when it comes online.
   pub async fn disable(&self) {
     if self.device.enabled.swap(false, Ordering::SeqCst) == false { 
       //already disabled
@@ -88,7 +98,7 @@ pub struct Device {
   birth_lock: tokio::sync::Mutex<()>,
   enabled: AtomicBool,
   eon_state: Arc<EoNState>,
-  pub dev_impl: Arc<DynDeviceMetricManager>,
+  dev_impl: Arc<DynDeviceMetricManager>,
   client: Arc<DynClient>,
 } 
 

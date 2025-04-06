@@ -12,7 +12,10 @@ use tokio::{select, sync::mpsc::{self, Receiver}, task, time::timeout};
 ///
 /// `BirthToken` allows implementing applications to determine if a message for device or node belongs to the 
 /// current or previous birth death lifecycle. This is required due to the async nature of the app 
-/// where data messages might arrive after an object has produced a death or rebirthed.
+/// where data messages might arrive after an object has produced a death message or has re-birthed.
+/// 
+/// Typically, a `BirthToken` will be provided on a birth callback. An implementing application should then use this token to 
+/// compare the token provided with other callbacks that reference a node or device.
 pub struct BirthToken(Arc<AtomicBool>);
 
 impl BirthToken {
@@ -88,12 +91,14 @@ impl NodeState {
 
 }
 
+/// Used to uniquely identify a node 
 #[derive(Debug,PartialEq, Eq, Hash, Clone)]
 pub struct NodeIdentifier {
     pub group: String,
     pub node: String
 }
 
+/// Represents a situation which the application has identified where a implementation might wish to issue a Node rebirth CMD 
 #[derive(Debug)]
 pub enum RebirthReason {
     UnknownNode,
@@ -102,6 +107,7 @@ pub enum RebirthReason {
     MalformedPayload
 }
 
+/// Details surrounding the situation where the application has identified a [RebirthReason].
 pub struct RebirthReasonDetails {
     pub node_id: NodeIdentifier,
     pub device: Option<String>,
@@ -122,6 +128,7 @@ impl RebirthReasonDetails {
         self.device = Some(device);
         self
     }
+
 }
 
 struct State {
@@ -403,26 +410,33 @@ enum PublishTopicKind {
     DeviceTopic(DeviceTopic) 
 }
 
+/// Configuration for a topic to publish a Metric on
 #[derive(Debug, Clone)]
 pub struct PublishTopic(PublishTopicKind);
 
 impl PublishTopic {
 
+    /// Create a new `PublishTopic` which will publish on a specified device's CMD topic
     pub fn new_device_cmd(group_id: &String, node_id: &String, device_id: &String) -> Self {
         PublishTopic(PublishTopicKind::DeviceTopic(DeviceTopic::new(&group_id, srad_types::topic::DeviceMessage::DCmd, node_id, device_id)))
     }
 
+    /// Create a new `PublishTopic` which will publish on a specified node's CMD topic
     pub fn new_node_cmd(group_id: &String, node_id: &String) -> Self {
         PublishTopic(PublishTopicKind::NodeTopic(NodeTopic::new(&group_id, srad_types::topic::NodeMessage::NCmd, node_id)))
     }
 
 }
 
+/// The Application client to interact with the Application and Sparkplug namespace from. 
 #[derive(Clone)]
 pub struct AppClient(Arc<DynClient>, mpsc::Sender<Shutdown>, Arc<String>);
 
 impl AppClient {
 
+    /// Stop all operations, sending a death certificate (application offline message) and disconnect from the broker.
+    /// 
+    /// This will cancel [App::run()]
     pub async fn cancel(&self) {
         info!("App Stopping");
         let topic = StateTopic::new_host(&self.2);
@@ -434,6 +448,7 @@ impl AppClient {
         _ = self.0.disconnect().await;
     }
 
+    /// Issue a node rebirth CMD request
     pub async fn publish_node_rebirth(&self, group_id: &String, node_id: &String) -> Result<(),()> {
         let topic = PublishTopic::new_node_cmd(group_id, node_id);
         let rebirth_cmd = PublishMetric::new(MetricId::Name(NODE_CONTROL_REBIRTH.into()), true);
@@ -454,6 +469,7 @@ impl AppClient {
         }
     }
 
+    /// Attempts to publish metrics on a specified topic. Uses the `try_publish` methods from the [srad_client::Client] trait.
     pub async fn try_publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) -> Result<(),()> {
         let payload = Self::metrics_to_payload(metrics);
         match topic.0 {
@@ -462,6 +478,7 @@ impl AppClient {
         }
     }
 
+    /// Publish metrics on a specified topic. Uses the `publish` methods from the [srad_client::Client] trait.
     pub async fn publish_metrics(&self, topic: PublishTopic, metrics: Vec<PublishMetric>) -> Result<(),()> {
         let payload = Self::metrics_to_payload(metrics);
         match topic.0 {
@@ -483,6 +500,8 @@ struct Callbacks {
     evaluate_rebirth_reason: Option<Arc<dyn Fn(RebirthReasonDetails) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>, 
 }
 
+
+/// Structure that represents a Sparkplug Application instance
 pub struct App {
     host_id: Arc<String>,
     subscription_config: SubscriptionConfig,
@@ -496,6 +515,7 @@ pub struct App {
 
 impl App {
 
+    /// Creates a new instance along with an associated client.
     pub fn new<S: Into<String>, E: EventLoop + Send +'static, C: Client + Send + Sync + 'static>(
         host_id: S,
         subscription_config: SubscriptionConfig,
@@ -535,6 +555,7 @@ impl App {
         (app, client)
     }
 
+    /// Registers a callback function to be invoked when the application comes online.
     pub fn on_online<F>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn() -> () + Send + 'static
@@ -543,6 +564,7 @@ impl App {
         self
     }
 
+    /// Registers a callback function to be invoked when the application goes offline.
     pub fn on_offline<F>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn() -> () + Send + 'static
@@ -551,6 +573,7 @@ impl App {
         self
     }
 
+    /// Registers a callback function to be invoked when a node birth certificate is received.
     pub fn on_nbirth<F>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + Send + 'static
@@ -559,6 +582,9 @@ impl App {
         self
     }
 
+    /// Registers a callback function to be invoked when a node death certificate is received.
+    /// 
+    /// When this callback is triggered, all devices that belong to the node should also be considered dead.
     pub fn on_ndeath<F>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn(NodeIdentifier, BirthToken) -> () + Send + 'static
@@ -567,6 +593,7 @@ impl App {
         self
     }
 
+    /// Registers an asynchronous callback function to be invoked when node data is received.
     pub fn on_ndata<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + Sync + 'static,
@@ -579,6 +606,7 @@ impl App {
         self
     }
     
+    /// Registers a callback function to be invoked when a device death certificate is received.
     pub fn on_dbirth<F>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> () + Send + 'static
@@ -587,6 +615,7 @@ impl App {
         self
     }
 
+    /// Registers a callback function to be invoked when a device death certificate is received.
     pub fn on_ddeath<F>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn(NodeIdentifier, String, BirthToken) -> () + Send + 'static
@@ -595,6 +624,7 @@ impl App {
         self
     }
 
+    /// Registers an asynchronous callback function to be invoked when device data is received.
     pub fn on_ddata<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricId,MetricDetails)>) -> Fut + Send + Sync + 'static,
@@ -607,6 +637,8 @@ impl App {
         self
     }
 
+    /// Registers an asynchronous callback function to be invoked when the application determines it has encountered a 
+    /// situation where an application MAY wish to issue a rebirth CMD. 
     pub fn register_evaluate_rebirth_reason_fn<F, Fut>(&mut self, cb: F) -> &mut Self
     where 
         F: Fn(RebirthReasonDetails) -> Fut + Send + Sync + 'static,
@@ -685,7 +717,9 @@ impl App {
         _ = timeout(Duration::from_secs(1), self.poll_until_offline()).await;
     }
 
-
+    /// Run the Application 
+    /// 
+    /// Runs the Application until [AppClient::cancel()] is called 
     pub async fn run(&mut self) {
         info!("App Started");
         self.update_last_will();

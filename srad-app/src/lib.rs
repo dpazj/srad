@@ -3,5 +3,6 @@ mod metrics;
 mod config;
 mod app;
 
-pub use app::{App, AppClient, RebirthReason};
-pub use config::{SubscriptionConfig, NamespaceSubConfig};
+pub use app::*;
+pub use config::*;
+pub use metrics::*;
