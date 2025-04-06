@@ -56,7 +56,9 @@ pub type DynClient = dyn Client + Send + Sync;
 #[async_trait]
 pub trait EventLoop
 {
-  async fn poll(&mut self) -> Option<Event>;
+  /// Poll the EventLoop for an event
+  async fn poll(&mut self) -> Event;
+  ///Set the last will to be used on the next connection 
   fn set_last_will(&mut self, will: LastWill);
 } 
 

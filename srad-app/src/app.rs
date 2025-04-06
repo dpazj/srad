@@ -646,40 +646,36 @@ impl App {
         self.update_last_will();
     }
 
-    async fn handle_event(&mut self, event: Option<Event>) 
+    async fn handle_event(&mut self, event: Event) 
     {
-        if let Some (event) = event {
-            match event {
-                Event::Online => self.handle_online(),
-                Event::Offline => self.handle_offline(), 
-                Event::Node(node_message) => {
-                    if let Some(reason) = self.state.handle_node_message(node_message, &self.callbacks) {
-                        if let Some(cb) = &self.callbacks.evaluate_rebirth_reason {
-                            let cb = cb.clone();
-                            task::spawn(cb(reason));
-                        }
+        match event {
+            Event::Online => self.handle_online(),
+            Event::Offline => self.handle_offline(), 
+            Event::Node(node_message) => {
+                if let Some(reason) = self.state.handle_node_message(node_message, &self.callbacks) {
+                    if let Some(cb) = &self.callbacks.evaluate_rebirth_reason {
+                        let cb = cb.clone();
+                        task::spawn(cb(reason));
                     }
-                },
-                Event::Device(device_message) => {
-                    if let Some(reason) = self.state.handle_device_message(device_message, &self.callbacks) {
-                        if let Some(cb) = &self.callbacks.evaluate_rebirth_reason {
-                            let cb = cb.clone();
-                            task::spawn(cb(reason));
-                        }
+                }
+            },
+            Event::Device(device_message) => {
+                if let Some(reason) = self.state.handle_device_message(device_message, &self.callbacks) {
+                    if let Some(cb) = &self.callbacks.evaluate_rebirth_reason {
+                        let cb = cb.clone();
+                        task::spawn(cb(reason));
                     }
-                },
-                Event::State { host_id: _, payload: _} => (),
-                Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
-            }
+                }
+            },
+            Event::State { host_id: _, payload: _} => (),
+            Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
         }
     }
 
     async fn poll_until_offline(&mut self) -> bool {
         while self.online.load(std::sync::atomic::Ordering::Relaxed) {
-            if let Some(event) = self.eventloop.poll().await {
-                if Event::Offline == event {
-                    self.handle_offline()
-                }
+            if Event::Offline == self.eventloop.poll().await {
+                self.handle_offline()
             }
         }
         return true;

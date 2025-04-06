@@ -36,13 +36,10 @@
 
 ## Client
 
-- remove option from poll event
 - decoding of state online/offline messages - do this with the wait for states update
 
 ## Rumqtt client
 
-- mqtt options struct
-- feature flags
 - better ensuring of operation success
   - make sure response to subscription request is made
   - ensure metric publish has been sent/acked

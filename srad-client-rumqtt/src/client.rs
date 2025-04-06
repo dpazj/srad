@@ -16,6 +16,7 @@ fn topic_filter_to_mqtt_filter(topic_filter: TopicFilter) -> Filter {
   Filter::new(topic_filter.topic, qos_to_mqtt_qos(topic_filter.qos))
 }
 
+/// A [srad_client::Client] implementation using [rumqttc]
 #[derive(Clone)]
 pub struct Client {
   client: RuClient
@@ -94,6 +95,7 @@ enum ConnectionState {
   Connected,
 }
 
+/// An [srad_client::EventLoop] implementation using [rumqttc]
 pub struct EventLoop {
   state: ConnectionState,
   el: RuEventLoop 
@@ -103,7 +105,7 @@ impl EventLoop {
 
   /// Create a new `Eventloop`.
   /// 
-  /// `options` are the mqtt options to create the rummqtt client with. Some options will be overwritten to ensure sparkplug compliance.
+  /// `options` are the mqtt options to create the rumqtt client with. Some options will be overwritten to ensure Sparkplug compliance.
   /// 
   /// `cap` specifies the capacity of the bounded async channel for the client handle.
   pub fn new(options: MqttOptions, cap: usize) -> (Self, Client) {
@@ -122,12 +124,9 @@ impl EventLoop {
     let (client, eventloop) = RuClient::new(options, cap);
     (EventLoop{el: eventloop, state: ConnectionState::Disconnected}, Client{client})
   }
-}
 
-#[async_trait]
-impl srad_client::EventLoop for EventLoop 
-{
-  async fn poll(&mut self) -> Option<Event> {
+  async fn poll_rumqtt(&mut self) -> Option<Event>
+  {
     let event = self.el.poll().await;
     match event {
       Ok(event) => {
@@ -164,6 +163,18 @@ impl srad_client::EventLoop for EventLoop
             ConnectionState::ManualDisconnected => None,
         }
       },
+    }
+  }
+}
+
+#[async_trait]
+impl srad_client::EventLoop for EventLoop 
+{
+  async fn poll(&mut self) -> Event {
+    loop {
+      if let Some(event) = self.poll_rumqtt().await {
+        return event 
+      }
     }
   }
 

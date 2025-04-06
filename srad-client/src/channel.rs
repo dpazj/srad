@@ -137,8 +137,8 @@ impl ChannelEventLoop {
 #[async_trait]
 impl crate::EventLoop for ChannelEventLoop {
 
-  async fn poll(&mut self) -> Option<Event> {
-    Some(self.rx.recv().await.unwrap())
+  async fn poll(&mut self) -> Event {
+    self.rx.recv().await.unwrap()
   }
 
   fn set_last_will(&mut self, will: LastWill) {

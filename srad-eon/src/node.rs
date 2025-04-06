@@ -387,26 +387,22 @@ impl EoN
     });
   }
 
-  async fn handle_event(&mut self, event: Option<Event>) 
+  async fn handle_event(&mut self, event: Event) 
   {
-    if let Some (event) = event {
-      match event {
-        Event::Online => self.on_online(),
-        Event::Offline => self.on_offline().await, 
-        Event::Node(node_message) => self.on_node_message(node_message),
-        Event::Device(device_message) => self.on_device_message(device_message),
-        Event::State{ host_id: _, payload: _ } => (),
-        Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
-      }
+    match event {
+      Event::Online => self.on_online(),
+      Event::Offline => self.on_offline().await, 
+      Event::Node(node_message) => self.on_node_message(node_message),
+      Event::Device(device_message) => self.on_device_message(device_message),
+      Event::State{ host_id: _, payload: _ } => (),
+      Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
     }
   }
 
   async fn poll_until_offline(&mut self) -> bool {
     while self.node.state.is_online() {
-      if let Some(event) = self.eventloop.poll().await {
-        if Event::Offline == event {
-          self.on_offline().await
-        }
+      if Event::Offline == self.eventloop.poll().await {
+        self.on_offline().await
       }
     }
     return true;
