@@ -3,7 +3,7 @@ use env_logger;
 use srad::app::{App, SubscriptionConfig};
 use srad::client_rumqtt as rumqtt;
 
-#[tokio::main(flavor="current_thread")]
+#[tokio::main]
 async fn main() {
 
     env_logger::Builder::new()

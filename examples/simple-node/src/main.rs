@@ -6,7 +6,7 @@ use tokio::time;
 use env_logger;
 use log::LevelFilter;
 
-#[tokio::main(flavor="current_thread")]
+#[tokio::main]
 async fn main() {
 
     env_logger::Builder::new()

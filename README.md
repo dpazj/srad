@@ -1,8 +1,9 @@
 # srad
 
-`srad` is an async implementation of the [Sparkplug B](https://sparkplug.eclipse.org/) specification providing an edge node and application development framework in Rust.
+`srad` is a [Sparkplug](https://sparkplug.eclipse.org/) edge node and application development framework in Rust.
 
 [![Crates.io][crates-badge]][crates-url]
+[![Documentation](https://docs.rs/srad/badge.svg)][docs]
 [![MIT licensed][mit-badge]][mit-url]
 [![Apache-2.0 licensed][apache-badge]][apache-url]
 
@@ -12,6 +13,8 @@
 [mit-url]: https://github.com/dpazj/srad/blob/master/LICENSE-MIT
 [apache-badge]: https://img.shields.io/badge/License-Apache_2.0-blue.svg
 [apache-url]: https://github.com/dpazj/srad/blob/master/LICENSE-APACHE
+
+Additional information for this crate can be found in the [docs][docs].
 
 ## Overview
 
@@ -26,7 +29,7 @@
 ```rust no_run
 use srad::{client_rumqtt, eon::{EoN, EoNBuilder, NoMetricManager}};
 
-#[tokio::main(flavor="current_thread")]
+#[tokio::main]
 async fn main() {
 
     let opts = client_rumqtt::MqttOptions::new("foo:bar", "localhost", 1883);
@@ -48,7 +51,7 @@ async fn main() {
 use srad::app::{App, SubscriptionConfig};
 use srad::client_rumqtt;
 
-#[tokio::main(flavor="current_thread")]
+#[tokio::main]
 async fn main() {
     let opts = client_rumqtt::MqttOptions::new("foo", "localhost", 1883);
     let (eventloop, client) = client_rumqtt::EventLoop::new(opts, 0);
@@ -69,10 +72,9 @@ async fn main() {
         });
     application.run().await;
 }
-
 ```
 
-More examples can be found in [Examples](./examples).
+More examples can be found in the [examples](./examples) and in the [docs][docs].
 
 ### Dependencies
 
@@ -94,3 +96,5 @@ This project is dual licensed under the [MIT] and [APACHE] licenses.
 
 [MIT]: https://github.com/dpazj/srad/blob/master/LICENSE-MIT
 [APACHE]: https://github.com/dpazj/srad/blob/master/LICENSE-APACHE
+
+[docs]: https://docs.rs/srad
