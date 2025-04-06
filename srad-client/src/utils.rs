@@ -20,7 +20,7 @@ fn process_topic_message(message_part: &[u8], payload: &[u8]) -> Result<(Message
 
   let payload = match Payload::decode(payload) {
     Ok(payload) => payload,
-    Err(_) => {return Err(MessageError::InvalidPayload)},
+    Err(e) => {return Err(MessageError::DecodePayloadError(e))},
   };
 
   let message_kind = match &message_part[1..] {
@@ -36,6 +36,7 @@ fn process_topic_message(message_part: &[u8], payload: &[u8]) -> Result<(Message
   Ok ((producer, Message { payload: payload, kind: message_kind}))
 }
 
+/// Utility function to help clients convert topic and payload data to an [Event]
 pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event
 {
   let mut iter = topic.split(|c| *c == b'/');

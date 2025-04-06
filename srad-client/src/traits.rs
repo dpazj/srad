@@ -3,6 +3,7 @@ use srad_types::{payload::Payload, topic::{DeviceTopic, NodeTopic, StateTopic, T
 
 use crate::{Event, LastWill, StatePayload};
 
+/// A trait for implementing a type that acts as a Sparkplug Client
 #[async_trait]
 pub trait Client {
 
@@ -53,6 +54,7 @@ pub trait Client {
 
 pub type DynClient = dyn Client + Send + Sync;
 
+/// A trait for implementing a type that acts as a Sparkplug Client's EventLoop 
 #[async_trait]
 pub trait EventLoop
 {

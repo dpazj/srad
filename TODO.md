@@ -25,7 +25,7 @@
 ## App
 
 - subscription config - only need to subscribe to birth data and cmd topics.
-- subscribe to own state and publish online message death cert recieved
+- subscribe to own state and publish online message death cert received
 - add application state subscription config
   - expose application state messages in callback api
 - check sequence order and issue rebirths if invalid after timeout
