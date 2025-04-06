@@ -24,13 +24,13 @@
 #### A simple Edge Node
 
 ```rust no_run
-use srad::{client::mqtt_client::rumqtt, eon::{EoN, EoNBuilder, NoMetricManager}};
+use srad::{client_rumqtt, eon::{EoN, EoNBuilder, NoMetricManager}};
 
 #[tokio::main(flavor="current_thread")]
 async fn main() {
 
-    let opts = rumqtt::MqttOptions::new("foo:bar", "localhost", 1883);
-    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
+    let opts = client_rumqtt::MqttOptions::new("foo:bar", "localhost", 1883);
+    let (eventloop, client) = client_rumqtt::EventLoop::new(opts, 0);
 
     let (mut eon, handle) = EoNBuilder::new(eventloop, client)
         .with_group_id("foo")
@@ -46,12 +46,12 @@ async fn main() {
 
 ```rust no_run
 use srad::app::{App, SubscriptionConfig};
-use srad::client::mqtt_client::rumqtt;
+use srad::client_rumqtt;
 
 #[tokio::main(flavor="current_thread")]
 async fn main() {
-    let opts = rumqtt::MqttOptions::new("foo", "localhost", 1883);
-    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
+    let opts = client_rumqtt::MqttOptions::new("foo", "localhost", 1883);
+    let (eventloop, client) = client_rumqtt::EventLoop::new(opts, 0);
     let (mut application, client) = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
 
     application

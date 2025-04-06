@@ -58,7 +58,7 @@ where
     let token = bi.register_metric(
       BirthMetricDetails::new_with_initial_value(name, val).use_alias(true)
     ).unwrap();
-    let id = token.id().clone();
+    let id = token.id.clone();
     metric.token = Some(token);
     id
   }

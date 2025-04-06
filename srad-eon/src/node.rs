@@ -32,6 +32,10 @@ use tokio::{select, task, sync::mpsc};
 #[derive(Debug)]
 struct EoNShutdown;
 
+/// A handle for interacting with the Edge Node.
+///
+/// `NodeHandle` provides an interface for interacting with an edge node,
+/// including device management, node lifecycle operations, and metric publishing.
 #[derive(Clone)]
 pub struct NodeHandle {
   node: Arc<Node>
@@ -39,6 +43,9 @@ pub struct NodeHandle {
 
 impl NodeHandle {
 
+  /// Stop all operations, sending a death certificate and disconnect from the broker.
+  /// 
+  /// This will cancel [EoN::run()]
   pub async fn cancel(&self){
     info!("Edge node stopping");
     let topic = NodeTopic::new(&self.node.state.group_id, NodeMessageType::NDeath, &self.node.state.edge_node_id);
@@ -51,10 +58,16 @@ impl NodeHandle {
     _ = self.node.client.disconnect().await;
   }
 
+  /// Manually trigger a rebirth for the node
   pub async fn rebirth(&self){
     self.node.birth(BirthType::Rebirth).await;
   }
 
+  /// Registers a new device with the node.
+  /// 
+  /// Returns an error if:
+  ///   - A device with the same name is already registered 
+  ///   - The device name is invalid 
   pub async fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, Error> 
   where 
     S: Into<String>,
@@ -73,10 +86,12 @@ impl NodeHandle {
     Ok(handle)
   }
 
+  /// Unregister a device using it's handle.
   pub async fn unregister_device(&self, handle: DeviceHandle){
     self.unregister_device_named(&handle.device.info.name).await;
   }
 
+  /// Unregister a device using it's name.
   pub async fn unregister_device_named(&self, name: &String){
     self.node.devices.remove_device(name).await
   }
@@ -126,7 +141,7 @@ impl MetricPublisher for NodeHandle
   }
 }
 
-pub struct EoNState {
+pub(crate) struct EoNState {
   bdseq: AtomicU8,
   seq: AtomicU8,
   online: AtomicBool,
@@ -137,23 +152,23 @@ pub struct EoNState {
 }
 
 impl EoNState{
-  pub fn get_seq(&self) -> u64 {
+  pub(crate) fn get_seq(&self) -> u64 {
     self.seq.fetch_add(1, Ordering::Relaxed) as u64
   }
 
-  pub fn is_online(&self) -> bool {
+  pub(crate) fn is_online(&self) -> bool {
     self.online.load(Ordering::SeqCst)
   }
 
-  pub fn birthed(&self) -> bool {
+  pub(crate) fn birthed(&self) -> bool {
     self.birthed.load(Ordering::SeqCst)
   }
 
-  pub fn birth_topic(&self) -> NodeTopic {
+  fn birth_topic(&self) -> NodeTopic {
     NodeTopic::new(&self.group_id, NodeMessageType::NBirth, &self.edge_node_id)
   }
 
-  pub fn sub_topics(&self) -> Vec<TopicFilter> {
+  fn sub_topics(&self) -> Vec<TopicFilter> {
     vec![
       TopicFilter::new_with_qos(Topic::NodeTopic(NodeTopic::new(&self.group_id, NodeMessageType::NCmd, &self.edge_node_id)), QoS::AtLeastOnce),
       TopicFilter::new_with_qos(Topic::DeviceTopic(DeviceTopic::new(&self.group_id, DeviceMessageType::DCmd, &self.edge_node_id, "+")), QoS::AtLeastOnce),
@@ -230,6 +245,7 @@ impl Node {
  
 }
 
+/// Structure that represents a Edge Node instance
 pub struct EoN 
 {
   node: Arc<Node>,
@@ -239,8 +255,6 @@ pub struct EoN
 
 impl EoN 
 {
-
-
   pub(crate) fn new_from_builder(builder: EoNBuilder) -> Result<(Self, NodeHandle), String>
   {
     let group_id = builder.group_id.ok_or("group id must be provided".to_string())?;
@@ -404,7 +418,7 @@ impl EoN
 
   /// Run the Edge Node
   /// 
-  /// Runs the Edge Node until `cancel()` is called on the [NodeHandle]
+  /// Runs the Edge Node until [NodeHandle::cancel()} is called 
   pub async fn run(&mut self) {
     info!("Edge node running");
     self.update_last_will();
@@ -415,6 +429,7 @@ impl EoN
       }
     }
     self.poll_until_offline_with_timeout().await;
+    self.on_offline().await;
     info!("Edge node stopped");
   } 
 

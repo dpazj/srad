@@ -166,7 +166,7 @@ impl BirthInitializer{
   {
     let tok = self.create_metric_token(&details.name, details.use_alias)?;
     let mut metric = details.to_metric();
-    if let MetricId::Alias(alias) = tok.id() {
+    if let MetricId::Alias(alias) = &tok.id {
       metric.set_alias(*alias);
     }
     self.birth_metrics.push(metric); 

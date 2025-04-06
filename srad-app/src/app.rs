@@ -700,6 +700,7 @@ impl App {
             }
         }
         self.poll_until_offline_with_timeout().await;
+        self.handle_offline();
         info!("App Stopped");
     } 
 

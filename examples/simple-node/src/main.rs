@@ -1,5 +1,5 @@
 use std::time::Duration;
-use srad::{client::mqtt_client::rumqtt, eon::{EoNBuilder, SimpleMetricManager}};
+use srad::{client_rumqtt as rumqtt, eon::{EoNBuilder, SimpleMetricManager}};
 
 use tokio::time;
 

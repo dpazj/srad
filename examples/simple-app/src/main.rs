@@ -1,7 +1,7 @@
 use log::{info, LevelFilter};
 use env_logger;
 use srad::app::{App, SubscriptionConfig};
-use srad::client::mqtt_client::rumqtt;
+use srad::client_rumqtt as rumqtt;
 
 #[tokio::main(flavor="current_thread")]
 async fn main() {

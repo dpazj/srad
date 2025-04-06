@@ -10,6 +10,7 @@ mod value;
 
 pub use value::*;
 
+/// Represents a unique identifier of a metric 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum MetricId {
   Name(String),

@@ -2,11 +2,11 @@ mod utils;
 
 use std::time::Duration;
 
-use srad_client::NodeMessage;
+use srad_client::{NodeMessage, channel::{ChannelEventLoop, OutboundMessage}};
 use srad_eon::{EoNBuilder, NoMetricManager};
 use srad_types::{constants::NODE_CONTROL_REBIRTH, payload::{Metric, Payload}, topic::{DeviceMessage, DeviceTopic, NodeTopic}};
 use tokio::time::timeout;
-use utils::{client::{EventLoop, OutboundMessage}, tester::{test_node_online, verify_dbirth_payload, verify_device_birth, verify_nbirth_payload}};
+use utils::tester::{test_node_online, verify_dbirth_payload, verify_device_birth, verify_nbirth_payload};
 
 
 #[tokio::test]
@@ -14,7 +14,7 @@ async fn node_session_establishment() {
   let group_id = "foo";
   let node_id = "bar";
 
-  let (channel_eventloop, client, mut broker) = EventLoop::new();
+  let (channel_eventloop, client, mut broker) = ChannelEventLoop::new();
   let (mut eventloop, _)  = EoNBuilder::new(channel_eventloop, client)
     .with_group_id(group_id)
     .with_node_id(node_id)
@@ -25,7 +25,7 @@ async fn node_session_establishment() {
   });
 
   test_node_online(&mut broker, &group_id, &node_id, 0).await;
-  broker.tx_event.send(Some(srad_client::Event::Offline)).unwrap();
+  broker.tx_event.send(srad_client::Event::Offline).unwrap();
 
   let last_will = broker.last_will();
   last_will.unwrap();
@@ -40,7 +40,7 @@ async fn device_session_establishment() {
   let device1_name = "device1";
   let device2_name = "device2";
 
-  let (channel_eventloop, client, mut broker) = EventLoop::new();
+  let (channel_eventloop, client, mut broker) = ChannelEventLoop::new();
   let (mut eventloop, handle)  = EoNBuilder::new(channel_eventloop, client)
     .with_group_id(group_id)
     .with_node_id(node_id)
@@ -66,7 +66,7 @@ async fn device_session_establishment() {
   assert_eq!(topic, DeviceTopic::new(group_id, DeviceMessage::DBirth, node_id, device1_name));
   verify_dbirth_payload(payload, 1);
 
-  broker.tx_event.send(Some(srad_client::Event::Offline)).unwrap();
+  broker.tx_event.send(srad_client::Event::Offline).unwrap();
 
   let last_will = broker.last_will();
   last_will.unwrap();
@@ -108,8 +108,8 @@ async fn rebirth() {
   let device1_name = "dev1";
   let device2_name = "dev2";
 
-  let (channel_eventloop, client, mut broker) = EventLoop::new();
-  let (mut eventloop, handle)  = EoNBuilder::new(channel_eventloop, client)
+  let (channel_eventloop, client, mut broker) = ChannelEventLoop::new();
+  let (mut eventloop, handle) = EoNBuilder::new(channel_eventloop, client)
     .with_group_id(group_id)
     .with_node_id(node_id)
     .build().unwrap();
@@ -119,7 +119,7 @@ async fn rebirth() {
   });
   test_node_online(&mut broker, &group_id, &node_id, 0).await;
 
-  broker.tx_event.send(Some(srad_client::Event::Node(create_rebirth_message(&group_id, &node_id)))).unwrap();
+  broker.tx_event.send(srad_client::Event::Node(create_rebirth_message(&group_id, &node_id))).unwrap();
 
   let node_rebirth = timeout(Duration::from_secs(1), broker.rx_outbound.recv()).await.unwrap().unwrap();
   let (topic, payload) = match node_rebirth {
@@ -135,7 +135,7 @@ async fn rebirth() {
   handle.register_device(device2_name, NoMetricManager::new()).await.unwrap().enable().await;
   verify_device_birth(&mut broker, &group_id, &node_id, &device2_name, 2).await;
 
-  broker.tx_event.send(Some(srad_client::Event::Node(create_rebirth_message(&group_id, &node_id)))).unwrap();
+  broker.tx_event.send(srad_client::Event::Node(create_rebirth_message(&group_id, &node_id))).unwrap();
   let node_rebirth = timeout(Duration::from_secs(1), broker.rx_outbound.recv()).await.unwrap().unwrap();
   let (topic, payload) = match node_rebirth {
     OutboundMessage::NodeMessage { topic, payload } => (topic, payload),

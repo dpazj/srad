@@ -21,27 +21,47 @@ pub enum PublishError {
   UnBirthed,
 }
 
-
+/// A trait for publishing metrics to the network.
+///
+/// `MetricPublisher` defines a set of methods for publishing single metrics
+/// or batches of metrics. It provides "try_" variants that may fail immediately.
 pub trait MetricPublisher {
+
+  /// Attempts to publish a batch of metrics without modifying their order.
   fn try_publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send;
+
+  /// Attempts to publish a single metric.
   fn try_publish_metric(&self, metric: PublishMetric) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     self.try_publish_metrics_unsorted(vec![metric])
   }
+
+  /// Attempts to publish a batch of metrics after sorting by timestamp.
   fn try_publish_metrics(&self, mut metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     metrics.sort_by(|a,b| a.timestamp.cmp(&b.timestamp));
     self.publish_metrics_unsorted(metrics)
   }
 
+  /// Publish a batch of metrics without modifying their order.
   fn publish_metrics_unsorted(&self, metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send;
+
+  /// Publish a single metric.
   fn publish_metric(&self, metric: PublishMetric) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     self.publish_metrics_unsorted(vec![metric])
   }
+
+  /// Publish a batch of metrics after sorting by timestamp.
   fn publish_metrics(&self, mut metrics: Vec<PublishMetric>) -> impl std::future::Future<Output = Result<(),PublishError>> + Send {
     metrics.sort_by(|a,b| a.timestamp.cmp(&b.timestamp));
     self.publish_metrics_unsorted(metrics)
   }
+
 }
 
+/// A structure for creating a metric to be published with associated metadata and properties.
+///
+/// `PublishMetric` provides a builder pattern for configuring metric publications,
+/// allowing for optional fields like transience, historical status, custom timestamps,
+/// metadata, and properties.
 pub struct PublishMetric 
 {
   metric_identifier: MetricId,
@@ -67,27 +87,39 @@ impl PublishMetric {
       timestamp: timestamp()
     }
   }
-
+  /// Sets a custom timestamp for the metric.
+  ///
+  /// By default, the current system time is used.
   pub fn timestamp(mut self, timestamp: u64) -> Self {
     self.timestamp = timestamp;
     self
   }
 
+  /// Marks the metric as transient or persistent.
+  ///
+  /// Transient metrics are typically not stored permanently. By default metrics are not transient.
   pub fn transient(mut self, is_transient: bool) -> Self {
     self.is_transient = Some(is_transient);
     self
   }
 
+  /// Marks the metric as a historical metric that does not represent a current value.
+  ///
+  /// By default, metrics are not historical.
   pub fn historical(mut self, is_historical: bool) -> Self {
     self.is_historical = Some(is_historical);
     self
   }
 
+  /// Sets custom metadata for the metric.
+  ///
+  /// By default, the result from [MetricValue::publish_metadata][srad_types::traits::MetricValue::publish_metadata]  will be used.
   pub fn metadata(mut self, metadata: MetaData) -> Self {
     self.metadata = Some(metadata);
     self
   }
 
+  /// Sets custom properties for the metric.
   pub fn properties<P: Into<PropertySet>>(mut self, properties: P) -> Self {
     self.properties = Some(properties.into());
     self
@@ -121,9 +153,13 @@ impl ToMetric for PublishMetric {
   }
 }
 
+/// A token representing a birthed metric
+/// 
+/// Used to create a [PublishMetric] for publishing and match a [MessageMetric] identifier
 pub struct MetricToken<T> {
   phantom: PhantomData<T>,
-  id: MetricId,
+  /// The unique identifier of the metric
+  pub id: MetricId,
 }
 
 impl<T> MetricToken<T> 
@@ -137,17 +173,16 @@ where T:
     }
   }
 
+  /// Create a new [PublishMetric]
   pub fn create_publish_metric(&self, value: Option<T>) -> PublishMetric {
     PublishMetric::new( self.id.clone(), value)
   }
 
-  pub fn id(&self) -> &MetricId {
-    &self.id
-  }
-
 }
 
+/// A collection of metrics from a message 
 pub struct MessageMetrics {
+  /// The timestamp of the payload 
   pub timestamp: u64,
   metrics: Vec<Metric>
 }
@@ -158,7 +193,9 @@ impl MessageMetrics {
 
 }
 
+/// A metric from a message 
 pub struct MessageMetric {
+  /// The unique identifier of the metric
   pub id: MetricId,
   pub timestamp: Option<u64>,
   pub value: Option<MetricValue>,

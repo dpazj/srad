@@ -3,9 +3,7 @@ use std::time::Duration;
 use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{metric, DataType, Payload}, topic::{DeviceMessage, DeviceTopic, NodeMessage, NodeTopic, QoS, StateTopic, Topic, TopicFilter} };
 use tokio::time::timeout;
 
-use crate::utils::client::OutboundMessage;
-
-use super::client::Broker;
+use srad_client::channel::{OutboundMessage, ChannelBroker};
 
 pub fn verify_nbirth_payload(payload: Payload, expected_bdseq: u64)
 {
@@ -57,9 +55,9 @@ pub fn verify_dbirth_payload(payload: Payload, expected_seq: u64)
   assert_ne!(payload.timestamp, None);
 }
 
-pub async fn test_node_online(broker: &mut Broker, group_id: &str, node_id: &str, expected_bdseq: u64)
+pub async fn test_node_online(broker: &mut ChannelBroker, group_id: &str, node_id: &str, expected_bdseq: u64)
 {
-  broker.tx_event.send(Some(srad_client::Event::Online)).unwrap();
+  broker.tx_event.send(srad_client::Event::Online).unwrap();
   let subscription = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
       .await
       .unwrap()
@@ -94,7 +92,7 @@ pub async fn test_node_online(broker: &mut Broker, group_id: &str, node_id: &str
   verify_nbirth_payload(payload, expected_bdseq);
 }
 
-pub async fn verify_device_birth(broker: &mut Broker, group_id: &str, node_id: &str, device_name: &str, expected_seq: u64) 
+pub async fn verify_device_birth(broker: &mut ChannelBroker, group_id: &str, node_id: &str, device_name: &str, expected_seq: u64) 
 {
   let device_birth= timeout(Duration::from_secs(1), broker.rx_outbound.recv())
       .await
