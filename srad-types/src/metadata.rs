@@ -1,14 +1,14 @@
 use crate::payload;
 
 pub struct MetaData {
-  description: Option<String>,
-  content_type: Option<String>,
-  size: Option<u64>,
-  md5: Option<String>,
+  pub description: Option<String>,
+  pub content_type: Option<String>,
+  pub size: Option<u64>,
+  pub md5: Option<String>,
 
   /// File metadata
-  file_name: Option<String>,
-  file_type: Option<String>,
+  pub file_name: Option<String>,
+  pub file_type: Option<String>,
 } 
 
 impl From<MetaData> for payload::MetaData {

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{constants::QUALITY, payload::{self, property_value}, quality::Quality, traits, PropertyValue as PropertyValueValue};
 
 #[derive(Debug)]
-pub struct PropertyValue {
+struct PropertyValue {
   value: Option<PropertyValueValue>,
   datatype: Option<payload::DataType>
 }
@@ -41,6 +41,7 @@ impl TryFrom<payload::PropertyValue> for PropertyValue {
   }
 }
 
+/// A collection of property values
 #[derive(Debug)]
 pub struct PropertySet(HashMap<String, PropertyValue>);
 

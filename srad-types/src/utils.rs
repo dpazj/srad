@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub fn timestamp () -> u64
+/// Get the current unix timestamp
+pub fn timestamp() -> u64
 {
   SystemTime::now()
     .duration_since(UNIX_EPOCH)
@@ -8,6 +9,7 @@ pub fn timestamp () -> u64
     .as_millis() as u64
 }
 
+/// Validate a provided name value 
 pub fn validate_name(name: &str) -> Result<(), String> {
   if name.len() == 0 { return Err("name string must not be empty".into())}
   for c in name.chars() {

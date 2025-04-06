@@ -1,6 +1,6 @@
 use crate::{payload::DataType, traits, FromValueTypeError, PropertyValue};
 
-
+/// Enum to represent the different quality codes 
 pub enum Quality {
   Good = 0,
   Bad = 192,
