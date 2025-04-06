@@ -145,11 +145,6 @@ impl EoNState{
     self.online.load(Ordering::SeqCst)
   }
 
-  pub fn set_online(&self, online: bool)
-  {
-    self.online.store(online, Ordering::SeqCst)
-  }
-
   pub fn birthed(&self) -> bool {
     self.birthed.load(Ordering::SeqCst)
   }
@@ -302,8 +297,8 @@ impl EoN
   }
 
   fn on_online(&self) {
+    if self.node.state.online.swap(true, Ordering::SeqCst) == true { return }
     info!("Edge node online");
-    self.node.state.set_online(true);
     let sub_topics = self.node.state.sub_topics();
     let node = self.node.clone();
 
@@ -315,8 +310,8 @@ impl EoN
   }
 
   async fn on_offline(&mut self) {
+    if self.node.state.online.swap(false, Ordering::SeqCst) == false { return }
     info!("Edge node offline");
-    self.node.state.set_online(false);
     self.node.devices.on_offline().await;
     self.node.state.bdseq.fetch_add(1, Ordering::SeqCst);
     self.update_last_will();

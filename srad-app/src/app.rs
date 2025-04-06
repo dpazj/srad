@@ -625,8 +625,8 @@ impl App {
     }
 
     fn handle_online(&self) {
+        if self.online.swap(true, std::sync::atomic::Ordering::SeqCst) == true { return };
         info!("App Online");
-        self.online.store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(callback) = &self.callbacks.online { callback() };
         let client = self.client.0.clone();
         let state_topic = StateTopic::new_host(&self.host_id);
@@ -640,8 +640,8 @@ impl App {
     }
 
     fn handle_offline(&mut self) {
+        if self.online.swap(false, std::sync::atomic::Ordering::SeqCst) == false { return };
         info!("App Offline");
-        self.online.store(false, std::sync::atomic::Ordering::SeqCst);
         if let Some(callback) = &self.callbacks.offline { callback() };
         self.update_last_will();
     }
