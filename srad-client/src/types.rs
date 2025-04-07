@@ -53,7 +53,7 @@ impl StatePayload {
   /// Get the [QoS] and retain settings that the State message should be published with 
   pub fn get_publish_quality_retain(&self) -> (QoS, bool) {
     match self {
-      StatePayload::Online { timestamp: _ } => (QoS::AtLeastOnce, false),
+      StatePayload::Online { timestamp: _ } => (QoS::AtLeastOnce, true),
       StatePayload::Offline { timestamp: _ } => (QoS::AtLeastOnce, true),
       StatePayload::Other(_) => (QoS::AtMostOnce, false),
     }
