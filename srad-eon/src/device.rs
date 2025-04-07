@@ -5,7 +5,7 @@ use log::{debug, info, warn};
 use srad_client::{DeviceMessage, DynClient, MessageKind};
 use srad_types::{payload::{Payload, ToMetric}, topic::DeviceTopic, utils::timestamp};
 
-use crate::{birth::{BirthInitializer, BirthObjectType}, error::Error, metric::{MetricPublisher, PublishError, PublishMetric}, metric_manager::manager::DynDeviceMetricManager, node::EoNState, registry::{self, DeviceId}, BirthType};
+use crate::{birth::{BirthInitializer, BirthObjectType}, error::DeviceRegistrationError, metric::{MetricPublisher, PublishError, PublishMetric}, metric_manager::manager::DynDeviceMetricManager, node::EoNState, registry::{self, DeviceId}, BirthType};
 
 pub(crate) struct DeviceInfo {
   id: DeviceId,
@@ -189,11 +189,11 @@ impl DeviceMap {
     }
   }
 
-  pub async fn add_device(&self, group_id: &String, node_id: &String, name: String, dev_impl: Arc<DynDeviceMetricManager>) -> Result<DeviceHandle, Error>{
+  pub async fn add_device(&self, group_id: &String, node_id: &String, name: String, dev_impl: Arc<DynDeviceMetricManager>) -> Result<DeviceHandle, DeviceRegistrationError>{
     
     let mut state= self.state.lock().await;
     if let Some(_) = state.devices.get_key_value(&name) {
-      return Err(Error::DuplicateDevice);
+      return Err(DeviceRegistrationError::DuplicateDevice);
     }
 
     let name = Arc::new(name);

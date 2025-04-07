@@ -1,11 +1,36 @@
 use std::time::Duration;
 
-use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{metric, DataType, Payload}, topic::{DeviceMessage, DeviceTopic, NodeMessage, NodeTopic, QoS, StateTopic, Topic, TopicFilter} };
+use srad_eon::NodeHandle;
+use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{metric, DataType, Metric, Payload}, topic::{DeviceMessage, DeviceTopic, NodeMessage, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, MetricValue};
 use tokio::time::timeout;
 
 use srad_client::channel::{OutboundMessage, ChannelBroker};
 
-pub fn verify_nbirth_payload(payload: Payload, expected_bdseq: u64)
+pub fn create_test_ndeath_payload(expected_bdseq: i64) -> Payload
+{
+  let mut metric = Metric::new();
+  metric.set_name(BDSEQ.to_string()).set_value(MetricValue::from(expected_bdseq as i64).into());
+  Payload { 
+    timestamp: None, 
+    metrics: vec![
+      metric
+    ],
+    seq: None, 
+    uuid: None, 
+    body: None
+  }
+}
+
+pub fn test_ddeath_payload(payload: Payload, expected_seq: u64) 
+{
+  assert_ne!(payload.timestamp, None);
+  assert_eq!(payload.seq, Some(expected_seq));
+  assert_eq!(payload.metrics.len(), 0);
+  assert_eq!(payload.body, None);
+  assert_eq!(payload.uuid, None);
+} 
+
+pub fn verify_nbirth_payload(payload: Payload, expected_bdseq: i64)
 {
 
   /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
@@ -41,7 +66,7 @@ pub fn verify_nbirth_payload(payload: Payload, expected_bdseq: u64)
       contains_bdseq = true;
       assert_eq!(metric.alias, None);
       assert_eq!(metric.datatype, Some(DataType::Int64 as u32));
-      assert_eq!(metric.value, Some(metric::Value::LongValue(expected_bdseq)));
+      assert_eq!(metric.value, Some(MetricValue::from(expected_bdseq).into()));
     }
   }
   assert!(contains_node_control);
@@ -55,7 +80,7 @@ pub fn verify_dbirth_payload(payload: Payload, expected_seq: u64)
   assert_ne!(payload.timestamp, None);
 }
 
-pub async fn test_node_online(broker: &mut ChannelBroker, group_id: &str, node_id: &str, expected_bdseq: u64)
+pub async fn test_node_online(broker: &mut ChannelBroker, group_id: &str, node_id: &str, expected_bdseq: i64)
 {
   broker.tx_event.send(srad_client::Event::Online).unwrap();
   let subscription = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
@@ -105,4 +130,27 @@ pub async fn verify_device_birth(broker: &mut ChannelBroker, group_id: &str, nod
   };
   assert_eq!(topic, DeviceTopic::new(group_id, DeviceMessage::DBirth, node_id, device_name));
   verify_dbirth_payload(payload, expected_seq);
+}
+
+// Test graceful shutdown using handle.cancel()
+pub async fn test_graceful_shutdown(broker: &mut ChannelBroker, handle: &NodeHandle,  group_id: &str, node_id: &str, expected_bdseq: i64)
+{
+  handle.cancel().await; 
+  let node_death = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
+      .await
+      .unwrap()
+      .unwrap();
+  
+  let (topic, payload) = match node_death {
+    OutboundMessage::NodeMessage{ topic, payload } => (topic, payload),
+    _ => panic!()
+  };
+  assert_eq!(topic, NodeTopic::new(group_id, srad_types::topic::NodeMessage::NDeath, node_id));
+  assert_eq!(payload, create_test_ndeath_payload(expected_bdseq));
+
+  let disconnect = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
+      .await
+      .unwrap()
+      .unwrap();
+  assert_eq!(disconnect, OutboundMessage::Disconnect);
 }

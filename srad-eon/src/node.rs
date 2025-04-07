@@ -11,6 +11,7 @@ use srad_types::payload::metric::Value;
 use srad_types::payload::ToMetric;
 use srad_types::topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter};
 use srad_types::utils::timestamp;
+use srad_types::MetricValue;
 use srad_types::{
   constants,
   topic::{DeviceMessage as DeviceMessageType, NodeMessage as NodeMessageType},
@@ -21,7 +22,7 @@ use tokio::time::timeout;
 use crate::birth::{BirthInitializer, BirthMetricDetails, BirthObjectType};
 use crate::builder::EoNBuilder;
 use crate::device::{DeviceHandle, DeviceMap};
-use crate::error::Error;
+use crate::error::DeviceRegistrationError;
 use crate::metric::{MessageMetrics, MetricPublisher, PublishError, PublishMetric};
 use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
 use crate::registry::Registry;
@@ -68,14 +69,14 @@ impl NodeHandle {
   /// Returns an error if:
   ///   - A device with the same name is already registered 
   ///   - The device name is invalid 
-  pub async fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, Error> 
+  pub async fn register_device<S, M>(&self, name: S, dev_impl: M) -> Result<DeviceHandle, DeviceRegistrationError> 
   where 
     S: Into<String>,
     M: DeviceMetricManager + Send + Sync + 'static 
   {
     let name = name.into();
     if let Err(e) = srad_types::utils::validate_name(&name) {
-      return Err(Error::InvalidName(e));
+      return Err(DeviceRegistrationError::InvalidName(e));
     }
     let handle = self.node.devices.add_device(
       &self.node.state.group_id,
@@ -190,7 +191,7 @@ impl Node {
   fn generate_death_payload(&self) -> Payload {
       let mut metric = srad_types::payload::Metric::new(); 
       metric.set_name(constants::BDSEQ.to_string())
-        .set_value(srad_types::payload::metric::Value::LongValue(self.state.bdseq.load(Ordering::SeqCst) as u64));
+        .set_value(MetricValue::from(self.state.bdseq.load(Ordering::SeqCst) as i64).into());
       Payload {
         seq: None, 
         metrics: vec![metric],
