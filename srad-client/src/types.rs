@@ -16,6 +16,8 @@ pub enum MessageError {
   InvalidSparkplugTopic,
   #[error("Topic parts utf8 decode error: {0}")]
   TopicUtf8Error(FromUtf8Error),
+  #[error("Unable to decode state message as json: {0}")]
+  StatePayloadJsonDecodeError(String)
 }
 
 impl From<FromUtf8Error> for MessageError {
@@ -45,8 +47,7 @@ pub struct Message {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatePayload {
   Online {timestamp: u64},
-  Offline {timestamp: u64},
-  Other(Vec<u8>)
+  Offline {timestamp: u64}
 }
 
 impl StatePayload {
@@ -54,8 +55,7 @@ impl StatePayload {
   pub fn get_publish_quality_retain(&self) -> (QoS, bool) {
     match self {
       StatePayload::Online { timestamp: _ } => (QoS::AtLeastOnce, true),
-      StatePayload::Offline { timestamp: _ } => (QoS::AtLeastOnce, true),
-      StatePayload::Other(_) => (QoS::AtMostOnce, false),
+      StatePayload::Offline { timestamp: _ } => (QoS::AtLeastOnce, true)
     }
   }
 }
@@ -64,8 +64,7 @@ impl From<StatePayload> for Vec<u8> {
     fn from(value: StatePayload) -> Self {
       match value {
         StatePayload::Online { timestamp } => format!("{{\"online\" : true, \"timestamp\" : {}}}", timestamp).into(),
-        StatePayload::Offline { timestamp } => format!("{{\"online\" : false, \"timestamp\" : {}}}", timestamp).into(),
-        StatePayload::Other (data) => data,
+        StatePayload::Offline { timestamp } => format!("{{\"online\" : false, \"timestamp\" : {}}}", timestamp).into()
       } 
     }
 }

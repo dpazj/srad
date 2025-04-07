@@ -117,7 +117,7 @@ pub enum Topic {
   State(StateTopic),
   Node{group_id: String, node_id: String},
   Group {id: String},
-  Namespace,
+  FullNamespace,
 }
 
 impl Into<String> for Topic {
@@ -128,8 +128,8 @@ impl Into<String> for Topic {
       Topic::DeviceTopic(device_topic) => device_topic.topic,
       Topic::State(state_topic) => state_topic.topic,
       Topic::Node { group_id, node_id  } => format!("{}/{}/+/{}/#", SPBV01, group_id, node_id),
-      Topic::Group { id } => format!("{}/{}/#", SPBV01, id),
-      Topic::Namespace => format!("{}/#", SPBV01),
+      Topic::Group { id } => format!("{SPBV01}/{id}/+/#"),
+      Topic::FullNamespace => format!("{SPBV01}/#"),
     }
   }
 }

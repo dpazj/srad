@@ -2,6 +2,8 @@ pub mod types {
   include!(concat!(env!("OUT_DIR"), "/org.eclipse.tahu.protobuf.rs"));
 }
 
+use serde::{Deserialize, Serialize};
+
 pub use types::{*, payload::*};
 
 pub use prost::Message as Message;
@@ -113,8 +115,33 @@ impl TryFrom<u32> for DataType {
       _ => Err(()),
     }
 
-
   }
 
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct StateBirthDeathCertificate {
+  pub timestamp: u64, 
+  pub online: bool
+}
+
+impl TryFrom<StateBirthDeathCertificate> for Vec<u8> {
+  type Error = String;
+  fn try_from(value: StateBirthDeathCertificate) -> Result<Self, Self::Error> {
+    match serde_json::to_vec(&value) {
+      Ok(v) => Ok(v),
+      Err(e) => Err(e.to_string()),
+    }
+  }
+}
+
+impl TryFrom<&[u8]> for StateBirthDeathCertificate {
+  type Error = String;
+  fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+    match serde_json::from_slice::<StateBirthDeathCertificate>(value) {
+      Ok(v) => Ok(v),
+      Err(e) => Err(e.to_string()),
+    }
+  }
 }
 

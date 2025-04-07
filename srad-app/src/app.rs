@@ -1,7 +1,7 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::{atomic::AtomicBool, Arc, Mutex}, time::Duration};
 
 use log::{debug, error, info, warn};
-use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage};
+use srad_client::{Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage, StatePayload};
 use srad_types::{constants::{BDSEQ, NODE_CONTROL_REBIRTH}, payload::{Metric, Payload, ToMetric}, topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::{self, timestamp}, MetricId, MetricValue};
 
 use crate::{config::SubscriptionConfig, metrics::{get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, PublishMetric}};
@@ -663,11 +663,14 @@ impl App {
         let client = self.client.0.clone();
         let state_topic = StateTopic::new_host(&self.host_id);
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
-        topics.push(TopicFilter::new_with_qos(Topic::State(state_topic.clone()), QoS::AtMostOnce));
+        if let SubscriptionConfig::AllGroups = self.subscription_config {} else {
+            //If subscription config == AllGroups, then we get STATE subscriptions for free
+            topics.push(TopicFilter::new_with_qos(Topic::State(state_topic.clone()), QoS::AtMostOnce));
+        }
         let timestamp = self.state.will_timestamp;
         task::spawn(async move {
+            _ = client.subscribe_many(topics).await;
             _ = client.publish_state_message(state_topic, srad_client::StatePayload::Online { timestamp }).await;
-            client.subscribe_many(topics).await
         });
     }
 
@@ -699,7 +702,18 @@ impl App {
                     }
                 }
             },
-            Event::State { host_id: _, payload: _} => (),
+            Event::State { host_id , payload } => {
+                if host_id == *self.host_id {
+                   if let StatePayload::Offline { timestamp: _ } = payload {
+                        let topic = StateTopic::new_host(&self.host_id);
+                        let client = self.client.0.clone();
+                        let timestamp = self.state.will_timestamp;
+                        task::spawn(async move {
+                            _ = client.publish_state_message(topic, StatePayload::Online { timestamp }).await;
+                        });
+                   }
+                }
+            },
             Event::InvalidPublish { reason: _, topic: _, payload: _ } => (),
         }
     }

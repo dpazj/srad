@@ -1,6 +1,6 @@
 use crate::{DeviceMessage, Event, Message, MessageError, MessageKind, NodeMessage, StatePayload};
 
-use srad_types::{constants::STATE, payload::Payload}; 
+use srad_types::{constants::STATE, payload::{Payload, StateBirthDeathCertificate}}; 
 use prost::Message as ProstMessage;
 
 enum MessageProducer {
@@ -61,7 +61,16 @@ pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event
       None => return Event::InvalidPublish { reason: MessageError::InvalidSparkplugTopic, topic, payload }
     };
 
-    return Event::State { host_id: host_id, payload: StatePayload::Other(payload)}
+    return match StateBirthDeathCertificate::try_from(payload.as_slice()) {
+      Ok(cert) => {
+        let payload = match cert.online {
+          true => StatePayload::Online { timestamp: cert.timestamp },
+          false => StatePayload::Offline { timestamp: cert.timestamp },
+        };
+        Event::State { host_id: host_id, payload}
+      },
+      Err(e) => Event::InvalidPublish { reason: MessageError::StatePayloadJsonDecodeError(e), topic, payload }
+    };
   }
 
   let group_id= match String::from_utf8(state_or_group_id.into()) {

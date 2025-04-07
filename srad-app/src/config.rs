@@ -34,7 +34,9 @@ pub enum SubscriptionConfig{
 impl From<SubscriptionConfig> for Vec<TopicFilter> {
     fn from(value: SubscriptionConfig) -> Self {
         match value {
-            SubscriptionConfig::AllGroups => vec![TopicFilter { topic: Topic::Namespace, qos: QoS::AtMostOnce }],
+            SubscriptionConfig::AllGroups => vec![
+                TopicFilter { topic: Topic::FullNamespace, qos: QoS::AtMostOnce }
+            ],
             SubscriptionConfig::SingleGroup { group_id } => vec![
                 TopicFilter { topic: Topic::Group { id: group_id }, qos: QoS::AtMostOnce}
             ],
