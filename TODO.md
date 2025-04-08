@@ -2,16 +2,19 @@
 
 ## General
 
-- tests
+- more tests
 - use tck to test
-- examples
-- docs
+- better examples
+- more detailed docs
 
 ## Srad
 
 - feature flags
 
 ## EoN
+
+- datatypes example
+- custom device and node impl
 
 - check result of subscribe and publishes and handle failures accordingly
   - failed subs and nbirth publishes should probably disconnect and return error from run()
