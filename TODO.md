@@ -7,8 +7,6 @@
 - examples
 - docs
 
-- 
-
 ## Srad
 
 - feature flags
@@ -47,6 +45,7 @@
 - better ensuring of operation success
   - make sure response to subscription request is made
   - ensure metric publish has been sent/acked
+  - waiting on https://github.com/bytebeamio/rumqtt/pull/916 being merged
 
 ## Types
 
