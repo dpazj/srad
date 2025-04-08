@@ -131,15 +131,14 @@ impl RebirthReasonDetails {
 
 }
 
-struct State {
-    will_timestamp: u64,
+struct NamespaceState {
     nodes: Mutex<HashMap<NodeIdentifier, NodeState>>,
 }
 
-impl State {
+impl NamespaceState{
 
     fn new() -> Self {
-        State { nodes: Mutex::new(HashMap::new()), will_timestamp: 0 }
+        NamespaceState { nodes: Mutex::new(HashMap::new()) }
     }
 
     fn bdseq_from_payload_metrics(vec: &Vec<Metric>) -> Result<u8, ()> {
@@ -430,7 +429,7 @@ impl PublishTopic {
 
 /// The Application client to interact with the Application and Sparkplug namespace from. 
 #[derive(Clone)]
-pub struct AppClient(Arc<DynClient>, mpsc::Sender<Shutdown>, Arc<String>);
+pub struct AppClient(Arc<DynClient>, mpsc::Sender<Shutdown>, Arc<AppState>);
 
 impl AppClient {
 
@@ -439,7 +438,7 @@ impl AppClient {
     /// This will cancel [App::run()]
     pub async fn cancel(&self) {
         info!("App Stopping");
-        let topic = StateTopic::new_host(&self.2);
+        let topic = StateTopic::new_host(&self.2.host_id);
         match self.0.try_publish_state_message(topic, srad_client::StatePayload::Offline { timestamp: timestamp() }).await {
             Ok(_) => (),
             Err(_) => debug!("Unable to publish state offline on exit"),
@@ -500,15 +499,20 @@ struct Callbacks {
     evaluate_rebirth_reason: Option<Arc<dyn Fn(RebirthReasonDetails) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>>, 
 }
 
+struct AppState {
+    host_id: String,
+    online: AtomicBool, 
+    published_online_state: AtomicBool, 
+}
 
 /// Structure that represents a Sparkplug Application instance
 pub struct App {
-    host_id: Arc<String>,
+    app_state: Arc<AppState>,
+    will_timestamp: u64,
     subscription_config: SubscriptionConfig,
     client: AppClient,
     eventloop: Box<DynEventLoop>,
-    state: State,
-    online: AtomicBool,
+    state: NamespaceState,
     callbacks: Callbacks,
     shutdown_rx: Receiver<Shutdown>
 }
@@ -535,22 +539,29 @@ impl App {
             evaluate_rebirth_reason: None,
         };
         let (tx, rx) = mpsc::channel(1);
-        let host_id: Arc<String> = host_id.into().into();
 
+        let host_id: String = host_id.into();
         if let Err(e) = utils::validate_name(&host_id) {
             panic!("Invalid host id: {e}");
         };
 
-        let client = AppClient(Arc::new(client), tx, host_id.clone());
+        let app_state = Arc::new(
+            AppState { 
+                host_id, 
+                online: AtomicBool::new(false), 
+                published_online_state: AtomicBool::new(false), 
+            }
+        );
+        let client = AppClient(Arc::new(client), tx, app_state.clone());
         let app = Self {
-            host_id: host_id,
+            app_state,
+            will_timestamp: 0,
             client: client.clone(),
             eventloop: Box::new(eventloop),
             subscription_config,
-            state: State::new(),
+            state: NamespaceState::new(),
             callbacks,
             shutdown_rx: rx,
-            online: AtomicBool::new(false)
         };
         (app, client)
     }
@@ -652,31 +663,34 @@ impl App {
     }
 
     fn update_last_will(&mut self) {
-        self.state.will_timestamp = timestamp();
-        self.eventloop.set_last_will(srad_client::LastWill::new_app(&self.host_id, self.state.will_timestamp));
+        self.will_timestamp = timestamp();
+        self.eventloop.set_last_will(srad_client::LastWill::new_app(&self.app_state.host_id, self.will_timestamp));
     }
 
     fn handle_online(&self) {
-        if self.online.swap(true, std::sync::atomic::Ordering::SeqCst) == true { return };
+        if self.app_state.online.swap(true, std::sync::atomic::Ordering::SeqCst) == true { return };
         info!("App Online");
         if let Some(callback) = &self.callbacks.online { callback() };
         let client = self.client.0.clone();
-        let state_topic = StateTopic::new_host(&self.host_id);
+        let state_topic = StateTopic::new_host(&self.app_state.host_id);
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
         if let SubscriptionConfig::AllGroups = self.subscription_config {} else {
             //If subscription config == AllGroups, then we get STATE subscriptions for free
             topics.push(TopicFilter::new_with_qos(Topic::State(state_topic.clone()), QoS::AtMostOnce));
         }
-        let timestamp = self.state.will_timestamp;
+        let timestamp = self.will_timestamp;
+        let app_state = self.client.2.clone();
         task::spawn(async move {
             _ = client.subscribe_many(topics).await;
             _ = client.publish_state_message(state_topic, srad_client::StatePayload::Online { timestamp }).await;
+            app_state.published_online_state.store(true, std::sync::atomic::Ordering::SeqCst);
         });
     }
 
     fn handle_offline(&mut self) {
-        if self.online.swap(false, std::sync::atomic::Ordering::SeqCst) == false { return };
+        if self.app_state.online.swap(false, std::sync::atomic::Ordering::SeqCst) == false { return };
         info!("App Offline");
+        self.app_state.published_online_state.store(false, std::sync::atomic::Ordering::SeqCst);
         if let Some(callback) = &self.callbacks.offline { callback() };
         self.update_last_will();
     }
@@ -703,13 +717,13 @@ impl App {
                 }
             },
             Event::State { host_id , payload } => {
-                if host_id == *self.host_id {
+                if self.app_state.published_online_state.load(std::sync::atomic::Ordering::SeqCst) && host_id == self.app_state.host_id {
                    if let StatePayload::Offline { timestamp: _ } = payload {
-                        let topic = StateTopic::new_host(&self.host_id);
+                        let topic = StateTopic::new_host(&self.app_state.host_id);
                         let client = self.client.0.clone();
-                        let timestamp = self.state.will_timestamp;
+                        let timestamp = self.will_timestamp;
                         task::spawn(async move {
-                            _ = client.publish_state_message(topic, StatePayload::Online { timestamp }).await;
+                            _ = client.publish_state_message(topic, StatePayload::Online { timestamp: timestamp }).await;
                         });
                    }
                 }
@@ -719,7 +733,7 @@ impl App {
     }
 
     async fn poll_until_offline(&mut self) -> bool {
-        while self.online.load(std::sync::atomic::Ordering::Relaxed) {
+        while self.app_state.online.load(std::sync::atomic::Ordering::Relaxed) {
             if Event::Offline == self.eventloop.poll().await {
                 self.handle_offline()
             }

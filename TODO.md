@@ -7,11 +7,17 @@
 - examples
 - docs
 
+- 
+
 ## Srad
 
 - feature flags
 
 ## EoN
+
+- check result of subscribe and publishes and handle failures accordingly
+  - failed subs and nbirth publishes should probably disconnect and return error from run()
+  - how to handle failed dbirth/ddeaths?
 
 - add node rebirth cooldown
 - provide properties in MessageMetric
@@ -24,17 +30,17 @@
 
 ## App
 
-- add application state subscription config
-  - expose application state messages in callback api
+- check result of subscribe and publishes and handle failures accordingly
+  - failed subs and online publishes should probably disconnect and return error from run()
+- app produces duplicate online states if offline state has been retained on topic
+  - resolved by client implementing success of publishes and subscription results.
 - check sequence order and issue rebirths if invalid after timeout
 - add ability to reorder out of sequence messages
-- wait states
+- wait app states
 - multi part metric message support
 - multiple brokers support
 
 ## Client
-
-- decoding of state online/offline messages - do this with the wait for states update
 
 ## Rumqtt client
 
