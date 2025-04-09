@@ -63,21 +63,24 @@
 //! 
 //! The `srad` repo contains [a number of examples](https://github.com/dpazj/srad/tree/master/examples) that can help get you started. 
 //! 
-//! # Dependencies
-//! 
-//! [`srad-types`](./srad-types) uses `protoc` [Protocol Buffers compiler](https://protobuf.dev/downloads/) to generate types.
-//! 
 //! # Feature Flags
-//!  
-//! TODO
+//! 
+//! - `eon`: Enables the Edge Node SDK. Enabled by default.
+//! - `app`: Enables the Application SDK. Enabled by default.
+//! - `rumqtt-client`: Enables the Rumqtt client implementation. Enabled by default.
 //! 
 
-pub use srad_eon as eon;
-pub use srad_app as app;
 pub use srad_types as types;
-
 pub use srad_client as client;
+
+#[cfg(feature = "rumqtt-client")]
 pub use srad_client_rumqtt as client_rumqtt;
+
+#[cfg(feature = "eon")]
+pub use srad_eon as eon;
+
+#[cfg(feature = "app")]
+pub use srad_app as app;
 
 #[doc = include_str!("../../README.md")]
 struct _ReadMeDocTest;

@@ -10,6 +10,9 @@ readme = "README.md"
 keywords = ["sparkplug"]
 categories = ["embedded", "network-programming", "iot", "mqtt"]
 
+[features]
+channel-client = []
+
 [dependencies]
 srad-types = { path = "../srad-types" }
 prost = { workspace = true }
@@ -17,3 +20,5 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 
+[package.metadata.docs.rs]
+all-features = true

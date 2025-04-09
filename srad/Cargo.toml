@@ -10,6 +10,12 @@ readme = "../README.md"
 keywords = ["sparkplug"]
 categories = ["embedded", "network-programming", "iot", "mqtt"]
 
+[features]
+default = ["eon", "app", "rumqtt-client"]
+eon = []
+app = []
+rumqtt-client = []
+
 [dependencies]
 srad-eon = { path = "../srad-eon" }
 srad-app = { path = "../srad-app" }

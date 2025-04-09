@@ -1,6 +1,6 @@
 # Srad Types
 
-Part of [srad](https://crates.io/crates/srad), a general purpose [Sparkplug](https://sparkplug.eclipse.org/) library in rust.
+Part of [srad](https://crates.io/crates/srad), a general purpose [Sparkplug](https://sparkplug.eclipse.org/) development library in rust.
 
 This library contains types for creating and interacting with Sparkplug payloads. Additionally, this library contains utilities for common operations such as topic handling.
 
