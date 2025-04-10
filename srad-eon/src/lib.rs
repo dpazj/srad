@@ -1,27 +1,28 @@
 //! Part of [srad](https://crates.io/crates/srad), a general purpose [Sparkplug](https://sparkplug.eclipse.org/) development library in rust.
-//! 
+//!
 //! This library defines a framework for implementing Sparkplug Edge of Network Nodes.
 
-mod node;
+mod birth;
 mod builder;
 mod device;
-mod birth;
-mod metric;
-mod registry;
 mod error;
+mod metric;
 mod metric_manager;
+mod node;
+mod registry;
 
-pub use node::{EoN, NodeHandle};
-pub use device::DeviceHandle;
-pub use builder::EoNBuilder;
-pub use metric_manager::simple::SimpleMetricManager;
-pub use metric_manager::manager::{MetricManager, DeviceMetricManager, NodeMetricManager, NoMetricManager};
 pub use birth::{BirthInitializer, BirthMetricDetails};
+pub use builder::EoNBuilder;
+pub use device::DeviceHandle;
 pub use metric::*;
-
+pub use metric_manager::manager::{
+    DeviceMetricManager, MetricManager, NoMetricManager, NodeMetricManager,
+};
+pub use metric_manager::simple::SimpleMetricManager;
+pub use node::{EoN, NodeHandle};
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum BirthType {
-  Birth, 
-  Rebirth, 
+    Birth,
+    Rebirth,
 }

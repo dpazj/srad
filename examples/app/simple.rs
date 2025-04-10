@@ -1,18 +1,18 @@
-use log::{info, LevelFilter};
 use env_logger;
+use log::{info, LevelFilter};
 use srad::app::{App, SubscriptionConfig};
 use srad::client_rumqtt as rumqtt;
 
 #[tokio::main]
 async fn main() {
-
     env_logger::Builder::new()
-    .filter_level(LevelFilter::Trace)
-    .init();
+        .filter_level(LevelFilter::Trace)
+        .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
-    let (mut application, client) = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
+    let (mut application, client) =
+        App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
 
     let shutdown_handle = client.clone();
     tokio::spawn(async move {
@@ -24,9 +24,9 @@ async fn main() {
     });
 
     application
-        .on_online(||{ info!("App online") })
-        .on_offline(||{ info!("App offline") })
-        .on_nbirth(|id, _,timestamp, metrics| {
+        .on_online(|| info!("App online"))
+        .on_offline(|| info!("App offline"))
+        .on_nbirth(|id, _, timestamp, metrics| {
             info!("Node {id:?} born at {timestamp} metrics = {metrics:?}");
         })
         .on_ndeath(|id, _| {
@@ -45,14 +45,19 @@ async fn main() {
             info!("Device {dev} Node {id:?} timestamp {timestamp} metrics = {metrics:?}");
         })
         .register_evaluate_rebirth_reason_fn(move |details| {
-            let client= client.clone();
+            let client = client.clone();
             async move {
                 match details.reason {
                     srad::app::RebirthReason::MalformedPayload => return,
-                    _ => ()
+                    _ => (),
                 }
-                info!("Issuing rebirth request to node {0:?}, reason = {1:?}", details.node_id, details.reason);
-                _ = client.publish_node_rebirth(&details.node_id.group, &details.node_id.node).await;
+                info!(
+                    "Issuing rebirth request to node {0:?}, reason = {1:?}",
+                    details.node_id, details.reason
+                );
+                _ = client
+                    .publish_node_rebirth(&details.node_id.group, &details.node_id.node)
+                    .await;
             }
         });
     application.run().await;

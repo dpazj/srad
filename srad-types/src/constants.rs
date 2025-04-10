@@ -1,5 +1,3 @@
-
-
 pub const SPBV01: &str = "spBv1.0";
 
 pub const NODE_CONTROL_REBIRTH: &str = "Node Control/Rebirth";

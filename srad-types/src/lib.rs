@@ -1,14 +1,17 @@
 pub mod constants;
+
+/// Generated types
 pub mod payload;
+
 pub mod topic;
 
 mod property_set;
 
 pub mod utils;
 
-mod value;
-mod quality;
 mod metadata;
+mod quality;
+mod value;
 
 pub use metadata::*;
 pub use property_set::*;
@@ -17,10 +20,9 @@ pub use value::*;
 
 pub mod traits;
 
-/// Represents a unique identifier of a metric 
+/// Represents a unique identifier of a metric
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum MetricId {
-  Name(String),
-  Alias(u64)  
+    Name(String),
+    Alias(u64),
 }
-

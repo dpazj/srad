@@ -2,9 +2,9 @@
 //!
 //!This library defines a framework for implementing Sparkplug Applications.
 
-mod metrics;
-mod config;
 mod app;
+mod config;
+mod metrics;
 
 pub use app::*;
 pub use config::*;

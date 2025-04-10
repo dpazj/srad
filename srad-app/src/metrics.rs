@@ -1,21 +1,22 @@
-use srad_types::{payload::{self, DataType, MetaData, Metric, ToMetric}, PropertySet, traits, MetricId, MetricValue};
+use srad_types::{
+    payload::{self, DataType, MetaData, Metric, ToMetric},
+    traits, MetricId, MetricValue, PropertySet,
+};
 
 /// Represents a metric value to be published
-pub struct PublishMetric 
-{
+pub struct PublishMetric {
     metric_identifier: MetricId,
     value: MetricValue,
     timestamp: Option<u64>,
 }
 
 impl PublishMetric {
-
     /// Creates a new metric for publishing with the specified identifier and value.
-    pub fn new<T: traits::MetricValue> (metric_identifier: MetricId, value: T) -> Self {
+    pub fn new<T: traits::MetricValue>(metric_identifier: MetricId, value: T) -> Self {
         Self {
             metric_identifier,
             value: value.into(),
-            timestamp: None
+            timestamp: None,
         }
     }
 
@@ -24,20 +25,19 @@ impl PublishMetric {
         self.timestamp = Some(timestamp);
         self
     }
-
 }
 
 impl ToMetric for PublishMetric {
-  fn to_metric(self) -> Metric {
-    let mut metric = Metric::new();
-    match self.metric_identifier {
-      MetricId::Name(name) => metric.set_name(name),
-      MetricId::Alias(alias) => metric.set_alias(alias),
-    };
-    metric.set_value(self.value.into());
-    metric.timestamp = self.timestamp;
-    metric
-  }
+    fn to_metric(self) -> Metric {
+        let mut metric = Metric::new();
+        match self.metric_identifier {
+            MetricId::Name(name) => metric.set_name(name),
+            MetricId::Alias(alias) => metric.set_alias(alias),
+        };
+        metric.set_value(self.value.into());
+        metric.timestamp = self.timestamp;
+        metric
+    }
 }
 
 /// Information about a metric provided from a birth message  
@@ -52,15 +52,13 @@ pub struct MetricBirthDetails {
 }
 
 impl MetricBirthDetails {
-
-    fn new(name: String, alias: Option<u64>, datatype:DataType) -> Self {
+    fn new(name: String, alias: Option<u64>, datatype: DataType) -> Self {
         Self {
-            name, 
+            name,
             alias,
-            datatype
+            datatype,
         }
     }
-
 }
 
 /// Information about a metric from a message
@@ -74,8 +72,8 @@ pub struct MetricDetails {
     pub timestamp: u64,
     /// Is the metric a historical metric
     pub is_historical: bool,
-    /// Should the metric be persisted 
-    pub is_transient: bool
+    /// Should the metric be persisted
+    pub is_transient: bool,
 }
 
 macro_rules! metric_details_try_from_payload_metric {
@@ -84,9 +82,13 @@ macro_rules! metric_details_try_from_payload_metric {
         let value = if let Some(value) = $metric.value {
             Some(value.into())
         } else if let Some(is_null) = $metric.is_null {
-            if is_null { None } else { return Err(()) }
-        } else { 
-            return Err(()) 
+            if is_null {
+                None
+            } else {
+                return Err(());
+            }
+        } else {
+            return Err(());
         };
 
         let properties = match $metric.properties {
@@ -106,26 +108,32 @@ macro_rules! metric_details_try_from_payload_metric {
             is_historical,
             is_transient,
         })
-    }}
+    }};
 }
 
-pub(crate) fn get_metric_id_and_details_from_payload_metrics(metrics: Vec<payload::Metric>) -> Result<Vec<(MetricId, MetricDetails)>, ()> {
+pub(crate) fn get_metric_id_and_details_from_payload_metrics(
+    metrics: Vec<payload::Metric>,
+) -> Result<Vec<(MetricId, MetricDetails)>, ()> {
     let mut metric_id_details = Vec::with_capacity(metrics.len());
     for x in metrics {
         let id = if let Some(alias) = x.alias {
             MetricId::Alias(alias)
         } else if let Some(name) = x.name {
             MetricId::Name(name)
-        } else { return Err(()) };
-        let details = metric_details_try_from_payload_metric!(x)?; 
+        } else {
+            return Err(());
+        };
+        let details = metric_details_try_from_payload_metric!(x)?;
         metric_id_details.push((id, details))
     }
-    Ok(metric_id_details) 
+    Ok(metric_id_details)
 }
 
-pub(crate) fn get_metric_birth_details_from_birth_metrics(metrics: Vec<payload::Metric>) -> Result<Vec<(MetricBirthDetails, MetricDetails)>,()> {
+pub(crate) fn get_metric_birth_details_from_birth_metrics(
+    metrics: Vec<payload::Metric>,
+) -> Result<Vec<(MetricBirthDetails, MetricDetails)>, ()> {
     //make sure metrics names and aliases are unique
-    let mut results= Vec::with_capacity(metrics.len());
+    let mut results = Vec::with_capacity(metrics.len());
 
     for x in metrics {
         let datatype = x.datatype.ok_or(())?.try_into()?;
@@ -136,7 +144,5 @@ pub(crate) fn get_metric_birth_details_from_birth_metrics(metrics: Vec<payload::
         results.push((birth_details, details));
     }
 
-    Ok(results) 
-} 
-
-
+    Ok(results)
+}
