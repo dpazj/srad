@@ -2,8 +2,9 @@
 
 `srad` is a [Sparkplug](https://sparkplug.eclipse.org/) edge node and application development framework in Rust.
 
-[![Crates.io][crates-badge]][crates-url]
+[![CI](https://github.com/dpazj/srad/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/dpazj/srad/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Documentation](https://docs.rs/srad/badge.svg)][docs]
+[![Crates.io][crates-badge]][crates-url]
 [![MIT licensed][mit-badge]][mit-url]
 [![Apache-2.0 licensed][apache-badge]][apache-url]
 
