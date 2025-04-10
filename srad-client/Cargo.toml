@@ -1,20 +1,20 @@
 [package]
 name = "srad-client"
 version = "0.1.0"
-edition = "2021"
 description = "Types and traits for implementing Sparkplug Clients"
-homepage = "https://github.com/dpazj/srad"
-repository = "https://github.com/dpazj/srad"
-license = "MIT OR Apache-2.0"
 readme = "README.md"
 keywords = ["sparkplug"]
 categories = ["embedded", "network-programming", "iot", "mqtt"]
+edition.workspace = true 
+homepage.workspace = true 
+repository.workspace = true
+license.workspace = true 
 
 [features]
 channel-client = []
 
 [dependencies]
-srad-types = { path = "../srad-types" }
+srad-types = { version = "0.1.0", path = "../srad-types" }
 prost = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }

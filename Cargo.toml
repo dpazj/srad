@@ -11,6 +11,13 @@ members = [
   "examples"
 ]
 
+[workspace.package]
+edition = "2021"
+homepage = "https://github.com/dpazj/srad"
+repository = "https://github.com/dpazj/srad"
+license = "MIT OR Apache-2.0"
+authors = ["dpazj"]
+
 [workspace.dependencies]
 prost = "0.13.0"
 prost-build = "0.13.0"
