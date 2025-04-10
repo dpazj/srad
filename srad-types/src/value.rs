@@ -205,7 +205,7 @@ fn pack_byte_with_bool(bools: &[bool]) -> u8 {
 fn bool_vec_to_proto(vec: Vec<bool>) -> Vec<u8> {
     /* BooleanArray as an array of bit-packed bytes preceded by a 4-byte integer that represents the total number of boolean values */
     let count = vec.len() as u32;
-    let bool_bytes_len = ((count + 7) / 8) as usize;
+    let bool_bytes_len = count.div_ceil(8) as usize;
     let mut out = Vec::<u8>::with_capacity(std::mem::size_of::<u32>() + bool_bytes_len);
     /* Set first bytes as count */
     for x in count.to_le_bytes() {
@@ -234,7 +234,7 @@ fn proto_to_bool_vec(bytes: Vec<u8>) -> Result<Vec<bool>, FromBytesError> {
         return Ok(Vec::new());
     }
 
-    let needed_bytes = ((bool_count + 7) / 8) as usize;
+    let needed_bytes = bool_count.div_ceil(8) as usize;
     if len < 4 + needed_bytes {
         return Err(FromBytesError::InvalidFormat);
     }
