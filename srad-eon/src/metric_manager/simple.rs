@@ -189,7 +189,7 @@ where
             data: Arc::new(Mutex::new(MetricData {
                 value,
                 token: None,
-                cb: cb,
+                cb
             })),
         };
         let metric_insert = Arc::new(metric.clone());

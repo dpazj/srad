@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use tokio::time;
 
-use env_logger;
 use log::LevelFilter;
 
 #[tokio::main]
@@ -19,8 +18,8 @@ async fn main() {
 
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
     let node_metrics = SimpleMetricManager::new();
-    let counter_metric = node_metrics.register_metric("Counter", 0 as u64).unwrap();
-    node_metrics.register_metric("A", 0 as u64).unwrap();
+    let counter_metric = node_metrics.register_metric("Counter", 0_u64).unwrap();
+    node_metrics.register_metric("A", 0_u64).unwrap();
 
     let (mut eon, handle) = EoNBuilder::new(eventloop, client)
         .with_group_id("foo")
@@ -35,17 +34,17 @@ async fn main() {
         .await
         .unwrap();
     let dev1_counter = dev1_metrics
-        .register_metric("Device Counter", 0 as i8)
+        .register_metric("Device Counter", 0_i8)
         .unwrap();
     dev1_metrics
-        .register_metric_with_cmd_handler("B", 0 as u64, |manager, metric, value| async move {
+        .register_metric_with_cmd_handler("B", 0_u64, |manager, metric, value| async move {
             _ = manager
                 .publish_metric(metric.update(|x| *x = value.unwrap_or(0)))
                 .await;
         })
         .unwrap();
     dev1_metrics
-        .register_metric("U32Array", vec![1 as u32, 2, 3, 999999999, 43])
+        .register_metric("U32Array", vec![1_u32, 2, 3, 999999999, 43])
         .unwrap();
     dev1_metrics
         .register_metric(

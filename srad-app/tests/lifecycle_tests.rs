@@ -56,11 +56,11 @@ async fn app_states() {
     assert_filters_eq(filters, expected_filters);
 
     let will = broker.last_will().unwrap();
-    assert_eq!(will.retain, true);
+    assert!(will.retain);
     assert_eq!(will.qos, QoS::AtLeastOnce);
-    assert_eq!(will.topic, StateTopic::new_host(&app_id).topic);
+    assert_eq!(will.topic, StateTopic::new_host(app_id).topic);
     let payload = StateBirthDeathCertificate::try_from(will.payload.as_slice()).unwrap();
-    assert_eq!(payload.online, false);
+    assert!(!payload.online);
     let will_payload_timestamp = payload.timestamp;
 
     let state_publish = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
@@ -71,7 +71,7 @@ async fn app_states() {
         OutboundMessage::StateMessage { topic, payload } => (topic, payload),
         message => panic!("got {message:?}"),
     };
-    assert_eq!(topic, StateTopic::new_host(&app_id));
+    assert_eq!(topic, StateTopic::new_host(app_id));
     //timestamp in will must equal timestamp of online message
     assert_eq!(
         payload,
@@ -96,7 +96,7 @@ async fn app_states() {
         OutboundMessage::StateMessage { topic, payload } => (topic, payload),
         message => panic!("got {message:?}"),
     };
-    assert_eq!(topic, StateTopic::new_host(&app_id));
+    assert_eq!(topic, StateTopic::new_host(app_id));
     //timestamp in will must equal timestamp of online message
     assert_eq!(
         payload,
@@ -115,6 +115,6 @@ async fn app_states() {
         OutboundMessage::StateMessage { topic, payload } => (topic, payload),
         message => panic!("got {message:?}"),
     };
-    assert_eq!(topic, StateTopic::new_host(&app_id));
+    assert_eq!(topic, StateTopic::new_host(app_id));
     assert!(matches!(payload, StatePayload::Offline { timestamp: _ }));
 }

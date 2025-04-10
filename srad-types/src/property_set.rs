@@ -83,6 +83,7 @@ impl PropertySet {
         Self::new_with_quality(Quality::Good)
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn insert<K: Into<String>, V: traits::PropertyValue>(
         &mut self,
         k: K,

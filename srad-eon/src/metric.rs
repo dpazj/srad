@@ -103,7 +103,7 @@ impl PublishMetric {
         };
         Self {
             metric_identifier,
-            metadata: metadata,
+            metadata,
             value: value.map(T::into),
             is_transient: None,
             is_historical: None,
@@ -250,7 +250,7 @@ impl TryFrom<Metric> for MessageMetric {
         };
 
         Ok(MessageMetric {
-            id: id,
+            id,
             timestamp: value.timestamp,
             value: metric_value,
             properties: None,
@@ -306,7 +306,7 @@ impl TryFrom<Payload> for MessageMetrics {
         };
 
         Ok(MessageMetrics {
-            timestamp: timestamp,
+            timestamp,
             metrics: value.metrics,
         })
     }

@@ -158,7 +158,7 @@ impl Device {
         Payload {
             seq: Some(self.eon_state.get_seq()),
             timestamp: Some(timestamp),
-            metrics: metrics,
+            metrics,
             uuid: None,
             body: None,
         }
@@ -287,7 +287,7 @@ impl DeviceMap {
             info: DeviceInfo {
                 id,
                 name: name.clone(),
-                ddata_topic: ddata_topic,
+                ddata_topic,
             },
             birth_lock: tokio::sync::Mutex::new(()),
             birthed: AtomicBool::new(false),

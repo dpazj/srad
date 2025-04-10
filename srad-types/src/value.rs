@@ -49,6 +49,7 @@ impl DateTime {
         Self { date_time }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn to_le_bytes(self) -> [u8; 8] {
         self.date_time.to_le_bytes()
     }
@@ -241,9 +242,9 @@ fn proto_to_bool_vec(bytes: Vec<u8>) -> Result<Vec<bool>, FromBytesError> {
     let bools_data = &bytes.as_slice()[4..];
     let mut bools_out = Vec::with_capacity(bool_count as usize);
 
-    for i in 0..bool_bytes - 1 {
+    for b in bools_data.iter().take(bool_bytes - 1) {
         for j in (0..8).rev() {
-            bools_out.push(((bools_data[i] >> j) & 1) == 1);
+            bools_out.push(((b >> j) & 1) == 1);
         }
     }
 
@@ -758,9 +759,7 @@ mod tests {
 
         fn test_bool_array_small_buffer(bool_count: u32, bool_byes_size: usize) {
             let mut bytes = bool_count.to_le_bytes().to_vec();
-            for _ in 0..bool_byes_size {
-                bytes.push(0);
-            }
+            bytes.resize(bool_byes_size, 0);
             assert!(proto_to_bool_vec(bytes).is_err())
         }
 

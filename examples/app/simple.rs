@@ -1,4 +1,3 @@
-use env_logger;
 use log::{info, LevelFilter};
 use srad::app::{App, SubscriptionConfig};
 use srad::client_rumqtt as rumqtt;
@@ -47,10 +46,7 @@ async fn main() {
         .register_evaluate_rebirth_reason_fn(move |details| {
             let client = client.clone();
             async move {
-                match details.reason {
-                    srad::app::RebirthReason::MalformedPayload => return,
-                    _ => (),
-                }
+                if let srad::app::RebirthReason::MalformedPayload = details.reason { return }
                 info!(
                     "Issuing rebirth request to node {0:?}, reason = {1:?}",
                     details.node_id, details.reason

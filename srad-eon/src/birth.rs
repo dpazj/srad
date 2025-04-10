@@ -29,10 +29,10 @@ where
 {
     fn new(name: String, initial_value: Option<T>, datatype: DataType) -> Self {
         Self {
-            name: name,
+            name,
             use_alias: true,
-            datatype: datatype,
-            initial_value: initial_value,
+            datatype,
+            initial_value,
             metadata: None,
             properties: None,
             timestamp: timestamp(),
@@ -134,7 +134,7 @@ impl BirthInitializer {
             birth_metrics: Vec::new(),
             metric_names: HashSet::new(),
             metric_aliases: HashSet::new(),
-            inserter_type: inserter_type,
+            inserter_type,
         }
     }
 

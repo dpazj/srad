@@ -281,7 +281,7 @@ impl Node {
         Payload {
             seq: Some(seq),
             timestamp: Some(timestamp),
-            metrics: metrics,
+            metrics,
             uuid: None,
             body: None,
         }
@@ -339,7 +339,7 @@ impl EoN {
             birthed: AtomicBool::new(false),
             ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
             group_id,
-            edge_node_id,
+            edge_node_id: node_id,
         });
 
         let registry = Arc::new(Mutex::new(Registry::new()));

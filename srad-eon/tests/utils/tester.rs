@@ -17,7 +17,7 @@ pub fn create_test_ndeath_payload(expected_bdseq: i64) -> Payload {
     let mut metric = Metric::new();
     metric
         .set_name(BDSEQ.to_string())
-        .set_value(MetricValue::from(expected_bdseq as i64).into());
+        .set_value(MetricValue::from(expected_bdseq).into());
     Payload {
         timestamp: None,
         metrics: vec![metric],
@@ -50,12 +50,12 @@ pub fn verify_nbirth_payload(payload: Payload, expected_bdseq: i64) {
             None => panic!("Metric name is required in birth payload"),
         };
 
-        if let Some(_) = &metric.value {
+        if metric.value.is_some() {
             assert_eq!(metric.is_null, None)
         }
 
         if let Some(is_null) = &metric.is_null {
-            if *is_null == true {
+            if *is_null {
                 assert_eq!(metric.value, None)
             }
         }

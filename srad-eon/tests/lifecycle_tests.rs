@@ -33,16 +33,16 @@ async fn node_session() {
     tokio::spawn(async move { eventloop.run().await });
 
     // Node goes online
-    test_node_online(&mut broker, &group_id, &node_id, 0).await;
+    test_node_online(&mut broker, group_id, node_id, 0).await;
 
     // Node goes offline
     broker.tx_event.send(srad_client::Event::Offline).unwrap();
-    let expected_last_will = LastWill::new_node(&group_id, &node_id, create_test_ndeath_payload(0));
+    let expected_last_will = LastWill::new_node(group_id, node_id, create_test_ndeath_payload(0));
     let last_will = broker.last_will().unwrap();
     assert_eq!(expected_last_will, last_will);
 
     // Node goes online again
-    test_node_online(&mut broker, &group_id, &node_id, 1).await;
+    test_node_online(&mut broker, group_id, node_id, 1).await;
 
     test_graceful_shutdown(&mut broker, &node, group_id, node_id, 1).await;
 }
@@ -70,7 +70,7 @@ async fn device_session() {
         .enable()
         .await;
 
-    test_node_online(&mut broker, &group_id, &node_id, 0).await;
+    test_node_online(&mut broker, group_id, node_id, 0).await;
 
     let device_birth = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
         .await
@@ -92,7 +92,7 @@ async fn device_session() {
     let last_will = broker.last_will();
     last_will.unwrap();
 
-    test_node_online(&mut broker, &group_id, &node_id, 1).await;
+    test_node_online(&mut broker, group_id, node_id, 1).await;
 
     let device_birth = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
         .await
@@ -115,7 +115,7 @@ async fn device_session() {
         .await
         .unwrap();
     dev.enable().await;
-    verify_device_birth(&mut broker, &group_id, &node_id, &device2_name, 2).await;
+    verify_device_birth(&mut broker, group_id, node_id, device2_name, 2).await;
 
     dev.disable().await;
     let device_death = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
@@ -177,12 +177,12 @@ async fn rebirth() {
         .unwrap();
 
     tokio::spawn(async move { eventloop.run().await });
-    test_node_online(&mut broker, &group_id, &node_id, 0).await;
+    test_node_online(&mut broker, group_id, node_id, 0).await;
 
     broker
         .tx_event
         .send(srad_client::Event::Node(create_rebirth_message(
-            &group_id, &node_id,
+            group_id, node_id,
         )))
         .unwrap();
 
@@ -207,19 +207,19 @@ async fn rebirth() {
         .unwrap()
         .enable()
         .await;
-    verify_device_birth(&mut broker, &group_id, &node_id, &device1_name, 1).await;
+    verify_device_birth(&mut broker, group_id, node_id, device1_name, 1).await;
     handle
         .register_device(device2_name, NoMetricManager::new())
         .await
         .unwrap()
         .enable()
         .await;
-    verify_device_birth(&mut broker, &group_id, &node_id, &device2_name, 2).await;
+    verify_device_birth(&mut broker, group_id, node_id, device2_name, 2).await;
 
     broker
         .tx_event
         .send(srad_client::Event::Node(create_rebirth_message(
-            &group_id, &node_id,
+            group_id, node_id,
         )))
         .unwrap();
     let node_rebirth = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
