@@ -157,7 +157,7 @@ impl srad_client::Client for Client {
     async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ()> {
         let filters: Vec<Filter> = topics
             .into_iter()
-            .map(|x| topic_filter_to_mqtt_filter(x))
+            .map(topic_filter_to_mqtt_filter)
             .collect();
         match self.client.subscribe_many(filters).await {
             Ok(_) => Ok(()),
@@ -212,7 +212,7 @@ impl EventLoop {
         match event {
             Ok(event) => {
                 trace!("{event:?}");
-                return match event {
+                match event {
                     rumqttc::v5::Event::Incoming(Packet::ConnAck(_)) => {
                         self.state = ConnectionState::Connected;
                         Some(Event::Online)
@@ -232,7 +232,7 @@ impl EventLoop {
                         Some(Event::Offline)
                     }
                     _ => None,
-                };
+                }
             }
             Err(e) => match self.state {
                 ConnectionState::Connected => {

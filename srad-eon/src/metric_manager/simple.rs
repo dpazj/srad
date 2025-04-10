@@ -61,7 +61,7 @@ where
 
 #[async_trait]
 trait Stored<H>: Send {
-    fn birth_metric(&self, name: &String, bi: &mut BirthInitializer) -> MetricId;
+    fn birth_metric(&self, name: &str, bi: &mut BirthInitializer) -> MetricId;
     fn has_callback(&self) -> bool;
     async fn cmd_cb(&self, manager: SimpleMetricManager<H>, value: MessageMetric);
 }
@@ -72,7 +72,7 @@ where
     T: traits::MetricValue + Clone + Send,
     H: Send + Sync,
 {
-    fn birth_metric(&self, name: &String, bi: &mut BirthInitializer) -> MetricId {
+    fn birth_metric(&self, name: &str, bi: &mut BirthInitializer) -> MetricId {
         let mut metric = self.data.lock().unwrap();
         let val = metric.value.clone();
         let token = bi
@@ -180,9 +180,8 @@ where
     where
         T: traits::MetricValue + Clone + Send + 'static,
     {
-        let key = name.into();
         let mut manager = self.inner.lock().unwrap();
-        if manager.metrics.contains_key(&key) {
+        if manager.metrics.contains_key(&name) {
             return None;
         }
 
@@ -194,7 +193,7 @@ where
             })),
         };
         let metric_insert = Arc::new(metric.clone());
-        manager.metrics.insert(key, metric_insert);
+        manager.metrics.insert(name, metric_insert);
         Some(metric)
     }
 
@@ -300,6 +299,15 @@ where
 
         let publish_metrics = metrics.into_iter().filter_map(|x| x.0).collect();
         handle.publish_metrics(publish_metrics).await
+    }
+}
+
+impl<H> Default for SimpleMetricManager<H>
+where
+    H: MetricPublisher + Clone + Send + Sync + 'static,
+ {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

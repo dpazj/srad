@@ -161,7 +161,6 @@ impl ToMetric for PublishMetric {
         metric.metadata = self.metadata.map(MetaData::into);
 
         if let Some(val) = self.value {
-            let val: MetricValue = val.into();
             metric.set_value(val.into());
         }
 
@@ -212,6 +211,10 @@ impl MessageMetrics {
     pub fn len(&self) -> usize {
         self.metrics.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.metrics.len() == 0
+    }
 }
 
 /// A metric from a message
@@ -238,7 +241,7 @@ impl TryFrom<Metric> for MessageMetric {
         let metric_value = if value.value.is_some() {
             value.value.map(MetricValue::from)
         } else if let Some(is_null) = value.is_null {
-            if is_null == false {
+            if is_null {
                 return Err(());
             }
             None

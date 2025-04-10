@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum Error {
     #[error("Duplicate metric")]
     DuplicateMetric,
+    #[error("The provided type does not support that datatype")]
+    MetricValueDatatypeMismatch,
 }
 
 #[derive(Error, Debug)]

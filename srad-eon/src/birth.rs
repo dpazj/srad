@@ -47,25 +47,25 @@ where
         name: String,
         datatype: DataType,
         initial_value: Option<T>,
-    ) -> Result<Self, ()> {
+    ) -> Result<Self, Error> {
         if !T::supported_datatypes().contains(&datatype) {
-            return Err(());
+            return Err(Error::MetricValueDatatypeMismatch);
         }
-        Ok(Self::new(name.into(), initial_value, datatype))
+        Ok(Self::new(name, initial_value, datatype))
     }
 
     pub fn new_with_initial_value_explicit_type<S: Into<String>>(
         name: S,
         initial_value: T,
         datatype: DataType,
-    ) -> Result<Self, ()> {
+    ) -> Result<Self, Error> {
         Self::new_with_explicit_datatype(name.into(), datatype, Some(initial_value))
     }
 
     pub fn new_without_initial_value<S: Into<String>>(
         name: S,
         datatype: DataType,
-    ) -> Result<Self, ()> {
+    ) -> Result<Self, Error> {
         Self::new_with_explicit_datatype(name.into(), datatype, None)
     }
 
@@ -150,7 +150,7 @@ impl BirthInitializer {
         while self.metric_aliases.contains(&alias) {
             alias += 1;
         }
-        self.metric_aliases.insert(alias.clone());
+        self.metric_aliases.insert(alias);
         alias
     }
 
@@ -170,7 +170,7 @@ impl BirthInitializer {
                 let alias = match &self.inserter_type {
                     BirthObjectType::Node => self.generate_alias(AliasType::Node, &metric),
                     BirthObjectType::Device(id) => {
-                        self.generate_alias(AliasType::Device { id: id.clone() }, &metric)
+                        self.generate_alias(AliasType::Device { id: *id }, &metric)
                     }
                 };
                 MetricId::Alias(alias)

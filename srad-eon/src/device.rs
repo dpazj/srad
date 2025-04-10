@@ -58,7 +58,7 @@ impl DeviceHandle {
     ///
     /// Will produce a death message for the device. The node will no longer attempt to birth the device when it comes online.
     pub async fn disable(&self) {
-        if self.device.enabled.swap(false, Ordering::SeqCst) == false {
+        if !self.device.enabled.swap(false, Ordering::SeqCst) {
             //already disabled
             return;
         };
@@ -69,7 +69,7 @@ impl DeviceHandle {
         if !self.device.eon_state.is_online() {
             return Err(PublishError::Offline);
         }
-        if self.device.birthed.load(Ordering::Relaxed) == false {
+        if !self.device.birthed.load(Ordering::Relaxed) {
             return Err(PublishError::UnBirthed);
         }
         Ok(())
@@ -96,7 +96,7 @@ impl MetricPublisher for DeviceHandle {
         &self,
         metrics: Vec<PublishMetric>,
     ) -> Result<(), PublishError> {
-        if metrics.len() == 0 {
+        if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
         self.check_publish_state()?;
@@ -118,7 +118,7 @@ impl MetricPublisher for DeviceHandle {
         &self,
         metrics: Vec<PublishMetric>,
     ) -> Result<(), PublishError> {
-        if metrics.len() == 0 {
+        if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
         self.check_publish_state()?;
@@ -150,7 +150,7 @@ pub struct Device {
 impl Device {
     fn generate_birth_payload(&self) -> Payload {
         let mut birth_initializer =
-            BirthInitializer::new(BirthObjectType::Device(self.info.id.clone()));
+            BirthInitializer::new(BirthObjectType::Device(self.info.id));
         self.dev_impl.initialise_birth(&mut birth_initializer);
         let timestamp = timestamp();
         let metrics = birth_initializer.finish();
@@ -183,12 +183,12 @@ impl Device {
         if !self.eon_state.birthed() {
             return;
         }
-        if *birth_type == BirthType::Birth && self.birthed.load(Ordering::SeqCst) == true {
+        if *birth_type == BirthType::Birth && self.birthed.load(Ordering::SeqCst) {
             return;
         }
         debug!("Device {} birthing. Type: {:?}", self.info.name, birth_type);
         let payload = self.generate_birth_payload();
-        match self
+        if self
             .client
             .publish_device_message(
                 DeviceTopic::new(
@@ -199,23 +199,21 @@ impl Device {
                 ),
                 payload,
             )
-            .await
+            .await.is_ok()
         {
-            Ok(_) => self.birthed.store(true, Ordering::SeqCst),
-            Err(_) => (),
+            self.birthed.store(true, Ordering::SeqCst)
         };
         drop(guard)
     }
 
     pub async fn death(&self, publish: bool) {
         let guard = self.birth_lock.lock().await;
-        if self.birthed.load(Ordering::SeqCst) == false {
+        if !self.birthed.load(Ordering::SeqCst) {
             return;
         }
         if publish {
             let payload = self.generate_death_payload();
-            match self
-                .client
+            _ = self.client
                 .publish_device_message(
                     DeviceTopic::new(
                         &self.eon_state.group_id,
@@ -225,11 +223,8 @@ impl Device {
                     ),
                     payload,
                 )
-                .await
-            {
-                Ok(_) => (),
-                Err(_) => (),
-            };
+                .await;
+            
         }
         self.birthed.store(false, Ordering::SeqCst);
         debug!("Device {} dead", self.info.name);
@@ -266,13 +261,13 @@ impl DeviceMap {
 
     pub async fn add_device(
         &self,
-        group_id: &String,
-        node_id: &String,
+        group_id: &str,
+        node_id: &str,
         name: String,
         dev_impl: Arc<DynDeviceMetricManager>,
     ) -> Result<DeviceHandle, DeviceRegistrationError> {
         let mut state = self.state.lock().await;
-        if let Some(_) = state.devices.get_key_value(&name) {
+        if state.devices.get_key_value(&name).is_some() {
             return Err(DeviceRegistrationError::DuplicateDevice);
         }
 
@@ -282,9 +277,9 @@ impl DeviceMap {
         drop(registry);
 
         let ddata_topic = DeviceTopic::new(
-            &group_id,
+            group_id,
             srad_types::topic::DeviceMessage::DData,
-            &node_id,
+            node_id,
             &name,
         );
 
@@ -311,16 +306,19 @@ impl DeviceMap {
     }
 
     pub async fn remove_device(&self, device: &String) {
-        let mut state = self.state.lock().await;
-        let dev = match state.devices.remove(device) {
-            Some(dev) => dev,
-            None => return,
+        let dev = {
+            let mut state = self.state.lock().await;
+            let dev = match state.devices.remove(device) {
+                Some(dev) => dev,
+                None => return,
+            };
+
+            {
+                let mut registry = self.registry.lock().unwrap();
+                registry.remove_device_id(dev.info.id);
+            }
+            dev
         };
-
-        let mut registry = self.registry.lock().unwrap();
-        registry.remove_device_id(dev.info.id);
-        drop(registry);
-
         dev.death(true).await;
     }
 
@@ -360,8 +358,7 @@ impl DeviceMap {
 
         let payload = message.message.payload;
         let message_kind = message.message.kind;
-        match message_kind {
-            MessageKind::Cmd => {
+        if MessageKind::Cmd == message_kind {
                 let message_metrics = match payload.try_into() {
                     Ok(metrics) => metrics,
                     Err(_) => {
@@ -380,8 +377,6 @@ impl DeviceMap {
                         message_metrics,
                     )
                     .await
-            }
-            _ => (),
         }
     }
 }

@@ -96,7 +96,7 @@ impl NodeHandle {
             .add_device(
                 &self.node.state.group_id,
                 &self.node.state.edge_node_id,
-                name.into(),
+                name,
                 Arc::new(dev_impl),
             )
             .await?;
@@ -144,7 +144,7 @@ impl MetricPublisher for NodeHandle {
         &self,
         metrics: Vec<PublishMetric>,
     ) -> Result<(), PublishError> {
-        if metrics.len() == 0 {
+        if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
         self.check_publish_state()?;
@@ -166,7 +166,7 @@ impl MetricPublisher for NodeHandle {
         &self,
         metrics: Vec<PublishMetric>,
     ) -> Result<(), PublishError> {
-        if metrics.len() == 0 {
+        if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
         self.check_publish_state()?;
@@ -338,8 +338,8 @@ impl EoN {
             online: AtomicBool::new(false),
             birthed: AtomicBool::new(false),
             ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
-            group_id: group_id,
-            edge_node_id: node_id,
+            group_id,
+            edge_node_id,
         });
 
         let registry = Arc::new(Mutex::new(Registry::new()));
@@ -353,7 +353,7 @@ impl EoN {
         });
 
         let mut eon = Self {
-            node: node,
+            node,
             eventloop,
             stop_rx,
         };
@@ -375,7 +375,7 @@ impl EoN {
     }
 
     fn on_online(&self) {
-        if self.node.state.online.swap(true, Ordering::SeqCst) == true {
+        if self.node.state.online.swap(true, Ordering::SeqCst) {
             return;
         }
         info!("Edge node online");
@@ -383,14 +383,14 @@ impl EoN {
         let node = self.node.clone();
 
         tokio::spawn(async move {
-            if let Ok(_) = node.client.subscribe_many(sub_topics).await {
+            if node.client.subscribe_many(sub_topics).await.is_ok() {
                 node.birth(BirthType::Birth).await
             };
         });
     }
 
     async fn on_offline(&mut self) {
-        if self.node.state.online.swap(false, Ordering::SeqCst) == false {
+        if !self.node.state.online.swap(false, Ordering::SeqCst) {
             return;
         }
         info!("Edge node offline");
@@ -402,57 +402,47 @@ impl EoN {
     fn on_node_message(&self, message: NodeMessage) {
         let payload = message.message.payload;
         let message_kind = message.message.kind;
-        match message_kind {
-            MessageKind::Cmd => {
-                let mut rebirth = false;
-                for x in &payload.metrics {
-                    if x.alias.is_some() {
-                        continue;
-                    }
-                    let metric_name = match &x.name {
-                        Some(name) => name,
-                        None => continue,
-                    };
+        
+        if message_kind == MessageKind::Cmd {
+            let mut rebirth = false;
+            for x in &payload.metrics {
+                if x.alias.is_some() { continue; }
 
-                    if metric_name != NODE_CONTROL_REBIRTH {
-                        continue;
-                    }
-
-                    rebirth = match &x.value {
-                        Some(value) => {
-                            if let Value::BooleanValue(val) = value {
-                                *val == true
-                            } else {
-                                false
-                            }
-                        }
-                        None => false,
-                    };
-                    if rebirth != true {
-                        warn!("Received invalid CMD Rebirth metric - ignoring request")
-                    }
-                }
-
-                let message_metrics: MessageMetrics = match payload.try_into() {
-                    Ok(metrics) => metrics,
-                    Err(_) => {
-                        warn!("Received invalid CMD payload - ignoring request");
-                        return;
-                    }
+                let metric_name = match &x.name {
+                    Some(name) => name,
+                    None => continue,
                 };
 
-                let node = self.node.clone();
-                task::spawn(async move {
-                    node.metric_manager
-                        .on_ncmd(NodeHandle { node: node.clone() }, message_metrics)
-                        .await;
-                    if rebirth {
-                        info!("Got Rebirth CMD - Rebirthing Node");
-                        node.birth(BirthType::Rebirth).await
-                    }
-                });
+                if metric_name != NODE_CONTROL_REBIRTH { continue; }
+                
+                rebirth = match &x.value {
+                    Some(Value::BooleanValue(val)) => *val,
+                    _ => false,
+                };
+            
+                if !rebirth {
+                    warn!("Received invalid CMD Rebirth metric - ignoring request")
+                }
             }
-            _ => (),
+
+            let message_metrics: MessageMetrics = match payload.try_into() {
+                Ok(metrics) => metrics,
+                Err(_) => {
+                    warn!("Received invalid CMD payload - ignoring request");
+                    return;
+                }
+            };
+
+            let node = self.node.clone();
+            task::spawn(async move {
+                node.metric_manager
+                    .on_ncmd(NodeHandle { node: node.clone() }, message_metrics)
+                    .await;
+                if rebirth {
+                    info!("Got Rebirth CMD - Rebirthing Node");
+                    node.birth(BirthType::Rebirth).await
+                }
+            });
         }
     }
 
@@ -487,7 +477,7 @@ impl EoN {
                 self.on_offline().await
             }
         }
-        return true;
+        true
     }
 
     async fn poll_until_offline_with_timeout(&mut self) {

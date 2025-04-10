@@ -24,7 +24,7 @@ impl Registry {
         while id == OBJECT_ID_NODE || self.device_ids.contains_key(&id) {
             id += 1;
         }
-        self.device_ids.insert(id.clone(), name);
+        self.device_ids.insert(id, name);
         id
     }
 
