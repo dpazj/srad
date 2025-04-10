@@ -309,11 +309,7 @@ impl NamespaceState {
                     }
                 };
                 let mut nodes = self.nodes.lock().unwrap();
-                let node = match nodes.get_mut(&id) {
-                    Some(node) => node,
-                    None => return None,
-                };
-
+                let node = nodes.get_mut(&id)?;
                 if bdseq != node.bdseq {
                     debug!("Death bdseq did not match current known birth bdseq - ignoring. node = {:?}", id);
                     return None;
