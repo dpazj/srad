@@ -1,0 +1,43 @@
+on:
+  pull_request:
+  push: 
+    branches:
+    - master
+
+name: ci
+
+env:
+  PROTOC_VERSION: '3.25.3'
+
+jobs:
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - stable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc@${{ env.PROTOC_VERSION }}
+
+      - name: fmt
+        run: cargo fmt --all --check 
+
+      - name: clippy
+        run: cargo clippy -- -D warnings
+
+      - name: "doc --lib --all-features"
+        run: |
+          cargo doc --lib --no-deps --all-features 
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+          
+      - name: test
+        run: cargo test 
+     
