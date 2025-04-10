@@ -8,7 +8,7 @@ pub trait HasDataType {
     /// Default [crate::payload::DataType] the type maps to
     fn default_datatype() -> DataType {
         let supported = Self::supported_datatypes();
-        if supported.len() == 0 {
+        if supported.is_empty() {
             panic!("supported_datatypes result has to contain at least one element")
         }
         supported[0]

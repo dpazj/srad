@@ -60,6 +60,12 @@ impl TryFrom<payload::PropertyValue> for PropertyValue {
 #[derive(Debug)]
 pub struct PropertySet(HashMap<String, PropertyValue>);
 
+impl Default for PropertySet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PropertySet {
     pub fn new_with_quality(quality: Quality) -> Self {
         let mut pset = PropertySet(HashMap::new());
@@ -133,8 +139,8 @@ impl From<PropertySet> for payload::PropertySet {
             values.push(v.into());
         });
         payload::PropertySet {
-            keys: keys,
-            values: values,
+            keys,
+            values,
         }
     }
 }

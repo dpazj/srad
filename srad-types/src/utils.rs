@@ -10,7 +10,7 @@ pub fn timestamp() -> u64 {
 
 /// Validate a provided name value
 pub fn validate_name(name: &str) -> Result<(), String> {
-    if name.len() == 0 {
+    if name.is_empty() {
         return Err("name string must not be empty".into());
     }
     for c in name.chars() {

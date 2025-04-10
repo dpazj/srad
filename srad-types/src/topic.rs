@@ -50,7 +50,7 @@ impl NodeTopic {
     pub fn new(group_id: &str, message_type: NodeMessage, node_id: &str) -> Self {
         Self {
             topic: node_topic(group_id, &message_type, node_id),
-            message_type: message_type,
+            message_type,
         }
     }
 
@@ -79,7 +79,7 @@ impl DeviceTopic {
     ) -> Self {
         Self {
             topic: device_topic(group_id, &message_type, node_id, device_id),
-            message_type: message_type,
+            message_type,
         }
     }
 
@@ -96,6 +96,12 @@ impl DeviceTopic {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StateTopic {
     pub topic: String,
+}
+
+impl Default for StateTopic {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StateTopic {
@@ -122,9 +128,9 @@ pub enum Topic {
     FullNamespace,
 }
 
-impl Into<String> for Topic {
-    fn into(self) -> String {
-        match self {
+impl From<Topic> for String {
+    fn from(val: Topic) -> Self {
+        match val {
             Topic::NodeTopic(node_topic) => node_topic.topic,
             Topic::DeviceTopic(device_topic) => device_topic.topic,
             Topic::State(state_topic) => state_topic.topic,

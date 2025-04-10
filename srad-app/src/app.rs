@@ -202,7 +202,7 @@ impl NamespaceState {
             };
         }
         debug!("Payload metrics did not contain a bdseq metric");
-        return Err(());
+        Err(())
     }
 
     fn handle_node_message(
@@ -326,7 +326,7 @@ impl NamespaceState {
                     return None;
                 }
                 node.birth_token.invalidate();
-                for (_, x) in &node.devices {
+                for x in node.devices.values() {
                     x.birth_token.invalidate();
                 }
                 let tok = node.birth_token.clone();
@@ -390,7 +390,7 @@ impl NamespaceState {
             }
             _ => (),
         };
-        return None;
+        None
     }
 
     fn handle_device_message(
@@ -521,7 +521,7 @@ impl NamespaceState {
             }
             _ => (),
         }
-        return None;
+        None
     }
 }
 
@@ -541,7 +541,7 @@ impl PublishTopic {
     /// Create a new `PublishTopic` which will publish on a specified device's CMD topic
     pub fn new_device_cmd(group_id: &String, node_id: &String, device_id: &String) -> Self {
         PublishTopic(PublishTopicKind::DeviceTopic(DeviceTopic::new(
-            &group_id,
+            group_id,
             srad_types::topic::DeviceMessage::DCmd,
             node_id,
             device_id,
@@ -551,7 +551,7 @@ impl PublishTopic {
     /// Create a new `PublishTopic` which will publish on a specified node's CMD topic
     pub fn new_node_cmd(group_id: &String, node_id: &String) -> Self {
         PublishTopic(PublishTopicKind::NodeTopic(NodeTopic::new(
-            &group_id,
+            group_id,
             srad_types::topic::NodeMessage::NCmd,
             node_id,
         )))
@@ -645,8 +645,8 @@ impl AppClient {
 }
 
 struct Callbacks {
-    online: Option<Pin<Box<dyn Fn() -> () + Send>>>,
-    offline: Option<Pin<Box<dyn Fn() -> () + Send>>>,
+    online: Option<Pin<Box<dyn Fn() + Send>>>,
+    offline: Option<Pin<Box<dyn Fn() + Send>>>,
     nbirth: Option<
         Pin<
             Box<
@@ -655,12 +655,12 @@ struct Callbacks {
                         BirthToken,
                         u64,
                         Vec<(MetricBirthDetails, MetricDetails)>,
-                    ) -> ()
+                    )
                     + Send,
             >,
         >,
     >,
-    ndeath: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken) -> () + Send>>>,
+    ndeath: Option<Pin<Box<dyn Fn(NodeIdentifier, BirthToken) + Send>>>,
     ndata: Option<
         Arc<
             dyn Fn(
@@ -682,12 +682,12 @@ struct Callbacks {
                         BirthToken,
                         u64,
                         Vec<(MetricBirthDetails, MetricDetails)>,
-                    ) -> ()
+                    )
                     + Send,
             >,
         >,
     >,
-    ddeath: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken) -> () + Send>>>,
+    ddeath: Option<Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken) + Send>>>,
     ddata: Option<
         Arc<
             dyn Fn(
@@ -776,7 +776,7 @@ impl App {
     /// Registers a callback function to be invoked when the application comes online.
     pub fn on_online<F>(&mut self, cb: F) -> &mut Self
     where
-        F: Fn() -> () + Send + 'static,
+        F: Fn() + Send + 'static,
     {
         self.callbacks.online = Some(Box::pin(cb));
         self
@@ -785,7 +785,7 @@ impl App {
     /// Registers a callback function to be invoked when the application goes offline.
     pub fn on_offline<F>(&mut self, cb: F) -> &mut Self
     where
-        F: Fn() -> () + Send + 'static,
+        F: Fn() + Send + 'static,
     {
         self.callbacks.offline = Some(Box::pin(cb));
         self
@@ -794,7 +794,7 @@ impl App {
     /// Registers a callback function to be invoked when a node birth certificate is received.
     pub fn on_nbirth<F>(&mut self, cb: F) -> &mut Self
     where
-        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) -> ()
+        F: Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>)
             + Send
             + 'static,
     {
@@ -807,7 +807,7 @@ impl App {
     /// When this callback is triggered, all devices that belong to the node should also be considered dead.
     pub fn on_ndeath<F>(&mut self, cb: F) -> &mut Self
     where
-        F: Fn(NodeIdentifier, BirthToken) -> () + Send + 'static,
+        F: Fn(NodeIdentifier, BirthToken) + Send + 'static,
     {
         self.callbacks.ndeath = Some(Box::pin(cb));
         self
@@ -838,7 +838,7 @@ impl App {
                 BirthToken,
                 u64,
                 Vec<(MetricBirthDetails, MetricDetails)>,
-            ) -> ()
+            )
             + Send
             + 'static,
     {
@@ -849,7 +849,7 @@ impl App {
     /// Registers a callback function to be invoked when a device death certificate is received.
     pub fn on_ddeath<F>(&mut self, cb: F) -> &mut Self
     where
-        F: Fn(NodeIdentifier, String, BirthToken) -> () + Send + 'static,
+        F: Fn(NodeIdentifier, String, BirthToken) + Send + 'static,
     {
         self.callbacks.ddeath = Some(Box::pin(cb));
         self
@@ -898,7 +898,6 @@ impl App {
             .app_state
             .online
             .swap(true, std::sync::atomic::Ordering::SeqCst)
-            == true
         {
             return;
         };
@@ -931,11 +930,10 @@ impl App {
     }
 
     fn handle_offline(&mut self) {
-        if self
+        if !self
             .app_state
             .online
             .swap(false, std::sync::atomic::Ordering::SeqCst)
-            == false
         {
             return;
         };
@@ -991,7 +989,7 @@ impl App {
                                 .publish_state_message(
                                     topic,
                                     StatePayload::Online {
-                                        timestamp: timestamp,
+                                        timestamp,
                                     },
                                 )
                                 .await;
@@ -1017,7 +1015,7 @@ impl App {
                 self.handle_offline()
             }
         }
-        return true;
+        true
     }
 
     async fn poll_until_offline_with_timeout(&mut self) {

@@ -42,7 +42,7 @@ fn process_topic_message(
     Ok((
         producer,
         Message {
-            payload: payload,
+            payload,
             kind: message_kind,
         },
     ))
@@ -104,7 +104,7 @@ pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event {
                     },
                 };
                 Event::State {
-                    host_id: host_id,
+                    host_id,
                     payload,
                 }
             }
@@ -169,9 +169,10 @@ pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event {
         }
     };
 
-    let event = match message_producer {
+    
+    match message_producer {
         MessageProducer::Node => {
-            if let Some(_) = iter.next() {
+            if iter.next().is_some() {
                 return Event::InvalidPublish {
                     reason: MessageError::InvalidSparkplugTopic,
                     topic,
@@ -204,7 +205,7 @@ pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event {
                     }
                 }
             };
-            if let Some(_) = iter.next() {
+            if iter.next().is_some() {
                 return Event::InvalidPublish {
                     reason: MessageError::InvalidSparkplugTopic,
                     topic,
@@ -218,6 +219,5 @@ pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event {
                 message,
             })
         }
-    };
-    event
+    }
 }

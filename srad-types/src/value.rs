@@ -198,7 +198,7 @@ fn pack_byte_with_bool(bools: &[bool]) -> u8 {
     bools
         .iter()
         .enumerate()
-        .fold(0u8, |acc, (i, b)| acc | ((*b as u8) << 7 - i))
+        .fold(0u8, |acc, (i, b)| acc | ((*b as u8) << (7 - i)))
 }
 
 fn bool_vec_to_proto(vec: Vec<bool>) -> Vec<u8> {
@@ -216,7 +216,7 @@ fn bool_vec_to_proto(vec: Vec<bool>) -> Vec<u8> {
     chunks
         .into_iter()
         .for_each(|chunk| out.push(pack_byte_with_bool(chunk)));
-    if remainder.len() > 0 {
+    if !remainder.is_empty() {
         out.push(pack_byte_with_bool(remainder))
     }
     out
@@ -248,7 +248,7 @@ fn proto_to_bool_vec(bytes: Vec<u8>) -> Result<Vec<bool>, FromBytesError> {
     }
 
     for i in 0..(bool_count % 8) {
-        bools_out.push(((bools_data[bool_bytes - 1] >> 7 - i) & 1) == 1);
+        bools_out.push(((bools_data[bool_bytes - 1] >> (7 - i)) & 1) == 1);
     }
     Ok(bools_out)
 }
@@ -843,7 +843,7 @@ mod tests {
         #[test]
         fn test_vec_u8_conversion_invalid_data() {
             /* invalid size data */
-            let data = vec![0x00 as u8, 0x01, 0x02, 0x03, 0x04];
+            let data = vec![0x00_u8, 0x01, 0x02, 0x03, 0x04];
             assert!(proto_to_u16_vec(data.clone()).is_err());
             assert!(proto_to_u32_vec(data.clone()).is_err());
             assert!(proto_to_u64_vec(data).is_err());

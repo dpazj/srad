@@ -132,8 +132,8 @@ impl LastWill {
         let topic = NodeTopic::new(group, NodeMessageType::NDeath, node_id);
         let (qos, retain) = topic.get_publish_quality_retain();
         Self {
-            retain: retain,
-            qos: qos,
+            retain,
+            qos,
             payload: payload.into(),
             topic: topic.topic,
         }
