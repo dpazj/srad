@@ -46,7 +46,9 @@ async fn main() {
         .register_evaluate_rebirth_reason_fn(move |details| {
             let client = client.clone();
             async move {
-                if let srad::app::RebirthReason::MalformedPayload = details.reason { return }
+                if let srad::app::RebirthReason::MalformedPayload = details.reason {
+                    return;
+                }
                 info!(
                     "Issuing rebirth request to node {0:?}, reason = {1:?}",
                     details.node_id, details.reason

@@ -189,7 +189,7 @@ where
             data: Arc::new(Mutex::new(MetricData {
                 value,
                 token: None,
-                cb
+                cb,
             })),
         };
         let metric_insert = Arc::new(metric.clone());
@@ -305,7 +305,7 @@ where
 impl<H> Default for SimpleMetricManager<H>
 where
     H: MetricPublisher + Clone + Send + Sync + 'static,
- {
+{
     fn default() -> Self {
         Self::new()
     }

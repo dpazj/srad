@@ -589,11 +589,7 @@ impl AppClient {
     }
 
     /// Issue a node rebirth CMD request
-    pub async fn publish_node_rebirth(
-        &self,
-        group_id: &str,
-        node_id: &str,
-    ) -> Result<(), ()> {
+    pub async fn publish_node_rebirth(&self, group_id: &str, node_id: &str) -> Result<(), ()> {
         let topic = PublishTopic::new_node_cmd(group_id, node_id);
         let rebirth_cmd = PublishMetric::new(MetricId::Name(NODE_CONTROL_REBIRTH.into()), true);
         self.publish_metrics(topic, vec![rebirth_cmd]).await
@@ -649,45 +645,42 @@ impl AppClient {
 pub type OnlineCallback = Pin<Box<dyn Fn() + Send>>;
 pub type OfflineCallback = Pin<Box<dyn Fn() + Send>>;
 
-pub type NBirthCallback = Pin<Box<
-    dyn Fn(
-        NodeIdentifier,
-        BirthToken,
-        u64,
-        Vec<(MetricBirthDetails, MetricDetails)>,
-    ) + Send
->>;
+pub type NBirthCallback = Pin<
+    Box<dyn Fn(NodeIdentifier, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>) + Send>,
+>;
 pub type NDeathCallback = Pin<Box<dyn Fn(NodeIdentifier, BirthToken) + Send>>;
 pub type NDataCallback = Arc<
     dyn Fn(
-        NodeIdentifier,
-        BirthToken,
-        u64,
-        Vec<(MetricId, MetricDetails)>,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync,
+            NodeIdentifier,
+            BirthToken,
+            u64,
+            Vec<(MetricId, MetricDetails)>,
+        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        + Send
+        + Sync,
 >;
 
-pub type DBirthCallback = Pin<Box<
-    dyn Fn(
-        NodeIdentifier,
-        String,
-        BirthToken,
-        u64,
-        Vec<(MetricBirthDetails, MetricDetails)>,
-    ) + Send
->>;
+pub type DBirthCallback = Pin<
+    Box<
+        dyn Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>)
+            + Send,
+    >,
+>;
 pub type DDeathCallback = Pin<Box<dyn Fn(NodeIdentifier, String, BirthToken) + Send>>;
 pub type DDataCallback = Arc<
     dyn Fn(
-        NodeIdentifier,
-        String,
-        BirthToken,
-        u64,
-        Vec<(MetricId, MetricDetails)>,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync,
+            NodeIdentifier,
+            String,
+            BirthToken,
+            u64,
+            Vec<(MetricId, MetricDetails)>,
+        ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+        + Send
+        + Sync,
 >;
 
-pub type EvaluateRebirthReasonCallback = Arc<dyn Fn(RebirthReasonDetails) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+pub type EvaluateRebirthReasonCallback =
+    Arc<dyn Fn(RebirthReasonDetails) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 struct Callbacks {
     online: Option<OnlineCallback>,
@@ -827,13 +820,7 @@ impl App {
     /// Registers a callback function to be invoked when a device death certificate is received.
     pub fn on_dbirth<F>(&mut self, cb: F) -> &mut Self
     where
-        F: Fn(
-                NodeIdentifier,
-                String,
-                BirthToken,
-                u64,
-                Vec<(MetricBirthDetails, MetricDetails)>,
-            )
+        F: Fn(NodeIdentifier, String, BirthToken, u64, Vec<(MetricBirthDetails, MetricDetails)>)
             + Send
             + 'static,
     {
@@ -981,12 +968,7 @@ impl App {
                         let timestamp = self.will_timestamp;
                         task::spawn(async move {
                             _ = client
-                                .publish_state_message(
-                                    topic,
-                                    StatePayload::Online {
-                                        timestamp,
-                                    },
-                                )
+                                .publish_state_message(topic, StatePayload::Online { timestamp })
                                 .await;
                         });
                     }

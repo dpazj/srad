@@ -149,8 +149,7 @@ pub struct Device {
 
 impl Device {
     fn generate_birth_payload(&self) -> Payload {
-        let mut birth_initializer =
-            BirthInitializer::new(BirthObjectType::Device(self.info.id));
+        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Device(self.info.id));
         self.dev_impl.initialise_birth(&mut birth_initializer);
         let timestamp = timestamp();
         let metrics = birth_initializer.finish();
@@ -199,7 +198,8 @@ impl Device {
                 ),
                 payload,
             )
-            .await.is_ok()
+            .await
+            .is_ok()
         {
             self.birthed.store(true, Ordering::SeqCst)
         };
@@ -213,7 +213,8 @@ impl Device {
         }
         if publish {
             let payload = self.generate_death_payload();
-            _ = self.client
+            _ = self
+                .client
                 .publish_device_message(
                     DeviceTopic::new(
                         &self.eon_state.group_id,
@@ -224,7 +225,6 @@ impl Device {
                     payload,
                 )
                 .await;
-            
         }
         self.birthed.store(false, Ordering::SeqCst);
         debug!("Device {} dead", self.info.name);
@@ -359,24 +359,24 @@ impl DeviceMap {
         let payload = message.message.payload;
         let message_kind = message.message.kind;
         if MessageKind::Cmd == message_kind {
-                let message_metrics = match payload.try_into() {
-                    Ok(metrics) => metrics,
-                    Err(_) => {
-                        warn!(
-                            "Got invalid CMD payload for device '{}' - ignoring",
-                            message.device_id
-                        );
-                        return;
-                    }
-                };
-                dev.dev_impl
-                    .on_dcmd(
-                        DeviceHandle {
-                            device: dev.clone(),
-                        },
-                        message_metrics,
-                    )
-                    .await
+            let message_metrics = match payload.try_into() {
+                Ok(metrics) => metrics,
+                Err(_) => {
+                    warn!(
+                        "Got invalid CMD payload for device '{}' - ignoring",
+                        message.device_id
+                    );
+                    return;
+                }
+            };
+            dev.dev_impl
+                .on_dcmd(
+                    DeviceHandle {
+                        device: dev.clone(),
+                    },
+                    message_metrics,
+                )
+                .await
         }
     }
 }

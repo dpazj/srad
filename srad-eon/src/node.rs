@@ -402,24 +402,28 @@ impl EoN {
     fn on_node_message(&self, message: NodeMessage) {
         let payload = message.message.payload;
         let message_kind = message.message.kind;
-        
+
         if message_kind == MessageKind::Cmd {
             let mut rebirth = false;
             for x in &payload.metrics {
-                if x.alias.is_some() { continue; }
+                if x.alias.is_some() {
+                    continue;
+                }
 
                 let metric_name = match &x.name {
                     Some(name) => name,
                     None => continue,
                 };
 
-                if metric_name != NODE_CONTROL_REBIRTH { continue; }
-                
+                if metric_name != NODE_CONTROL_REBIRTH {
+                    continue;
+                }
+
                 rebirth = match &x.value {
                     Some(Value::BooleanValue(val)) => *val,
                     _ => false,
                 };
-            
+
                 if !rebirth {
                     warn!("Received invalid CMD Rebirth metric - ignoring request")
                 }

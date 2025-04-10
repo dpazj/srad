@@ -103,10 +103,7 @@ pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event {
                         timestamp: cert.timestamp,
                     },
                 };
-                Event::State {
-                    host_id,
-                    payload,
-                }
+                Event::State { host_id, payload }
             }
             Err(e) => Event::InvalidPublish {
                 reason: MessageError::StatePayloadJsonDecodeError(e),
@@ -169,7 +166,6 @@ pub fn topic_and_payload_to_event(topic: Vec<u8>, payload: Vec<u8>) -> Event {
         }
     };
 
-    
     match message_producer {
         MessageProducer::Node => {
             if iter.next().is_some() {

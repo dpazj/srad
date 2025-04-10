@@ -34,7 +34,9 @@ impl TryFrom<PropertyValue> for Quality {
         let value: i32 = value.try_into()?;
         match value.try_into() {
             Ok(value) => Ok(value),
-            Err(_) => Err(FromValueTypeError::InvalidValue("int value was not a valid quality enum value".to_string())),
+            Err(_) => Err(FromValueTypeError::InvalidValue(
+                "int value was not a valid quality enum value".to_string(),
+            )),
         }
     }
 }

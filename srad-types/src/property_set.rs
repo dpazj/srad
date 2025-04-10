@@ -139,10 +139,7 @@ impl From<PropertySet> for payload::PropertySet {
             keys.push(k);
             values.push(v.into());
         });
-        payload::PropertySet {
-            keys,
-            values,
-        }
+        payload::PropertySet { keys, values }
     }
 }
 
