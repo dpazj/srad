@@ -8,7 +8,6 @@ use srad_client::{Event, NodeMessage};
 
 use srad_types::constants::NODE_CONTROL_REBIRTH;
 use srad_types::payload::metric::Value;
-use srad_types::payload::ToMetric;
 use srad_types::topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter};
 use srad_types::utils::timestamp;
 use srad_types::MetricValue;
@@ -127,7 +126,7 @@ impl NodeHandle {
         let timestamp = timestamp();
         let mut payload_metrics = Vec::with_capacity(metrics.len());
         for x in metrics.into_iter() {
-            payload_metrics.push(x.to_metric());
+            payload_metrics.push(x.into());
         }
         Payload {
             timestamp: Some(timestamp),

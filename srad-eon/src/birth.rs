@@ -4,7 +4,7 @@ use std::{
 };
 
 use srad_types::{
-    payload::{DataType, Metric, ToMetric},
+    payload::{DataType, Metric},
     traits,
     utils::timestamp,
     MetaData, MetricId, MetricValue, PropertySet,
@@ -90,11 +90,11 @@ where
     }
 }
 
-impl<T> ToMetric for BirthMetricDetails<T>
+impl<T> Into<Metric> for BirthMetricDetails<T>
 where
     T: traits::MetricValue,
 {
-    fn to_metric(self) -> Metric {
+    fn into(self) -> Metric {
         let mut birth_metric = Metric::new();
         birth_metric.set_name(self.name).set_datatype(self.datatype);
         birth_metric.timestamp = Some(self.timestamp);
@@ -186,7 +186,7 @@ impl BirthInitializer {
         details: BirthMetricDetails<T>,
     ) -> Result<MetricToken<T>, Error> {
         let tok = self.create_metric_token(&details.name, details.use_alias)?;
-        let mut metric = details.to_metric();
+        let mut metric: Metric = details.into();
         if let MetricId::Alias(alias) = &tok.id {
             metric.set_alias(*alias);
         }

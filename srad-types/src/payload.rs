@@ -57,10 +57,6 @@ impl Metric {
     }
 }
 
-pub trait ToMetric {
-    fn to_metric(self) -> Metric;
-}
-
 impl From<Payload> for Vec<u8> {
     fn from(value: Payload) -> Self {
         let mut bytes = Vec::new();

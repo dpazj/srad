@@ -1,5 +1,5 @@
 use srad_types::{
-    payload::{self, DataType, MetaData, Metric, ToMetric},
+    payload::{self, DataType, MetaData, Metric},
     traits, MetricId, MetricValue, PropertySet,
 };
 
@@ -27,8 +27,8 @@ impl PublishMetric {
     }
 }
 
-impl ToMetric for PublishMetric {
-    fn to_metric(self) -> Metric {
+impl Into<Metric> for PublishMetric {
+    fn into(self) -> Metric {
         let mut metric = Metric::new();
         match self.metric_identifier {
             MetricId::Name(name) => metric.set_name(name),
