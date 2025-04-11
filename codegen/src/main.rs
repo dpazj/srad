@@ -15,11 +15,8 @@ fn main() -> Result<()> {
         .compile_protos(&[sparkplug_proto], &[protodir])?;
 
     let outfile = outdir.clone().join("org.eclipse.tahu.protobuf.rs");
-    let renamed= outdir.clone().join("sparkplug_payload.rs");
-    std::fs::rename(
-        outfile,
-        renamed
-    )?;
-        
+    let renamed = outdir.clone().join("sparkplug_payload.rs");
+    std::fs::rename(outfile, renamed)?;
+
     Ok(())
 }
