@@ -9,6 +9,8 @@
 
 ## CI
 
+- dont need protoc for all actions
+- use Swatinem/rust-cache@v2?
 - Coverage?
 
 ## Srad
