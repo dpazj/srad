@@ -90,23 +90,22 @@ where
     }
 }
 
-impl<T> Into<Metric> for BirthMetricDetails<T>
+impl<T> From<BirthMetricDetails<T>> for Metric
 where
     T: traits::MetricValue,
 {
-    fn into(self) -> Metric {
+    fn from(value: BirthMetricDetails<T>) -> Metric {
         let mut birth_metric = Metric::new();
-        birth_metric.set_name(self.name).set_datatype(self.datatype);
-        birth_metric.timestamp = Some(self.timestamp);
-        birth_metric.metadata = self.metadata.map(MetaData::into);
-
-        if let Some(val) = self.initial_value {
+        birth_metric
+            .set_name(value.name)
+            .set_datatype(value.datatype);
+        birth_metric.timestamp = Some(value.timestamp);
+        birth_metric.metadata = value.metadata.map(MetaData::into);
+        if let Some(val) = value.initial_value {
             let val: MetricValue = val.into();
             birth_metric.set_value(val.into());
         }
-
-        birth_metric.properties = self.properties.map(PropertySet::into);
-
+        birth_metric.properties = value.properties.map(PropertySet::into);
         birth_metric
     }
 }
