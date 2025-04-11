@@ -27,15 +27,15 @@ impl PublishMetric {
     }
 }
 
-impl Into<Metric> for PublishMetric {
-    fn into(self) -> Metric {
+impl From<PublishMetric> for Metric {
+    fn from(val: PublishMetric) -> Self {
         let mut metric = Metric::new();
-        match self.metric_identifier {
+        match val.metric_identifier {
             MetricId::Name(name) => metric.set_name(name),
             MetricId::Alias(alias) => metric.set_alias(alias),
         };
-        metric.set_value(self.value.into());
-        metric.timestamp = self.timestamp;
+        metric.set_value(val.value.into());
+        metric.timestamp = val.timestamp;
         metric
     }
 }
