@@ -81,6 +81,3 @@ pub use srad_eon as eon;
 
 #[cfg(feature = "app")]
 pub use srad_app as app;
-
-#[doc = include_str!("../../README.md")]
-struct _ReadMeDocTest;
