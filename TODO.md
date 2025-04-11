@@ -7,6 +7,8 @@
 - better examples
 - more detailed docs
 
+- add test for code in readme.md
+
 ## CI
 
 - dont need protoc for all actions
