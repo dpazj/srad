@@ -9,11 +9,7 @@ use std::{
 use futures::future::join_all;
 use log::{debug, info, warn};
 use srad_client::{DeviceMessage, DynClient, MessageKind};
-use srad_types::{
-    payload::Payload,
-    topic::DeviceTopic,
-    utils::timestamp,
-};
+use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
 
 use crate::{
     birth::{BirthInitializer, BirthObjectType},
