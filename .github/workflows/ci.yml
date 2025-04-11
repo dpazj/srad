@@ -11,6 +11,18 @@ env:
 
 jobs:
 
+  pass:
+    name: all good to go 
+    runs-on: ubuntu-latest
+    needs:
+      - fmt
+      - clippy
+      - docs
+      - codegen
+      - test
+    steps:
+      - run: exit 0
+
   docs: 
     runs-on: ubuntu-latest
     strategy:
