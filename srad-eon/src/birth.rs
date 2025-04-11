@@ -106,6 +106,7 @@ where
             birth_metric.set_value(val.into());
         }
         birth_metric.properties = value.properties.map(PropertySet::into);
+
         birth_metric
     }
 }
