@@ -22,7 +22,7 @@ authors = ["dpazj"]
 prost = "0.13.0"
 prost-build = "0.13.0"
 rumqttc = "0.24.0"
-tokio = {version="1.44", features=["sync", "signal", "rt-multi-thread"]}
+tokio = {version="1.44", features=["sync", "signal", "rt-multi-thread", "macros", "time"]}
 log = "0.4"
 bytes = "1.9.0"
 thiserror = "1.0.69"
