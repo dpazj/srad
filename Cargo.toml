@@ -9,7 +9,7 @@ members = [
   "srad-types",
   "srad-app",
   "examples"
-]
+, "codegen"]
 
 [workspace.package]
 edition = "2021"

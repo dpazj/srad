@@ -1,10 +1,6 @@
-mod types {
-    include!(concat!(env!("OUT_DIR"), "/org.eclipse.tahu.protobuf.rs"));
-}
-
 use serde::{Deserialize, Serialize};
 
-pub use types::{payload::*, *};
+pub use crate::generated::sparkplug_payload::{payload::*, *};
 
 pub use prost::Message;
 

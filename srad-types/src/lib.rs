@@ -1,6 +1,10 @@
 pub mod constants;
 
-/// Generated types
+mod generated {
+    pub(crate) mod sparkplug_payload;
+}
+
+/// generated types
 pub mod payload;
 
 pub mod topic;

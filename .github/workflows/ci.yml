@@ -11,6 +11,19 @@ env:
 
 jobs:
 
+  codegen:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: hecrj/setup-rust-action@v2
+    - uses: Swatinem/rust-cache@v2
+    - name: install protoc
+      uses: taiki-e/install-action@v2
+      with:
+        tool: protoc@${{ env.PROTOC_VERSION }}
+    - run: cargo run --package codegen
+    - run: git diff --exit-code
+
   test:
     runs-on: ubuntu-latest
     strategy:

@@ -79,7 +79,7 @@ More examples can be found in the [examples](./examples) and in the [docs][docs]
 
 ### Dependencies
 
-[`srad-types`](./srad-types) uses `protoc` [Protocol Buffers compiler](https://protobuf.dev/downloads/) to generate types.
+[`codegen`](./codegen) uses `protoc` [Protocol Buffers compiler](https://protobuf.dev/downloads/) to generate types.
 
 ## Project Layout
 
@@ -89,6 +89,7 @@ More examples can be found in the [examples](./examples) and in the [docs][docs]
 - [`srad-client`](./srad-client/README.md): Trait and type definitions for implementing clients to interact with Sparkplug.  
 - [`srad-client-rumqtt`](./srad-client-rumqtt/README.md): Client implementation using [rumqtt](https://github.com/bytebeamio/rumqtt).
 - [`srad-types`](./srad-types/README.md): Utility and Protobuf generated types.
+- [`codegen`](./codegen): Generates types from protobuf files in [`protos`](./protos).
 - [`examples`](./examples): Example Edge Node and application implementations.
 
 ## License
