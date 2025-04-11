@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 use std::vec::IntoIter;
 
 use log::warn;
-use srad_types::payload::ToMetric;
 use srad_types::payload::{Metric, Payload};
 use srad_types::utils::timestamp;
 use srad_types::MetaData;
@@ -150,25 +149,25 @@ impl PublishMetric {
     }
 }
 
-impl ToMetric for PublishMetric {
-    fn to_metric(self) -> Metric {
+impl From<PublishMetric> for Metric {
+    fn from(value: PublishMetric) -> Self {
         let mut metric = Metric::new();
-        match self.metric_identifier {
+        match value.metric_identifier {
             MetricId::Name(name) => metric.set_name(name),
             MetricId::Alias(alias) => metric.set_alias(alias),
         };
 
-        metric.metadata = self.metadata.map(MetaData::into);
+        metric.metadata = value.metadata.map(MetaData::into);
 
-        if let Some(val) = self.value {
+        if let Some(val) = value.value {
             metric.set_value(val.into());
         }
 
-        metric.timestamp = Some(self.timestamp);
-        metric.properties = self.properties.map(PropertySet::into);
+        metric.timestamp = Some(value.timestamp);
+        metric.properties = value.properties.map(PropertySet::into);
 
-        metric.is_historical = self.is_historical;
-        metric.is_transient = self.is_transient;
+        metric.is_historical = value.is_historical;
+        metric.is_transient = value.is_transient;
 
         metric
     }

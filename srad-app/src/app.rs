@@ -13,7 +13,7 @@ use srad_client::{
 };
 use srad_types::{
     constants::{BDSEQ, NODE_CONTROL_REBIRTH},
-    payload::{Metric, Payload, ToMetric},
+    payload::{Metric, Payload},
     topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter},
     utils::{self, timestamp},
     MetricId, MetricValue,
@@ -594,7 +594,7 @@ impl AppClient {
     fn metrics_to_payload(metrics: Vec<PublishMetric>) -> Payload {
         let mut payload_metrics = Vec::with_capacity(metrics.len());
         for x in metrics.into_iter() {
-            payload_metrics.push(x.to_metric());
+            payload_metrics.push(x.into());
         }
         Payload {
             timestamp: Some(utils::timestamp()),

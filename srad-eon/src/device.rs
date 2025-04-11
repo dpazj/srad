@@ -9,11 +9,7 @@ use std::{
 use futures::future::join_all;
 use log::{debug, info, warn};
 use srad_client::{DeviceMessage, DynClient, MessageKind};
-use srad_types::{
-    payload::{Payload, ToMetric},
-    topic::DeviceTopic,
-    utils::timestamp,
-};
+use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
 
 use crate::{
     birth::{BirthInitializer, BirthObjectType},
@@ -79,7 +75,7 @@ impl DeviceHandle {
         let timestamp = timestamp();
         let mut payload_metrics = Vec::with_capacity(metrics.len());
         for x in metrics.into_iter() {
-            payload_metrics.push(x.to_metric());
+            payload_metrics.push(x.into());
         }
         Payload {
             timestamp: Some(timestamp),

@@ -4,7 +4,7 @@ use std::{
 };
 
 use srad_types::{
-    payload::{DataType, Metric, ToMetric},
+    payload::{DataType, Metric},
     traits,
     utils::timestamp,
     MetaData, MetricId, MetricValue, PropertySet,
@@ -90,22 +90,22 @@ where
     }
 }
 
-impl<T> ToMetric for BirthMetricDetails<T>
+impl<T> From<BirthMetricDetails<T>> for Metric
 where
     T: traits::MetricValue,
 {
-    fn to_metric(self) -> Metric {
+    fn from(value: BirthMetricDetails<T>) -> Metric {
         let mut birth_metric = Metric::new();
-        birth_metric.set_name(self.name).set_datatype(self.datatype);
-        birth_metric.timestamp = Some(self.timestamp);
-        birth_metric.metadata = self.metadata.map(MetaData::into);
-
-        if let Some(val) = self.initial_value {
+        birth_metric
+            .set_name(value.name)
+            .set_datatype(value.datatype);
+        birth_metric.timestamp = Some(value.timestamp);
+        birth_metric.metadata = value.metadata.map(MetaData::into);
+        if let Some(val) = value.initial_value {
             let val: MetricValue = val.into();
             birth_metric.set_value(val.into());
         }
-
-        birth_metric.properties = self.properties.map(PropertySet::into);
+        birth_metric.properties = value.properties.map(PropertySet::into);
 
         birth_metric
     }
@@ -186,7 +186,7 @@ impl BirthInitializer {
         details: BirthMetricDetails<T>,
     ) -> Result<MetricToken<T>, Error> {
         let tok = self.create_metric_token(&details.name, details.use_alias)?;
-        let mut metric = details.to_metric();
+        let mut metric: Metric = details.into();
         if let MetricId::Alias(alias) = &tok.id {
             metric.set_alias(*alias);
         }
