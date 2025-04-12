@@ -36,13 +36,17 @@ async fn main() {
         .register_metric("Device Counter", 0_i8)
         .unwrap();
     dev1_metrics
-        .register_metric_with_cmd_handler("Writeable UInt64", 0_u64, |manager, metric, value| async move {
-            _ = manager
-                .publish_metric(metric.update(|x| *x = value.unwrap_or(0)))
-                .await;
-        })
+        .register_metric_with_cmd_handler(
+            "Writeable UInt64",
+            0_u64,
+            |manager, metric, value| async move {
+                _ = manager
+                    .publish_metric(metric.update(|x| *x = value.unwrap_or(0)))
+                    .await;
+            },
+        )
         .unwrap();
-   
+
     device1.enable().await;
 
     let node_manager = node_metrics.clone();
