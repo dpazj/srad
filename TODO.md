@@ -58,5 +58,8 @@
 
 ## Types
 
+- impl to value types for reference to types
+- impl to value types for atomic types  
+
 - template support
 - dataset support

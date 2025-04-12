@@ -17,3 +17,7 @@ path = "app/simple.rs"
 [[example]]
 name = "simple-node"
 path = "eon/simple.rs"
+
+[[example]]
+name = "node-datatypes"
+path = "eon/metric_datatypes.rs"
