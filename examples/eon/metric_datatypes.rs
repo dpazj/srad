@@ -77,7 +77,7 @@ impl DatatypesManager {
             float_array: vec![f32::MAX, f32::MIN, 0.0, 1.0, std::f32::consts::PI],
             double_array: vec![f64::MAX, f64::MIN, 0.0, 1.0, std::f64::consts::PI],
             string_array: vec!["Hello".into(), ",".into(), "World".into(), "!".into()],
-            datetime_array: vec![],
+            datetime_array: vec![DateTime::new(0), DateTime::new(1), DateTime::new(999999)],
         }))
     }
 }
