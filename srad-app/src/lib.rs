@@ -5,6 +5,7 @@
 mod app;
 mod config;
 mod metrics;
+mod resequencer;
 
 pub use app::*;
 pub use config::*;
