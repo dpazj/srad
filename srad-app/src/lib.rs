@@ -3,6 +3,7 @@
 //!This library defines a framework for implementing Sparkplug Applications.
 
 mod app;
+mod app2;
 mod config;
 mod metrics;
 
