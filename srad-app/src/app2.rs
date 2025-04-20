@@ -35,53 +35,13 @@ use tokio::{
     time::timeout,
 };
 
-/// A token used to help track birth death lifecycles.
-///
-/// `BirthToken` allows implementing applications to determine if a message for device or node belongs to the
-/// current or previous birth death lifecycle. This is required due to the async nature of the app
-/// where data messages might arrive after an object has produced a death message or has re-birthed.
-///
-/// Typically, a `BirthToken` will be provided on a birth callback. An implementing application should then use this token to
-/// compare the token provided with other callbacks that reference a node or device.
-pub struct BirthToken(Arc<AtomicBool>);
-
-impl BirthToken {
-    fn new() -> Self {
-        Self(Arc::new(AtomicBool::new(false)))
-    }
-
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-
-    fn refresh(&mut self) {
-        self.invalidate();
-        self.0 = Arc::new(AtomicBool::new(false))
-    }
-
-    fn invalidate(&self) {
-        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
-    }
-
-    fn is_dead(&self) -> bool {
-        self.0.load(std::sync::atomic::Ordering::SeqCst)
-    }
-}
-
-impl PartialEq for BirthToken {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
 
 struct DeviceState {
-    birth_token: BirthToken,
 }
 
 struct NodeState {
     seq: u8,
     bdseq: u8,
-    birth_token: BirthToken,
     devices: HashMap<String, DeviceState>,
 }
 
@@ -95,7 +55,6 @@ impl NodeState {
             seq,
             bdseq,
             devices: HashMap::new(),
-            birth_token: BirthToken::new(),
         }
     }
 
@@ -117,7 +76,6 @@ impl NodeState {
         self.devices.insert(
             name,
             DeviceState {
-                birth_token: tok.clone(),
             },
         );
         tok
@@ -490,10 +448,44 @@ impl App {
         AppEvent::NBirth
     }
 
-    fn handle_node_message(&mut self, message: NodeMessage) -> Option<AppEvent> {
+    fn handle_node_death(&mut self, message: NodeMessage) -> AppEvent {
+        let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
+            Ok(bdseq) => bdseq,
+            Err(_) => {
+                warn!("Birth Message contained an invalid bdseq metric - discarding payload. node = {:?}", id);
+                return Some(RebirthReasonDetails::new(
+                    id,
+                    RebirthReason::MalformedPayload,
+                ));
+            }
+        };
+        let mut nodes = self.nodes.lock().unwrap();
+        let node = nodes.get_mut(&id)?;
+        if bdseq != node.bdseq {
+            debug!("Death bdseq did not match current known birth bdseq - ignoring. node = {:?}", id);
+            return None;
+        }
 
+        /* Duplicate death */
+        if node.birth_token.is_dead() {
+            debug!(
+                "Death message already received for bdseq {} - ignoring. node = {:?}",
+                bdseq, id
+            );
+            return None;
+        }
+        node.birth_token.invalidate();
+        for x in node.devices.values() {
+            x.birth_token.invalidate();
+        }
+        let tok = node.birth_token.clone();
+        AppEvent::NDeath
+    }
+
+    fn handle_node_message(&mut self, message: NodeMessage) -> Option<AppEvent> {
+        let id = NodeIdentifier { group: message.group_id, node: message.node_id };
         match message.message.kind {
-            MessageKind::Birth => todo!(),
+            MessageKind::Birth => Some(self.handle_node_birth(id, message.message.payload)),
             MessageKind::Death => todo!(),
             MessageKind::Cmd => None,  
             MessageKind::Data => todo!(),
@@ -506,10 +498,10 @@ impl App {
         match event {
             Event::Offline => self.handle_offline(),
             Event::Online => self.handle_online(),
-            Event::Node(node_message) => todo!(),
+            Event::Node(node_message) => self.handle_node_message(node_message),
             Event::Device(device_message) => todo!(),
             Event::State { host_id, payload } => todo!(),
-            Event::InvalidPublish { reason, topic, payload } => todo!(),
+            Event::InvalidPublish { reason, topic, payload } => (),
         }
     }
 
