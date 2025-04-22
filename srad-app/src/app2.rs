@@ -37,6 +37,7 @@ use tokio::{
 
 
 struct DeviceState {
+    birthed: bool
 }
 
 struct NodeState {
@@ -77,6 +78,7 @@ impl NodeState {
         self.devices.insert(
             name,
             DeviceState {
+                birthed: true
             },
         );
     }
@@ -549,20 +551,70 @@ impl App {
         }
     }
 
-    fn handle_device_birth(node: &mut NodeState, payload: Payload) {
+    fn handle_device_birth(node: &mut NodeState, node_id: NodeIdentifier, device_name: String, payload: Payload) -> Option<AppEvent> {
 
+        let metric_details = 
+            match get_metric_birth_details_from_birth_metrics(payload.metrics) {
+                Ok(details) => details,
+                Err(e) => {
+                    warn!(
+                        "Message payload was invalid - {:?}. node = {:?}, device = {}",
+                        e, node_id, device_name
+                    );
+                    return Some(AppEvent::RebirthReason(
+                        RebirthReasonDetails::new(node_id,RebirthReason::MalformedPayload).with_device(device_name)
+                    ));
+                }
+            };
+
+        
+        match node.get_device(&device_name) {
+            Some(dev) => {
+                if dev.birthed == true { return None }
+                dev.birthed = true;
+            },
+            None => node.add_device(device_name.clone()),
+        };
+
+        Some(AppEvent::DBirth);
     }
 
-    fn handle_device_death(node: &mut NodeState, payload: Payload) {
-
+    fn handle_device_death(node: &mut NodeState, node_id: NodeIdentifier, device_name: String, payload: Payload) -> Option<AppEvent> {
+        let device = node.get_device(&device_name)?;
+        if device.birthed == false { return None }
+        device.birthed = true;
+        Some(AppEvent::DDeath)
     }
 
-    fn handle_device_data(node: &mut NodeState, payload: Payload) {
+    fn handle_device_data(node: &mut NodeState, node_id: NodeIdentifier, device_name: String, payload: Payload) -> Option<AppEvent> {
 
+        match node.get_device(&device_name) {
+            Some(dev) => {
+                if dev.birthed == true { return None }
+                dev.birthed = true;
+            },
+            None => node.add_device(device_name.clone()),
+        };
+
+        let details = match get_metric_id_and_details_from_payload_metrics(payload.metrics)
+        {
+            Ok(details) => details,
+            Err(e) => {
+                warn!(
+                    "Message payload was invalid - {:?}. node = {:?}, device = {}",
+                    e, node_id, device_name
+                );
+                return Some(AppEvent::RebirthReason(
+                    RebirthReasonDetails::new(node_id, RebirthReason::MalformedPayload).with_device(device_name)
+                ));
+            }
+        };
+
+        Some(AppEvent::DData)
     }
 
     fn handle_device_message(&mut self, message: DeviceMessage) -> Option<AppEvent> {
-        let device_id = message.device_id;
+        let device_name = message.device_id;
 
         //TODO refactor this section with handle_node_data
         let id = NodeIdentifier {
@@ -576,11 +628,11 @@ impl App {
             None => {
                 warn!(
                     "Message did not contain a seq number - discarding. device = {:?} node = {:?}",
-                    device_id, id
+                    device_name, id
                 );
                 return Some(AppEvent::RebirthReason(
                     RebirthReasonDetails::new(id, RebirthReason::MalformedPayload)
-                        .with_device(device_id)
+                        .with_device(device_name)
                 ));
             }
         };
@@ -590,11 +642,11 @@ impl App {
             None => {
                 warn!(
                     "Message did not contain a timestamp - discarding. device = {:?} node = {:?}",
-                    device_id, id
+                    device_name, id
                 );
                 return Some(AppEvent::RebirthReason(
                     RebirthReasonDetails::new(id, RebirthReason::MalformedPayload)
-                        .with_device(device_id)
+                        .with_device(device_name)
                 ));
             }
         };
@@ -607,13 +659,12 @@ impl App {
         };
 
         match message_kind {
-            MessageKind::Birth => todo!(),
-            MessageKind::Death => todo!(),
+            MessageKind::Birth => Self::handle_device_birth(node, id, device_name, payload),
+            MessageKind::Death => Self::handle_device_death(node, id, device_name, payload),
+            MessageKind::Data => Self::handle_device_data(node, id, device_name, payload),
             MessageKind::Cmd => None,
-            MessageKind::Data => todo!(),
             MessageKind::Other(_) => None,
         }
-
     }
 
     fn handle_event(&mut self, event: Event) -> Option<AppEvent>
@@ -621,8 +672,8 @@ impl App {
         match event {
             Event::Offline => self.handle_offline(),
             Event::Online => self.handle_online(),
-            Event::Node(node_message) => self.handle_node_message(node_message),
-            Event::Device(device_message) => todo!(),
+            Event::Node(message) => self.handle_node_message(message),
+            Event::Device(message) => self.handle_device_message(message),
             Event::State { host_id, payload } => None,
             Event::InvalidPublish { reason, topic, payload } => None,
         }
