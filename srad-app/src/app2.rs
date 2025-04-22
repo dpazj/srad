@@ -1,15 +1,11 @@
 use std::{
     collections::HashMap,
-    future::Future,
-    pin::Pin,
-    sync::{atomic::AtomicBool, Arc, Mutex},
-    time::Duration,
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use log::{debug, error, info, warn};
 use srad_client::{
-    Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage,
-    StatePayload,
+    Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage
 };
 use srad_types::{
     constants::{BDSEQ, NODE_CONTROL_REBIRTH},
@@ -20,21 +16,18 @@ use srad_types::{
 };
 
 use crate::{
-    config::SubscriptionConfig,
-    metrics::{
+    config::SubscriptionConfig, events::{self, NBirth, NData, NDeath}, metrics::{
         get_metric_birth_details_from_birth_metrics,
-        get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails,
+        get_metric_id_and_details_from_payload_metrics, 
         PublishMetric,
-    },
+    }, NodeIdentifier
 };
 
 use tokio::{
     select,
     sync::mpsc::{self, Receiver},
-    task,
-    time::timeout,
+    task
 };
-
 
 struct DeviceState {
     birthed: bool
@@ -82,13 +75,6 @@ impl NodeState {
             },
         );
     }
-}
-
-/// Used to uniquely identify a node
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct NodeIdentifier {
-    pub group: String,
-    pub node: String,
 }
 
 /// Represents a situation which the application has identified where a implementation might wish to issue a Node rebirth CMD
@@ -289,6 +275,7 @@ impl App {
             eventloop: Box::new(eventloop),
             subscription_config,
             shutdown_rx: rx,
+            nodes: HashMap::new(),
         };
         (app, client)
     }
@@ -424,7 +411,7 @@ impl App {
             }
         };
 
-        let metric_details =
+        let metrics_details =
             match get_metric_birth_details_from_birth_metrics(payload.metrics) {
                 Ok(details) => details,
                 Err(e) => {
@@ -448,7 +435,7 @@ impl App {
             },
         };
         
-        AppEvent::NBirth
+        AppEvent::NBirth(NBirth { id, timestamp, metrics_details })
     }
 
     fn handle_node_death(&mut self, id: NodeIdentifier, payload: Payload) -> Option<AppEvent> {
@@ -480,7 +467,7 @@ impl App {
         }
         node.birthed = false;
 
-        Some(AppEvent::NDeath)
+        Some(AppEvent::NDeath(NDeath{ id }))
     }
 
     fn handle_node_data(&mut self, id: NodeIdentifier, payload: Payload) -> AppEvent {
@@ -521,7 +508,7 @@ impl App {
             }
         };
 
-        let details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
+        let metrics_details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
             Ok(details) => details,
             Err(e) => {
                 warn!("Message payload was invalid - {:?}. node = {:?}", e, id);
@@ -537,7 +524,7 @@ impl App {
             None => return AppEvent::RebirthReason(RebirthReasonDetails::new(id, RebirthReason::UnknownNode)),
         };
 
-        AppEvent::NData
+        AppEvent::NData(NData { id, timestamp, metrics_details})
     }
 
     fn handle_node_message(&mut self, message: NodeMessage) -> Option<AppEvent> {
@@ -576,7 +563,7 @@ impl App {
             None => node.add_device(device_name.clone()),
         };
 
-        Some(AppEvent::DBirth);
+        Some(AppEvent::DBirth)
     }
 
     fn handle_device_death(node: &mut NodeState, node_id: NodeIdentifier, device_name: String, payload: Payload) -> Option<AppEvent> {
@@ -701,9 +688,9 @@ impl App {
 pub enum AppEvent {
     Online,
     Offline,
-    NBirth,
-    NDeath,
-    NData,
+    NBirth(events::NBirth),
+    NDeath(events::NDeath),
+    NData(events::NData),
     DBirth,
     DDeath,
     DData,
