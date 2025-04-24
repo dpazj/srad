@@ -288,7 +288,9 @@ impl App {
     }
 
     fn handle_online(&mut self) -> Option<AppEvent> {
-        if self.online { return None; }
+        if self.online {
+            return None;
+        }
         info!("App Online");
         self.online = true;
         let client = self.client.client.clone();
@@ -586,7 +588,9 @@ impl App {
 
         match node.get_device(&device_name) {
             Some(dev) => {
-                if dev.birthed { return None; }
+                if dev.birthed {
+                    return None;
+                }
                 dev.birthed = true;
             }
             None => node.add_device(device_name.clone()),
@@ -607,7 +611,9 @@ impl App {
         timestamp: u64,
     ) -> Option<AppEvent> {
         let device = node.get_device(&device_name)?;
-        if !device.birthed { return None; }
+        if !device.birthed {
+            return None;
+        }
         device.birthed = true;
         Some(AppEvent::DDeath(DDeath {
             node_id,
@@ -625,7 +631,9 @@ impl App {
     ) -> Option<AppEvent> {
         match node.get_device(&device_name) {
             Some(dev) => {
-                if dev.birthed { return None; }
+                if dev.birthed {
+                    return None;
+                }
                 dev.birthed = true;
             }
             None => node.add_device(device_name.clone()),
@@ -706,7 +714,7 @@ impl App {
                     }
                 }
                 None
-            },
+            }
             _ => None,
         }
     }
