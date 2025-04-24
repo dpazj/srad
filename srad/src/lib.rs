@@ -34,29 +34,17 @@
 //! ```rust no_run
 //! use srad::app::{App, SubscriptionConfig};
 //! use srad::client_rumqtt;
-//!
+//! 
 //! #[tokio::main]
 //! async fn main() {
 //!     let opts = client_rumqtt::MqttOptions::new("foo", "localhost", 1883);
 //!     let (eventloop, client) = client_rumqtt::EventLoop::new(opts, 0);
 //!     let (mut application, client) = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
-//!
-//!     application
-//!         .on_online(||{ println!("App online") })
-//!         .on_offline(||{ println!("App offline") })
-//!         .on_nbirth(|id, _,timestamp, metrics| { println!("Node {id:?} born at {timestamp} metrics = {metrics:?}"); })
-//!         .on_ndeath(|id, _| { println!("Node {id:?} death"); })
-//!         .on_ndata(|id, _, timestamp, metrics| async move {
-//!           println!("Node {id:?} data timestamp = {timestamp} metrics = {metrics:?}");
-//!         })
-//!         .on_dbirth(|id, dev, _, timestamp, metrics| { println!("Device {dev} Node {id:?} born at {timestamp} metrics = {metrics:?}");})
-//!         .on_ddeath(|id, dev, _| { println!("Device {dev} Node {id:?} death"); })
-//!         .on_ddata(|id, dev, _, timestamp, metrics| async move {
-//!             println!("Device {dev} Node {id:?} timestamp {timestamp} metrics = {metrics:?}");
-//!         });
-//!     application.run().await;
+//!     loop {
+//!         let event = application.poll().await; 
+//!         println!("App Event: {:?}", event);
+//!     }
 //! }
-//!
 //! ```
 //!
 //! # Examples

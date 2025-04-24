@@ -78,6 +78,7 @@ pub enum RebirthReason {
 }
 
 /// Details surrounding the situation where the application has identified a [RebirthReason].
+#[derive(Debug)]
 pub struct RebirthReasonDetails {
     pub node_id: NodeIdentifier,
     pub device: Option<String>,
@@ -748,6 +749,7 @@ impl App {
     }
 }
 
+#[derive(Debug)]
 pub enum AppEvent {
     Online,
     Offline,
