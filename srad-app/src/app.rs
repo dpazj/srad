@@ -45,10 +45,6 @@ struct NodeState {
     devices: HashMap<String, DeviceState>,
 }
 
-enum SeqState {
-    OrderGood,
-}
-
 impl NodeState {
     fn new(seq: u8, bdseq: u8) -> Self {
         Self {
@@ -61,11 +57,6 @@ impl NodeState {
 
     fn reset_seq(&mut self) {
         self.seq = 0
-    }
-
-    fn validate_and_update_seq(&mut self, seq: u8) -> SeqState {
-        self.seq = seq;
-        SeqState::OrderGood
     }
 
     fn get_device(&mut self, device_name: &String) -> Option<&mut DeviceState> {
@@ -231,7 +222,6 @@ impl AppClient {
 
 struct AppState {
     host_id: String,
-    online: AtomicBool,
     published_online_state: AtomicBool,
 }
 
@@ -268,7 +258,6 @@ impl App {
 
         let app_state = Arc::new(AppState {
             host_id,
-            online: AtomicBool::new(false),
             published_online_state: AtomicBool::new(false),
         });
         let client = AppClient {
@@ -299,9 +288,7 @@ impl App {
     }
 
     fn handle_online(&mut self) -> Option<AppEvent> {
-        if self.online == true {
-            return None;
-        }
+        if self.online { return None; }
         info!("App Online");
         self.online = true;
         let client = self.client.client.clone();
@@ -496,7 +483,7 @@ impl App {
         node_id: NodeIdentifier,
         payload: &Payload,
     ) -> Result<(&mut NodeState, NodeIdentifier, u64), RebirthReasonDetails> {
-        let seq = match payload.seq {
+        let _ = match payload.seq {
             Some(seq) => seq as u8,
             None => {
                 warn!(
@@ -599,9 +586,7 @@ impl App {
 
         match node.get_device(&device_name) {
             Some(dev) => {
-                if dev.birthed == true {
-                    return None;
-                }
+                if dev.birthed { return None; }
                 dev.birthed = true;
             }
             None => node.add_device(device_name.clone()),
@@ -622,9 +607,7 @@ impl App {
         timestamp: u64,
     ) -> Option<AppEvent> {
         let device = node.get_device(&device_name)?;
-        if device.birthed == false {
-            return None;
-        }
+        if !device.birthed { return None; }
         device.birthed = true;
         Some(AppEvent::DDeath(DDeath {
             node_id,
@@ -642,9 +625,7 @@ impl App {
     ) -> Option<AppEvent> {
         match node.get_device(&device_name) {
             Some(dev) => {
-                if dev.birthed == true {
-                    return None;
-                }
+                if dev.birthed { return None; }
                 dev.birthed = true;
             }
             None => node.add_device(device_name.clone()),
@@ -725,12 +706,8 @@ impl App {
                     }
                 }
                 None
-            }
-            Event::InvalidPublish {
-                reason,
-                topic,
-                payload,
-            } => None,
+            },
+            _ => None,
         }
     }
 
