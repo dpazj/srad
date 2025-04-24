@@ -2,13 +2,12 @@
 //!
 //!This library defines a framework for implementing Sparkplug Applications.
 
-//mod app;
-mod app2;
-mod events;
+mod app;
 mod config;
+mod events;
 mod metrics;
 
-pub use app2::*;
+pub use app::*;
 pub use config::*;
 pub use metrics::*;
 
@@ -18,4 +17,3 @@ pub struct NodeIdentifier {
     pub group: String,
     pub node: String,
 }
-

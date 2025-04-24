@@ -45,7 +45,11 @@ async fn app_states() {
         client,
     );
 
-    tokio::spawn(async move { application.run().await });
+    tokio::spawn(async move {
+        loop {
+            _ = application.poll().await
+        }
+    });
 
     broker.tx_event.send(srad_client::Event::Online).unwrap();
     let filters = get_subscriptions_from_broker(&mut broker).await;

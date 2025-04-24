@@ -253,7 +253,6 @@ impl EventLoop {
 
 #[async_trait]
 impl srad_client::EventLoop for EventLoop {
-
     async fn poll(&mut self) -> Event {
         loop {
             if let Some(event) = self.poll_rumqtt().await {
