@@ -53,7 +53,12 @@ async fn main() {
                     ddeath.device_name, ddeath.node_id, ddeath.timestamp
                 )
             }
-            srad::app::AppEvent::DData(ddata) => {}
+            srad::app::AppEvent::DData(ddata) => {
+                info!(
+                    "Device {} Node {:?} data at {} metrics = {:?}",
+                    ddata.device_name, ddata.node_id, ddata.timestamp, ddata.metrics_details
+                );
+            },
             srad::app::AppEvent::RebirthReason(details) => {
                 if let srad::app::RebirthReason::MalformedPayload = details.reason {
                     continue;
