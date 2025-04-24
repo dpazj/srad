@@ -5,7 +5,7 @@ publish = false
 edition = "2021"
 
 [dev-dependencies]
-srad = { version = "0.1.0", path = "../srad" }
+srad = { path = "../srad" }
 log = { workspace = true }
 tokio = { workspace = true }
 env_logger = "0.11.7"
@@ -17,6 +17,10 @@ path = "app/simple.rs"
 [[example]]
 name = "simple-node"
 path = "eon/simple.rs"
+
+[[example]]
+name = "filter"
+path = "eon/filter.rs"
 
 [[example]]
 name = "node-datatypes"

@@ -1,6 +1,6 @@
 [package]
 name = "srad-client-rumqtt"
-version = "0.1.0"
+version = "0.1.1"
 description = "Sparkplug Client implementation using Rumqtt"
 readme = "README.md"
 keywords = ["sparkplug", "rumqtt"]
@@ -12,8 +12,8 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-srad-types = { version = "0.1.0", path = "../srad-types" }
-srad-client = { version = "0.1.0", path = "../srad-client" }
+srad-types = { path = "../srad-types", version = "0.1.1" }
+srad-client = { path = "../srad-client", version = "0.1.1" }
 async-trait = { workspace = true }
 log = { workspace = true }
 rumqttc = { workspace = true }
