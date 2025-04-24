@@ -74,6 +74,9 @@ pub type DynClient = dyn Client + Send + Sync;
 #[async_trait]
 pub trait EventLoop {
     /// Poll the EventLoop for an event
+    /// Continuing to poll will reconnect if there is
+    /// a disconnection.
+    /// **NOTE** Don't block this while iterating
     async fn poll(&mut self) -> Event;
     ///Set the last will to be used on the next connection
     fn set_last_will(&mut self, will: LastWill);

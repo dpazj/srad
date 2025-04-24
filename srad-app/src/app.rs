@@ -732,6 +732,8 @@ impl App {
         _ = timeout(Duration::from_secs(1), self.poll_until_offline()).await;
     }
 
+    /// Progress the App. Continuing to poll will reconnect if the application if there is a disconnection.
+    /// **NOTE** Don't block this while iterating. Additionally, using the `AppClient` directly inside the loop may block progress.
     pub async fn poll(&mut self) -> AppEvent {
         loop {
             select! {
