@@ -1,7 +1,7 @@
 pub const SPBV01: &str = "spBv1.0";
 
 pub const NODE_CONTROL_REBIRTH: &str = "Node Control/Rebirth";
-pub const BDSEQ: &str = "bdseq";
+pub const BDSEQ: &str = "bdSeq";
 
 pub const NBIRTH: &str = "NBIRTH";
 pub const NDEATH: &str = "NDEATH";

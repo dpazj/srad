@@ -1,3 +1,7 @@
-# 0.1.0 (April 11, 2025)
+# 0.1.1
+
+- Update `srad-types` dependency to 0.1.1
+
+# 0.1.0
 
 - Initial release
