@@ -32,16 +32,16 @@
 //! ## Application
 //!
 //! ```rust no_run
-//! use srad::app::{App, SubscriptionConfig};
+//! use srad::app::{AppEventLoop, SubscriptionConfig};
 //! use srad::client_rumqtt;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() {
 //!     let opts = client_rumqtt::MqttOptions::new("foo", "localhost", 1883);
 //!     let (eventloop, client) = client_rumqtt::EventLoop::new(opts, 0);
-//!     let (mut application, client) = App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
+//!     let (mut application, client) = AppEventLoop::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
 //!     loop {
-//!         let event = application.poll().await; 
+//!         let event = application.poll().await;
 //!         println!("App Event: {:?}", event);
 //!     }
 //! }

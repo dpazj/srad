@@ -133,7 +133,7 @@ impl PublishTopic {
     }
 }
 
-/// The Application client to interact with the Application and Sparkplug namespace from.
+/// The client to interact with the [AppEventLoop] and Sparkplug namespace from.
 #[derive(Clone)]
 pub struct AppClient {
     client: Arc<DynClient>,
@@ -144,7 +144,7 @@ pub struct AppClient {
 impl AppClient {
     /// Stop all operations, sending a death certificate (application offline message) and disconnect from the broker.
     ///
-    /// This will cancel [App::run()]
+    /// This will produce an [AppEvent::Cancelled] event on the [AppEventLoop] after the application has gracefully disconnected
     pub async fn cancel(&self) {
         info!("App Stopping");
         let topic = StateTopic::new_host(&self.state.host_id);
@@ -226,8 +226,8 @@ struct AppState {
     published_online_state: AtomicBool,
 }
 
-/// Structure that represents a Sparkplug Application instance
-pub struct App {
+/// A Sparkplug Application EventLoop
+pub struct AppEventLoop {
     online: bool,
     state: Arc<AppState>,
     will_timestamp: u64,
@@ -238,7 +238,7 @@ pub struct App {
     nodes: HashMap<NodeIdentifier, NodeState>,
 }
 
-impl App {
+impl AppEventLoop {
     /// Creates a new instance along with an associated client.
     pub fn new<
         S: Into<String>,
@@ -744,16 +744,19 @@ impl App {
                 }
                 Some(_) = self.shutdown_rx.recv() => {
                     self.poll_until_offline_with_timeout().await;
-                    return AppEvent::Disconnected
+                    return AppEvent::Cancelled
                 },
             }
         }
     }
 }
 
+/// An event produced by the [AppEventLoop]
 #[derive(Debug)]
 pub enum AppEvent {
+    /// Application is online and connected to the broker
     Online,
+    /// Application is offline and has disconnected from the broker
     Offline,
     NBirth(events::NBirth),
     NDeath(events::NDeath),
@@ -761,6 +764,7 @@ pub enum AppEvent {
     DBirth(events::DBirth),
     DDeath(events::DDeath),
     DData(events::DData),
+    /// Application has detected a state where the application may wish to issue a Rebirth request
     RebirthReason(RebirthReasonDetails),
-    Disconnected,
+    Cancelled,
 }

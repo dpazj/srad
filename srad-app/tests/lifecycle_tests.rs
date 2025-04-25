@@ -1,4 +1,4 @@
-use srad_app::{App, SubscriptionConfig};
+use srad_app::{AppEventLoop, SubscriptionConfig};
 use srad_client::{
     channel::{ChannelBroker, ChannelEventLoop, OutboundMessage},
     StatePayload,
@@ -36,7 +36,7 @@ async fn app_states() {
     let app_id = "foo";
 
     let (eventloop, client, mut broker) = ChannelEventLoop::new();
-    let (mut application, app_client) = App::new(
+    let (mut application, app_client) = AppEventLoop::new(
         "foo",
         SubscriptionConfig::SingleGroup {
             group_id: "test".into(),

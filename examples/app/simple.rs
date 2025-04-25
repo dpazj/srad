@@ -1,17 +1,17 @@
 use log::{info, LevelFilter};
-use srad::app::{App, SubscriptionConfig};
+use srad::app::{AppEventLoop, SubscriptionConfig};
 use srad::client_rumqtt as rumqtt;
 
 #[tokio::main]
 async fn main() {
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Trace)
+        .filter_level(LevelFilter::Info)
         .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
     let (mut application, client) =
-        App::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
+        AppEventLoop::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
 
     let shutdown_handle = client.clone();
     tokio::spawn(async move {
@@ -58,7 +58,7 @@ async fn main() {
                     "Device {} Node {:?} data at {} metrics = {:?}",
                     ddata.device_name, ddata.node_id, ddata.timestamp, ddata.metrics_details
                 );
-            },
+            }
             srad::app::AppEvent::RebirthReason(details) => {
                 if let srad::app::RebirthReason::MalformedPayload = details.reason {
                     continue;
@@ -74,7 +74,7 @@ async fn main() {
                         .await;
                 });
             }
-            srad::app::AppEvent::Disconnected => break,
+            srad::app::AppEvent::Cancelled => break,
         }
     }
 }
