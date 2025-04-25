@@ -929,7 +929,7 @@ dependencies = [
 
 [[package]]
 name = "srad"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "srad-app",
  "srad-client",
@@ -941,7 +941,7 @@ dependencies = [
 
 [[package]]
 name = "srad-app"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "log",
  "srad-client",
