@@ -2,15 +2,14 @@
 //!
 //! # Overview
 //!
-//! `srad-app` provides a poll-able EventLoop and Client for implementing Sparkplug Applications.
+//! `srad-app` provides a poll-able EventLoop and Client to be used as the base for implementing Sparkplug Applications.
 //!
 //! The EventLoop processes Sparkplug messages produced by a specified
 //! [`srad-client`](https://crates.io/crates/srad-client) implementation. It provides:
-//!
+//!  
+//!  - Application topic subscription management
+//!  - Application online state management
 //!  - Payload validation and transformation to ergonomic types
-//!  - Message sequence validation and re-sequencing
-//!  - Evaluation of conditions where an Application should issue a Rebirth
-//!    - **NOTE**: *It does not evaluate if a metric received on a data topic was provided in a birth message*
 //!
 
 mod app;
