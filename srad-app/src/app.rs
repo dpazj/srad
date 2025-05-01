@@ -13,7 +13,7 @@ use srad_types::{
     payload::Payload,
     topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter},
     utils::{self, timestamp},
-    MetricId
+    MetricId,
 };
 
 use crate::{
@@ -163,7 +163,7 @@ pub struct AppEventLoop {
     subscription_config: SubscriptionConfig,
     client: AppClient,
     eventloop: Box<DynEventLoop>,
-    shutdown_rx: Receiver<Shutdown>
+    shutdown_rx: Receiver<Shutdown>,
 }
 
 impl AppEventLoop {
@@ -201,7 +201,7 @@ impl AppEventLoop {
             client: client.clone(),
             eventloop: Box::new(eventloop),
             subscription_config,
-            shutdown_rx: rx
+            shutdown_rx: rx,
         };
         app.update_last_will();
         (app, client)
@@ -269,7 +269,9 @@ impl AppEventLoop {
         }
     }
 
-    fn handle_device_message(message: DeviceMessage) -> Result<Option<AppEvent>, PayloadErrorDetails> {
+    fn handle_device_message(
+        message: DeviceMessage,
+    ) -> Result<Option<AppEvent>, PayloadErrorDetails> {
         match message.message.kind {
             MessageKind::Birth => Ok(Some(AppEvent::DBirth(DBirth::try_from(message)?))),
             MessageKind::Death => Ok(Some(AppEvent::DDeath(DDeath::try_from(message)?))),
@@ -283,11 +285,11 @@ impl AppEventLoop {
         match event {
             Event::Offline => self.handle_offline(),
             Event::Online => self.handle_online(),
-            Event::Node(message) => match Self::handle_node_message(message){
+            Event::Node(message) => match Self::handle_node_message(message) {
                 Ok(event) => event,
                 Err(e) => Some(AppEvent::InvalidPayload(e)),
             },
-            Event::Device(message) => match Self::handle_device_message(message){
+            Event::Device(message) => match Self::handle_device_message(message) {
                 Ok(event) => event,
                 Err(e) => Some(AppEvent::InvalidPayload(e)),
             },

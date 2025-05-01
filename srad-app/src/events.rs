@@ -1,7 +1,11 @@
 use srad_client::{DeviceMessage, NodeMessage};
 use srad_types::MetricId;
 
-use crate::{bdseq_from_payload_metrics, get_metric_birth_details_from_birth_metrics, get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails, NodeIdentifier, PayloadMetricError};
+use crate::{
+    bdseq_from_payload_metrics, get_metric_birth_details_from_birth_metrics,
+    get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails,
+    NodeIdentifier, PayloadMetricError,
+};
 
 use thiserror::Error;
 
@@ -23,7 +27,7 @@ pub enum PayloadError {
 pub struct PayloadErrorDetails {
     pub node_id: NodeIdentifier,
     pub device: Option<String>,
-    pub error: PayloadError
+    pub error: PayloadError,
 }
 
 impl PayloadErrorDetails {
@@ -41,7 +45,6 @@ impl PayloadErrorDetails {
     }
 }
 
-
 #[derive(Debug)]
 pub struct NBirth {
     pub bdseq: u8,
@@ -51,18 +54,21 @@ pub struct NBirth {
 }
 
 impl TryFrom<NodeMessage> for NBirth {
-    
     type Error = PayloadErrorDetails;
-    
-    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
         let payload = value.message.payload;
-        let id = NodeIdentifier { group: value.group_id, node: value.node_id };
+        let id = NodeIdentifier {
+            group: value.group_id,
+            node: value.node_id,
+        };
 
         match payload.seq {
             Some(seq) => {
-                if seq != 0 { return Err(PayloadErrorDetails::new(id, PayloadError::InvalidSeq))}
-            },
+                if seq != 0 {
+                    return Err(PayloadErrorDetails::new(id, PayloadError::InvalidSeq));
+                }
+            }
             None => return Err(PayloadErrorDetails::new(id, PayloadError::MissingSeq)),
         };
 
@@ -80,7 +86,7 @@ impl TryFrom<NodeMessage> for NBirth {
             Ok(details) => details,
             Err(e) => return Err(PayloadErrorDetails::new(id, PayloadError::MetricError(e))),
         };
-        
+
         Ok(NBirth {
             bdseq,
             id,
@@ -97,23 +103,21 @@ pub struct NDeath {
 }
 
 impl TryFrom<NodeMessage> for NDeath {
-    
     type Error = PayloadErrorDetails;
-    
-    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
         let payload = value.message.payload;
-        let id = NodeIdentifier { group: value.group_id, node: value.node_id };
+        let id = NodeIdentifier {
+            group: value.group_id,
+            node: value.node_id,
+        };
 
         let bdseq = match bdseq_from_payload_metrics(&payload.metrics) {
             Ok(bdseq) => bdseq,
             Err(_) => return Err(PayloadErrorDetails::new(id, PayloadError::InvalidBdseq)),
         };
-        
-        Ok(NDeath {
-            bdseq,
-            id,
-        })
+
+        Ok(NDeath { bdseq, id })
     }
 }
 
@@ -126,13 +130,14 @@ pub struct NData {
 }
 
 impl TryFrom<NodeMessage> for NData {
-    
     type Error = PayloadErrorDetails;
-    
-    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
         let payload = value.message.payload;
-        let id = NodeIdentifier { group: value.group_id, node: value.node_id };
+        let id = NodeIdentifier {
+            group: value.group_id,
+            node: value.node_id,
+        };
 
         let seq = match payload.seq {
             Some(seq) => seq as u8,
@@ -144,12 +149,13 @@ impl TryFrom<NodeMessage> for NData {
             None => return Err(PayloadErrorDetails::new(id, PayloadError::MissingTimestamp)),
         };
 
-        let metrics_details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
+        let metrics_details = match get_metric_id_and_details_from_payload_metrics(payload.metrics)
+        {
             Ok(details) => details,
             Err(e) => return Err(PayloadErrorDetails::new(id, PayloadError::MetricError(e))),
         };
-        
-        Ok(NData{
+
+        Ok(NData {
             seq,
             id,
             timestamp,
@@ -168,31 +174,45 @@ pub struct DBirth {
 }
 
 impl TryFrom<DeviceMessage> for DBirth {
-    
     type Error = PayloadErrorDetails;
-    
-    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
         let payload = value.message.payload;
-        let node_id = NodeIdentifier { group: value.group_id, node: value.node_id };
+        let node_id = NodeIdentifier {
+            group: value.group_id,
+            node: value.node_id,
+        };
         let device_name = value.device_id;
 
         let seq = match payload.seq {
             Some(seq) => seq as u8,
-            None => return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingSeq).with_device(device_name)),
+            None => {
+                return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingSeq)
+                    .with_device(device_name))
+            }
         };
 
         let timestamp = match payload.timestamp {
             Some(ts) => ts,
-            None => return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingTimestamp).with_device(device_name)),
+            None => {
+                return Err(
+                    PayloadErrorDetails::new(node_id, PayloadError::MissingTimestamp)
+                        .with_device(device_name),
+                )
+            }
         };
 
         let metrics_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
             Ok(details) => details,
-            Err(e) => return Err(PayloadErrorDetails::new(node_id, PayloadError::MetricError(e)).with_device(device_name)),
+            Err(e) => {
+                return Err(
+                    PayloadErrorDetails::new(node_id, PayloadError::MetricError(e))
+                        .with_device(device_name),
+                )
+            }
         };
-        
-        Ok(DBirth{
+
+        Ok(DBirth {
             seq,
             timestamp,
             metrics_details,
@@ -211,26 +231,35 @@ pub struct DDeath {
 }
 
 impl TryFrom<DeviceMessage> for DDeath {
-    
     type Error = PayloadErrorDetails;
-    
-    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
         let payload = value.message.payload;
-        let node_id = NodeIdentifier { group: value.group_id, node: value.node_id };
+        let node_id = NodeIdentifier {
+            group: value.group_id,
+            node: value.node_id,
+        };
         let device_name = value.device_id;
 
         let seq = match payload.seq {
             Some(seq) => seq as u8,
-            None => return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingSeq).with_device(device_name)),
+            None => {
+                return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingSeq)
+                    .with_device(device_name))
+            }
         };
 
         let timestamp = match payload.timestamp {
             Some(ts) => ts,
-            None => return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingTimestamp).with_device(device_name)),
+            None => {
+                return Err(
+                    PayloadErrorDetails::new(node_id, PayloadError::MissingTimestamp)
+                        .with_device(device_name),
+                )
+            }
         };
-        
-        Ok(DDeath{
+
+        Ok(DDeath {
             seq,
             timestamp,
             node_id,
@@ -249,31 +278,46 @@ pub struct DData {
 }
 
 impl TryFrom<DeviceMessage> for DData {
-    
     type Error = PayloadErrorDetails;
-    
-    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
         let payload = value.message.payload;
-        let node_id = NodeIdentifier { group: value.group_id, node: value.node_id };
+        let node_id = NodeIdentifier {
+            group: value.group_id,
+            node: value.node_id,
+        };
         let device_name = value.device_id;
 
         let seq = match payload.seq {
             Some(seq) => seq as u8,
-            None => return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingSeq).with_device(device_name)),
+            None => {
+                return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingSeq)
+                    .with_device(device_name))
+            }
         };
 
         let timestamp = match payload.timestamp {
             Some(ts) => ts,
-            None => return Err(PayloadErrorDetails::new(node_id, PayloadError::MissingTimestamp).with_device(device_name)),
+            None => {
+                return Err(
+                    PayloadErrorDetails::new(node_id, PayloadError::MissingTimestamp)
+                        .with_device(device_name),
+                )
+            }
         };
 
-        let metrics_details = match get_metric_id_and_details_from_payload_metrics(payload.metrics) {
+        let metrics_details = match get_metric_id_and_details_from_payload_metrics(payload.metrics)
+        {
             Ok(details) => details,
-            Err(e) => return Err(PayloadErrorDetails::new(node_id, PayloadError::MetricError(e)).with_device(device_name)),
+            Err(e) => {
+                return Err(
+                    PayloadErrorDetails::new(node_id, PayloadError::MetricError(e))
+                        .with_device(device_name),
+                )
+            }
         };
-        
-        Ok(DData{
+
+        Ok(DData {
             seq,
             timestamp,
             metrics_details,

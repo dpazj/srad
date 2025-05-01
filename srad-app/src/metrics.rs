@@ -1,5 +1,7 @@
 use srad_types::{
-    constants::BDSEQ, payload::{self, DataType, MetaData, Metric}, traits, MetricId, MetricValue, PropertySet
+    constants::BDSEQ,
+    payload::{self, DataType, MetaData, Metric},
+    traits, MetricId, MetricValue, PropertySet,
 };
 
 use thiserror::Error;
@@ -125,7 +127,9 @@ pub struct MetricDetails {
 
 macro_rules! metric_details_try_from_payload_metric {
     ($metric:expr) => {{
-        let timestamp = $metric.timestamp.ok_or(PayloadMetricError::MissingTimestamp)?;
+        let timestamp = $metric
+            .timestamp
+            .ok_or(PayloadMetricError::MissingTimestamp)?;
         let value = if let Some(value) = $metric.value {
             Some(value.into())
         } else if let Some(is_null) = $metric.is_null {
@@ -140,9 +144,9 @@ macro_rules! metric_details_try_from_payload_metric {
 
         let properties = match $metric.properties {
             Some(ps) => match ps.try_into() {
-                Ok(properties) => Some(properties), 
+                Ok(properties) => Some(properties),
                 Err(_) => return Err(PayloadMetricError::InvalidProperties),
-            }
+            },
             None => None,
         };
 
@@ -186,11 +190,15 @@ pub(crate) fn get_metric_birth_details_from_birth_metrics(
     let mut results = Vec::with_capacity(metrics.len());
 
     for x in metrics {
-        let datatype = match x.datatype.ok_or(PayloadMetricError::MissingDatatype)?.try_into() {
-            Ok(datatype) => datatype, 
+        let datatype = match x
+            .datatype
+            .ok_or(PayloadMetricError::MissingDatatype)?
+            .try_into()
+        {
+            Ok(datatype) => datatype,
             Err(_) => return Err(PayloadMetricError::InvalidDatatype),
         };
-        
+
         let name = x.name.ok_or(PayloadMetricError::MissingName)?;
         let alias = x.alias;
         let birth_details = MetricBirthDetails::new(name, alias, datatype);
