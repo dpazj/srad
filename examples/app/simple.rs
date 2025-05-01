@@ -59,13 +59,10 @@ async fn main() {
                     ddata.device_name, ddata.node_id, ddata.timestamp, ddata.metrics_details
                 );
             }
-            srad::app::AppEvent::RebirthReason(details) => {
-                if let srad::app::RebirthReason::MalformedPayload = details.reason {
-                    continue;
-                }
+            srad::app::AppEvent::InvalidPayload(details) => {
                 info!(
-                    "Issuing rebirth request to node {0:?}, reason = {1:?}",
-                    details.node_id, details.reason
+                    "Issuing rebirth request to node {0:?}, due to invalid payload: {1:?}",
+                    details.node_id, details.error
                 );
                 let client = client.clone();
                 tokio::task::spawn(async move {

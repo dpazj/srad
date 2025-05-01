@@ -1,30 +1,25 @@
 use std::{
-    collections::HashMap,
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 
-use log::{debug, error, info, warn};
+use log::{debug, info};
 use srad_client::{
     Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage,
     StatePayload,
 };
 use srad_types::{
-    constants::{BDSEQ, NODE_CONTROL_REBIRTH},
-    payload::{self, Metric, Payload},
+    constants::NODE_CONTROL_REBIRTH,
+    payload::Payload,
     topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter},
     utils::{self, timestamp},
-    MetricId, MetricValue,
+    MetricId
 };
 
 use crate::{
     config::SubscriptionConfig,
-    events::{self, DData, DDeath, NBirth, NData, NDeath},
-    metrics::{
-        get_metric_birth_details_from_birth_metrics,
-        get_metric_id_and_details_from_payload_metrics, PublishMetric,
-    },
-    NodeIdentifier,
+    events::{self, DBirth, DData, DDeath, NBirth, NData, NDeath, PayloadErrorDetails},
+    metrics::PublishMetric,
 };
 
 use tokio::{
@@ -33,72 +28,6 @@ use tokio::{
     task,
     time::timeout,
 };
-
-struct DeviceState {
-    birthed: bool,
-}
-
-struct NodeState {
-    seq: u8,
-    bdseq: u8,
-    birthed: bool,
-    devices: HashMap<String, DeviceState>,
-}
-
-impl NodeState {
-    fn new(seq: u8, bdseq: u8) -> Self {
-        Self {
-            seq,
-            bdseq,
-            birthed: true,
-            devices: HashMap::new(),
-        }
-    }
-
-    fn reset_seq(&mut self) {
-        self.seq = 0
-    }
-
-    fn get_device(&mut self, device_name: &String) -> Option<&mut DeviceState> {
-        self.devices.get_mut(device_name)
-    }
-
-    fn add_device(&mut self, name: String) {
-        self.devices.insert(name, DeviceState { birthed: true });
-    }
-}
-
-/// Represents a situation which the application has identified where a implementation might wish to issue a Node rebirth CMD
-#[derive(Debug)]
-pub enum RebirthReason {
-    UnknownNode,
-    UnknownDevice,
-    SeqOutOfOrder,
-    MalformedPayload,
-}
-
-/// Details surrounding the situation where the application has identified a [RebirthReason].
-#[derive(Debug)]
-pub struct RebirthReasonDetails {
-    pub node_id: NodeIdentifier,
-    pub device: Option<String>,
-    pub reason: RebirthReason,
-}
-
-impl RebirthReasonDetails {
-    fn new(node_id: NodeIdentifier, reason: RebirthReason) -> Self {
-        Self {
-            node_id,
-            device: None,
-            reason,
-        }
-    }
-
-    fn with_device(mut self, device: String) -> Self {
-        self.device = Some(device);
-        self
-    }
-}
 
 struct Shutdown;
 
@@ -234,8 +163,7 @@ pub struct AppEventLoop {
     subscription_config: SubscriptionConfig,
     client: AppClient,
     eventloop: Box<DynEventLoop>,
-    shutdown_rx: Receiver<Shutdown>,
-    nodes: HashMap<NodeIdentifier, NodeState>,
+    shutdown_rx: Receiver<Shutdown>
 }
 
 impl AppEventLoop {
@@ -273,8 +201,7 @@ impl AppEventLoop {
             client: client.clone(),
             eventloop: Box::new(eventloop),
             subscription_config,
-            shutdown_rx: rx,
-            nodes: HashMap::new(),
+            shutdown_rx: rx
         };
         app.update_last_will();
         (app, client)
@@ -332,360 +259,23 @@ impl AppEventLoop {
         Some(AppEvent::Offline)
     }
 
-    fn bdseq_from_payload_metrics(vec: &Vec<Metric>) -> Result<u8, ()> {
-        for x in vec {
-            match &x.name {
-                Some(name) => {
-                    if name != BDSEQ {
-                        continue;
-                    }
-                }
-                None => continue,
-            }
-            match &x.value {
-                Some(x) => match i64::try_from(MetricValue::from(x.clone())) {
-                    Ok(v) => {
-                        if v > u8::MAX as i64 || v < 0 {
-                            error!("Got invalid bdseq value = {v}");
-                            return Err(());
-                        }
-                        return Ok(v as u8);
-                    }
-                    Err(_) => {
-                        debug!("Could not decode Payload metrics bdseq metric value as i64");
-                        return Err(());
-                    }
-                },
-                None => {
-                    debug!("Payload metrics bdseq metric did not have a value");
-                    return Err(());
-                }
-            };
-        }
-        debug!("Payload metrics did not contain a bdseq metric");
-        Err(())
-    }
-
-    fn handle_node_birth(&mut self, id: NodeIdentifier, payload: Payload) -> AppEvent {
-        let seq = match payload.seq {
-            Some(seq) => seq as u8,
-            None => {
-                warn!(
-                    "Message did not contain a seq number - discarding. node = {:?}",
-                    id
-                );
-                return AppEvent::RebirthReason(RebirthReasonDetails::new(
-                    id,
-                    RebirthReason::MalformedPayload,
-                ));
-            }
-        };
-
-        if seq != 0 {
-            debug!(
-                "Birth payload sequence value is not zero - Discarding. node = {:?}",
-                id
-            );
-            return AppEvent::RebirthReason(RebirthReasonDetails::new(
-                id,
-                RebirthReason::MalformedPayload,
-            ));
-        }
-
-        let timestamp = match payload.timestamp {
-            Some(ts) => ts,
-            None => {
-                warn!(
-                    "Message did not contain a timestamp - discarding. node = {:?}",
-                    id
-                );
-                return AppEvent::RebirthReason(RebirthReasonDetails::new(
-                    id,
-                    RebirthReason::MalformedPayload,
-                ));
-            }
-        };
-
-        let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
-            Ok(bdseq) => bdseq,
-            Err(_) => {
-                warn!("Birth Message contained an invalid bdseq metric - discarding payload. node = {:?}", id);
-                return AppEvent::RebirthReason(RebirthReasonDetails::new(
-                    id,
-                    RebirthReason::MalformedPayload,
-                ));
-            }
-        };
-
-        let metrics_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
-            Ok(details) => details,
-            Err(e) => {
-                warn!("Message payload was invalid - {:?}. node = {:?}", e, id);
-                return AppEvent::RebirthReason(RebirthReasonDetails::new(
-                    id,
-                    RebirthReason::MalformedPayload,
-                ));
-            }
-        };
-
-        match self.nodes.get_mut(&id) {
-            Some(node) => {
-                node.reset_seq();
-                node.bdseq = bdseq;
-                node.birthed = true;
-            }
-            None => {
-                let node = NodeState::new(seq, bdseq);
-                self.nodes.insert(id.clone(), node);
-            }
-        };
-
-        AppEvent::NBirth(NBirth {
-            id,
-            timestamp,
-            metrics_details,
-        })
-    }
-
-    fn handle_node_death(&mut self, id: NodeIdentifier, payload: Payload) -> Option<AppEvent> {
-        let bdseq = match Self::bdseq_from_payload_metrics(&payload.metrics) {
-            Ok(bdseq) => bdseq,
-            Err(_) => {
-                warn!("Birth Message contained an invalid bdseq metric - discarding payload. node = {:?}", id);
-                return Some(AppEvent::RebirthReason(RebirthReasonDetails::new(
-                    id,
-                    RebirthReason::MalformedPayload,
-                )));
-            }
-        };
-
-        let node = self.nodes.get_mut(&id)?;
-        /* Duplicate death */
-        if !node.birthed {
-            debug!(
-                "Death message already received for bdseq {} - ignoring. node = {:?}",
-                bdseq, id
-            );
-            return None;
-        }
-
-        if bdseq != node.bdseq {
-            debug!(
-                "Death bdseq did not match current known birth bdseq - ignoring. node = {:?}",
-                id
-            );
-            return None;
-        }
-        node.birthed = false;
-
-        Some(AppEvent::NDeath(NDeath { id }))
-    }
-
-    fn handle_sequenced_message(
-        &mut self,
-        node_id: NodeIdentifier,
-        payload: &Payload,
-    ) -> Result<(&mut NodeState, NodeIdentifier, u64), RebirthReasonDetails> {
-        let _ = match payload.seq {
-            Some(seq) => seq as u8,
-            None => {
-                warn!(
-                    "Message from node did not contain a seq number - discarding. node = {:?}",
-                    node_id
-                );
-                return Err(RebirthReasonDetails::new(
-                    node_id,
-                    RebirthReason::MalformedPayload,
-                ));
-            }
-        };
-
-        let timestamp = match payload.timestamp {
-            Some(ts) => ts,
-            None => {
-                warn!(
-                    "Message did not contain a timestamp - discarding. node = {:?}",
-                    node_id
-                );
-                return Err(RebirthReasonDetails::new(
-                    node_id,
-                    RebirthReason::MalformedPayload,
-                ));
-            }
-        };
-
-        let node = match self.nodes.get_mut(&node_id) {
-            Some(node) => node,
-            None => {
-                return Err(RebirthReasonDetails::new(
-                    node_id,
-                    RebirthReason::UnknownNode,
-                ))
-            }
-        };
-
-        Ok((node, node_id, timestamp))
-    }
-
-    fn handle_node_data(&mut self, id: NodeIdentifier, payload: Payload) -> AppEvent {
-        let (_, id, timestamp) = match self.handle_sequenced_message(id, &payload) {
-            Ok(val) => val,
-            Err(rr) => return AppEvent::RebirthReason(rr),
-        };
-
-        let metrics_details = match get_metric_id_and_details_from_payload_metrics(payload.metrics)
-        {
-            Ok(details) => details,
-            Err(e) => {
-                warn!("Message payload was invalid - {:?}. node = {:?}", e, id);
-                return AppEvent::RebirthReason(RebirthReasonDetails::new(
-                    id,
-                    RebirthReason::MalformedPayload,
-                ));
-            }
-        };
-
-        AppEvent::NData(NData {
-            id,
-            timestamp,
-            metrics_details,
-        })
-    }
-
-    fn handle_node_message(&mut self, message: NodeMessage) -> Option<AppEvent> {
-        let id = NodeIdentifier {
-            group: message.group_id,
-            node: message.node_id,
-        };
+    fn handle_node_message(message: NodeMessage) -> Result<Option<AppEvent>, PayloadErrorDetails> {
         match message.message.kind {
-            MessageKind::Birth => Some(self.handle_node_birth(id, message.message.payload)),
-            MessageKind::Death => self.handle_node_death(id, message.message.payload),
-            MessageKind::Cmd => None,
-            MessageKind::Data => Some(self.handle_node_data(id, message.message.payload)),
-            MessageKind::Other(_) => None,
+            MessageKind::Birth => Ok(Some(AppEvent::NBirth(NBirth::try_from(message)?))),
+            MessageKind::Death => Ok(Some(AppEvent::NDeath(NDeath::try_from(message)?))),
+            MessageKind::Cmd => Ok(None),
+            MessageKind::Data => Ok(Some(AppEvent::NData(NData::try_from(message)?))),
+            MessageKind::Other(_) => Ok(None),
         }
     }
 
-    fn handle_device_birth(
-        node: &mut NodeState,
-        node_id: NodeIdentifier,
-        device_name: String,
-        timestamp: u64,
-        metrics: Vec<payload::Metric>,
-    ) -> Option<AppEvent> {
-        let metrics_details = match get_metric_birth_details_from_birth_metrics(metrics) {
-            Ok(details) => details,
-            Err(e) => {
-                warn!(
-                    "Message payload was invalid - {:?}. node = {:?}, device = {}",
-                    e, node_id, device_name
-                );
-                return Some(AppEvent::RebirthReason(
-                    RebirthReasonDetails::new(node_id, RebirthReason::MalformedPayload)
-                        .with_device(device_name),
-                ));
-            }
-        };
-
-        match node.get_device(&device_name) {
-            Some(dev) => {
-                if dev.birthed {
-                    return None;
-                }
-                dev.birthed = true;
-            }
-            None => node.add_device(device_name.clone()),
-        };
-
-        Some(AppEvent::DBirth(events::DBirth {
-            node_id,
-            device_name,
-            timestamp,
-            metrics_details,
-        }))
-    }
-
-    fn handle_device_death(
-        node: &mut NodeState,
-        node_id: NodeIdentifier,
-        device_name: String,
-        timestamp: u64,
-    ) -> Option<AppEvent> {
-        let device = node.get_device(&device_name)?;
-        if !device.birthed {
-            return None;
-        }
-        device.birthed = true;
-        Some(AppEvent::DDeath(DDeath {
-            node_id,
-            device_name,
-            timestamp,
-        }))
-    }
-
-    fn handle_device_data(
-        node: &mut NodeState,
-        node_id: NodeIdentifier,
-        device_name: String,
-        timestamp: u64,
-        metrics: Vec<payload::Metric>,
-    ) -> Option<AppEvent> {
-        match node.get_device(&device_name) {
-            Some(dev) => {
-                if dev.birthed {
-                    return None;
-                }
-                dev.birthed = true;
-            }
-            None => node.add_device(device_name.clone()),
-        };
-
-        let metrics_details = match get_metric_id_and_details_from_payload_metrics(metrics) {
-            Ok(details) => details,
-            Err(e) => {
-                warn!(
-                    "Message payload was invalid - {:?}. node = {:?}, device = {}",
-                    e, node_id, device_name
-                );
-                return Some(AppEvent::RebirthReason(
-                    RebirthReasonDetails::new(node_id, RebirthReason::MalformedPayload)
-                        .with_device(device_name),
-                ));
-            }
-        };
-
-        Some(AppEvent::DData(DData {
-            node_id,
-            device_name,
-            timestamp,
-            metrics_details,
-        }))
-    }
-
-    fn handle_device_message(&mut self, message: DeviceMessage) -> Option<AppEvent> {
-        let device_name = message.device_id;
-        let id = NodeIdentifier {
-            group: message.group_id,
-            node: message.node_id,
-        };
-        let message_kind = message.message.kind;
-        let payload = message.message.payload;
-
-        let (node, id, timestamp) = match self.handle_sequenced_message(id, &payload) {
-            Ok(out) => out,
-            Err(rr) => return Some(AppEvent::RebirthReason(rr.with_device(device_name))),
-        };
-
-        match message_kind {
-            MessageKind::Birth => {
-                Self::handle_device_birth(node, id, device_name, timestamp, payload.metrics)
-            }
-            MessageKind::Death => Self::handle_device_death(node, id, device_name, timestamp),
-            MessageKind::Data => {
-                Self::handle_device_data(node, id, device_name, timestamp, payload.metrics)
-            }
-            MessageKind::Cmd => None,
-            MessageKind::Other(_) => None,
+    fn handle_device_message(message: DeviceMessage) -> Result<Option<AppEvent>, PayloadErrorDetails> {
+        match message.message.kind {
+            MessageKind::Birth => Ok(Some(AppEvent::DBirth(DBirth::try_from(message)?))),
+            MessageKind::Death => Ok(Some(AppEvent::DDeath(DDeath::try_from(message)?))),
+            MessageKind::Cmd => Ok(None),
+            MessageKind::Data => Ok(Some(AppEvent::DData(DData::try_from(message)?))),
+            MessageKind::Other(_) => Ok(None),
         }
     }
 
@@ -693,8 +283,14 @@ impl AppEventLoop {
         match event {
             Event::Offline => self.handle_offline(),
             Event::Online => self.handle_online(),
-            Event::Node(message) => self.handle_node_message(message),
-            Event::Device(message) => self.handle_device_message(message),
+            Event::Node(message) => match Self::handle_node_message(message){
+                Ok(event) => event,
+                Err(e) => Some(AppEvent::InvalidPayload(e)),
+            },
+            Event::Device(message) => match Self::handle_device_message(message){
+                Ok(event) => event,
+                Err(e) => Some(AppEvent::InvalidPayload(e)),
+            },
             Event::State { host_id, payload } => {
                 if self
                     .client
@@ -764,7 +360,7 @@ pub enum AppEvent {
     DBirth(events::DBirth),
     DDeath(events::DDeath),
     DData(events::DData),
-    /// Application has detected a state where the application may wish to issue a Rebirth request
-    RebirthReason(RebirthReasonDetails),
+    /// Application has received an invalid payload where it may wish to issue a Rebirth request
+    InvalidPayload(PayloadErrorDetails),
     Cancelled,
 }

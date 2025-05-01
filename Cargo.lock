@@ -946,6 +946,7 @@ dependencies = [
  "log",
  "srad-client",
  "srad-types",
+ "thiserror",
  "tokio",
 ]
 
