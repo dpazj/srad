@@ -18,6 +18,8 @@ mod events;
 mod metrics;
 mod resequencer;
 
+mod simple;
+
 pub use app::*;
 pub use config::*;
 pub use metrics::*;
