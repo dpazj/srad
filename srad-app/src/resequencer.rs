@@ -1,14 +1,22 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
-enum DrainResult<T> {
+/// Result from `Resequencer::drain` 
+pub enum DrainResult<T> {
+    /// The next in order message
     Message(T),
+    /// No more messages 
     Empty,
+    /// The `Resequencer`` can not provide any more in order messages
     SequenceMissing
 }
 
-enum ProcessResult<T> {
+/// Result from `Resequencer::process` 
+pub enum ProcessResult<T> {
+    /// The message provided was the next expected message in the sequence
     MessageNextInSequence(T),
+    /// The message provided was out of order
     OutOfSequenceMessageInserted,
+    /// The resequencer already has a message with that sequence value 
     DuplicateMessageSequence,
 }
 
@@ -16,13 +24,14 @@ enum State {
     Good,
     ReSequencing(u8)
 }
-struct ReSequencer<T> {
+
+pub struct Resequencer<T> {
     buffer: BTreeMap<u8, T>,
     next_seq: u8,
     state: State,
 }
 
-impl<T> ReSequencer<T> {
+impl<T> Resequencer<T> {
 
     pub fn new() -> Self {
         Self { buffer: BTreeMap::new(), next_seq: 0, state: State::Good }
@@ -93,7 +102,7 @@ impl<T> ReSequencer<T> {
 mod tests {
     use crate::resequencer::{DrainResult, ProcessResult};
 
-    use super::ReSequencer;
+    use super::Resequencer;
 
     struct TmpMessage {}
 
@@ -103,7 +112,7 @@ mod tests {
 
     #[test]
     fn good_order() {
-        let mut re = ReSequencer::new();
+        let mut re = Resequencer::new();
 
         //Test wrapping
         for i in 0..=u8::MAX {
@@ -118,7 +127,7 @@ mod tests {
 
     #[test]
     fn out_of_sequence() {
-        let mut re = ReSequencer::new();
+        let mut re = Resequencer::new();
         assert!(matches!(re.process(0, TmpMessage::new()), ProcessResult::MessageNextInSequence(_)));
         assert!(matches!(re.drain(), DrainResult::Empty));
         
@@ -159,7 +168,7 @@ mod tests {
 
     #[test]
     fn out_of_sequence_duplicate() {
-        let mut re = ReSequencer::new();
+        let mut re = Resequencer::new();
         assert!(matches!(re.process(0, TmpMessage::new()), ProcessResult::MessageNextInSequence(_)));
         assert_eq!(re.next_sequence(), 1);
         assert!(matches!(re.process(3, TmpMessage::new()), ProcessResult::OutOfSequenceMessageInserted));
@@ -170,7 +179,7 @@ mod tests {
 
     #[test]
     fn out_of_sequence_wrapping() {
-        let mut re = ReSequencer::new();
+        let mut re = Resequencer::new();
 
         //Test wrapping
         for i in 0..u8::MAX {
