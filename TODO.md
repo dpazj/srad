@@ -37,12 +37,14 @@
 
 ## App
 
+- check sequence order and issue rebirths if invalid after timeout
+- add ability to reorder out of sequence messages
+- app state change callbacks
+
 - check result of subscribe and publishes and handle failures accordingly
   - failed subs and online publishes should probably disconnect and return error from run()
 - app produces duplicate online states if offline state has been retained on topic
   - resolved by client implementing success of publishes and subscription results.
-- check sequence order and issue rebirths if invalid after timeout
-- add ability to reorder out of sequence messages
 - wait app states
 - multi part metric message support
 - multiple brokers support

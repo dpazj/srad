@@ -1,6 +1,6 @@
 [package]
 name = "srad-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sparkplug Application SDK"
 readme = "README.md"
 keywords = ["sparkplug", "sparkplug-b", "mqtt", "iot", "async"]
@@ -12,11 +12,12 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-srad-types = { version = "0.1.0", path = "../srad-types" }
-srad-client = { version = "0.1.0", path = "../srad-client" }
+srad-types = { path = "../srad-types", version = "0.1.1" }
+srad-client = { path = "../srad-client", version = "0.1.1" }
 tokio = { workspace = true }
 log = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-srad-client = { path = "../srad-client", version = "0.1.0", features=["channel-client"] }
+srad-client = { path = "../srad-client", version = "0.1.1", features=["channel-client"] }
 tokio = { workspace = true, features = ["full"] }

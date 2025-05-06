@@ -1,7 +1,56 @@
 use srad_types::{
+    constants::BDSEQ,
     payload::{self, DataType, MetaData, Metric},
     traits, MetricId, MetricValue, PropertySet,
 };
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum PayloadMetricError {
+    #[error("Timestamp not included")]
+    MissingTimestamp,
+    #[error("Datatype not included")]
+    MissingDatatype,
+    #[error("Invalid Datatype value")]
+    InvalidDatatype,
+    #[error("Missing Name")]
+    MissingName,
+    #[error("Metric is_null was false but not value was provided")]
+    NotNullNoValue,
+    #[error("Invalid Properties")]
+    InvalidProperties,
+}
+
+pub(crate) fn bdseq_from_payload_metrics(vec: &Vec<Metric>) -> Result<u8, ()> {
+    for x in vec {
+        match &x.name {
+            Some(name) => {
+                if name != BDSEQ {
+                    continue;
+                }
+            }
+            None => continue,
+        }
+        match &x.value {
+            Some(x) => match i64::try_from(MetricValue::from(x.clone())) {
+                Ok(v) => {
+                    if v > u8::MAX as i64 || v < 0 {
+                        return Err(());
+                    }
+                    return Ok(v as u8);
+                }
+                Err(_) => {
+                    return Err(());
+                }
+            },
+            None => {
+                return Err(());
+            }
+        };
+    }
+    Err(())
+}
 
 /// Represents a metric value to be published
 pub struct PublishMetric {
@@ -78,21 +127,26 @@ pub struct MetricDetails {
 
 macro_rules! metric_details_try_from_payload_metric {
     ($metric:expr) => {{
-        let timestamp = $metric.timestamp.ok_or(())?;
+        let timestamp = $metric
+            .timestamp
+            .ok_or(PayloadMetricError::MissingTimestamp)?;
         let value = if let Some(value) = $metric.value {
             Some(value.into())
         } else if let Some(is_null) = $metric.is_null {
             if is_null {
                 None
             } else {
-                return Err(());
+                return Err(PayloadMetricError::NotNullNoValue);
             }
         } else {
-            return Err(());
+            return Err(PayloadMetricError::NotNullNoValue);
         };
 
         let properties = match $metric.properties {
-            Some(ps) => Some(ps.try_into()?),
+            Some(ps) => match ps.try_into() {
+                Ok(properties) => Some(properties),
+                Err(_) => return Err(PayloadMetricError::InvalidProperties),
+            },
             None => None,
         };
 
@@ -113,7 +167,7 @@ macro_rules! metric_details_try_from_payload_metric {
 
 pub(crate) fn get_metric_id_and_details_from_payload_metrics(
     metrics: Vec<payload::Metric>,
-) -> Result<Vec<(MetricId, MetricDetails)>, ()> {
+) -> Result<Vec<(MetricId, MetricDetails)>, PayloadMetricError> {
     let mut metric_id_details = Vec::with_capacity(metrics.len());
     for x in metrics {
         let id = if let Some(alias) = x.alias {
@@ -121,7 +175,7 @@ pub(crate) fn get_metric_id_and_details_from_payload_metrics(
         } else if let Some(name) = x.name {
             MetricId::Name(name)
         } else {
-            return Err(());
+            return Err(PayloadMetricError::MissingName);
         };
         let details = metric_details_try_from_payload_metric!(x)?;
         metric_id_details.push((id, details))
@@ -131,13 +185,21 @@ pub(crate) fn get_metric_id_and_details_from_payload_metrics(
 
 pub(crate) fn get_metric_birth_details_from_birth_metrics(
     metrics: Vec<payload::Metric>,
-) -> Result<Vec<(MetricBirthDetails, MetricDetails)>, ()> {
+) -> Result<Vec<(MetricBirthDetails, MetricDetails)>, PayloadMetricError> {
     //make sure metrics names and aliases are unique
     let mut results = Vec::with_capacity(metrics.len());
 
     for x in metrics {
-        let datatype = x.datatype.ok_or(())?.try_into()?;
-        let name = x.name.ok_or(())?;
+        let datatype = match x
+            .datatype
+            .ok_or(PayloadMetricError::MissingDatatype)?
+            .try_into()
+        {
+            Ok(datatype) => datatype,
+            Err(_) => return Err(PayloadMetricError::InvalidDatatype),
+        };
+
+        let name = x.name.ok_or(PayloadMetricError::MissingName)?;
         let alias = x.alias;
         let birth_details = MetricBirthDetails::new(name, alias, datatype);
         let details = metric_details_try_from_payload_metric!(x)?;
