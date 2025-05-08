@@ -14,9 +14,9 @@ async fn main() {
         .filter_level(LevelFilter::Trace)
         .init();
 
-    const NODE_COUNT:u32 = 5;
-    const DEVICE_COUNT:u32 = 5;
-    const METRIC_COUNT:u32 = 5;
+    const NODE_COUNT:u32 = 10;
+    const DEVICE_COUNT:u32 = 10;
+    const METRIC_COUNT:u32 = 10;
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
@@ -49,10 +49,23 @@ async fn main() {
         for j in 0..DEVICE_COUNT {
 
             let device_metrics = SimpleMetricManager::new();
+            let mut metrics = Vec::with_capacity(METRIC_COUNT as usize);
             for k in 0..METRIC_COUNT {
-                device_metrics.register_metric(format!("metric-{k}"), 0_u64).unwrap();
+                metrics.push(device_metrics.register_metric(format!("metric-{k}"), 0_u64).unwrap());
             }
-            handle.register_device(format!("device-{j}"), device_metrics).await.unwrap().enable().await;
+            handle.register_device(format!("device-{j}"), device_metrics.clone()).await.unwrap().enable().await;
+
+            tokio::spawn({
+                async move {
+                    loop {
+                        for metric in &metrics {
+                            _ = device_metrics.publish_metric(metric.update(|x| *x = x.wrapping_add(1))).await;
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await
+                    }
+                }
+            });
+
         }
 
         tokio::spawn(async move {
