@@ -1,6 +1,7 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
 /// Result from `Resequencer::drain`
+#[allow(dead_code)]
 pub enum DrainResult<T> {
     /// The next in order message
     Message(T),
@@ -11,6 +12,7 @@ pub enum DrainResult<T> {
 }
 
 /// Result from `Resequencer::process`
+#[allow(dead_code)]
 pub enum ProcessResult<T> {
     /// The message provided was the next expected message in the sequence
     MessageNextInSequence(T),
@@ -26,12 +28,14 @@ enum State {
 }
 
 /// A buffer used to validate the order of and re-sequence Sparkplug messages
+#[allow(dead_code)]
 pub struct Resequencer<T> {
     buffer: BTreeMap<u8, T>,
     next_seq: u8,
     state: State,
 }
 
+#[allow(dead_code)]
 impl<T> Resequencer<T> {
     /// Makes a new empty `Resequencer`
     pub fn new() -> Self {
