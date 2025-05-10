@@ -16,6 +16,7 @@ mod app;
 mod config;
 mod events;
 mod metrics;
+mod resequencer;
 
 pub use app::*;
 pub use config::*;
