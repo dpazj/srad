@@ -4,7 +4,6 @@ use srad_types::{payload::DataType, MetricId};
 
 use crate::{events::{DBirth, DData, DDeath, NBirth, NData, NDeath}, resequencer::{self, Resequencer}, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier};
 
-
 struct Metric {
     stale: bool,
     datatype: DataType
@@ -55,6 +54,17 @@ impl State {
 
     }
 
+    fn update_from_data(&mut self, metrics: Vec<(MetricId, MetricDetails)>) -> Result<(), ()> {
+        for (id, details) in metrics {
+            let metric = match self.metrics.get(&id) {
+                Some(metric) => metric,
+                None => return Err(()),
+            };
+        }
+
+        Ok(())
+    }
+
 }
 
 enum ResequenceableEvent {
@@ -68,15 +78,16 @@ struct Device {
     state: State
 }
 
-struct Node {
+struct NodeInner {
     resequencer: Resequencer<ResequenceableEvent>,
-    devices: HashMap<NodeIdentifier, Arc<Node>>,
+    devices: HashMap<String, Device>,
     state: State,
     bdseq: u8,
     last_birth_timestamp: u64
 }
 
-impl Node {
+
+impl NodeInner {
 
     fn new() -> Self {
         Self {
@@ -94,20 +105,41 @@ impl Node {
         if self.bdseq == details.bdseq { return }
         self.bdseq = details.bdseq;
         self.state.update_from_birth(details.metrics_details);
-        //self.resequencer.reset()
+        self.resequencer.reset()
+
 
     }
 
     fn handle_death(&mut self, details: NDeath){
 
+        if details.bdseq != self.bdseq {
+            todo!()
+        }
+
+        for x in self.devices.values() {
+
+        }
     }
 
     fn process_resequencable_message(&mut self, message: ResequenceableEvent) {
 
         match message {
-            ResequenceableEvent::NData(ndata) => todo!(),
-            ResequenceableEvent::DBirth(dbirth) => todo!(),
-            ResequenceableEvent::DDeath(ddeath) => todo!(),
+            ResequenceableEvent::NData(ndata) => {
+                match self.state.update_from_data(ndata.metrics_details) {
+                    Ok(_) => todo!(),
+                    Err(_) => todo!(),
+                }
+            },
+            ResequenceableEvent::DBirth(dbirth) => {
+                let device = match self.devices.get(&dbirth.device_name) {
+                    Some(_) => todo!(),
+                    None => todo!(),
+                };
+
+            },
+            ResequenceableEvent::DDeath(ddeath) => {
+
+            },
             ResequenceableEvent::DData(ddata) => todo!(),
         }
 
@@ -134,8 +166,13 @@ impl Node {
 
 }
 
+#[derive(Clone)]
+struct Node {
+    inner: Arc<Mutex<NodeInner>>
+}
+
 struct Application {
-    nodes: HashMap<NodeIdentifier, Arc<Mutex<Node>>>,
+    nodes: HashMap<NodeIdentifier, Node>,
     eventloop: AppEventLoop
 }
 
@@ -143,9 +180,6 @@ impl Application {
     
     pub fn new(eventloop: AppEventLoop) {
 
-    }
-
-    fn handle_resequencable_message(&self, seq: u8, message: ResequenceableEvent) {
     }
 
     pub async fn run(&mut self) {
@@ -157,13 +191,13 @@ impl Application {
                     let node = match self.nodes.get(&nbirth.id) {
                         Some(n) => n.clone(),
                         None => {
-                            let node = Arc::new (Mutex::new(Node::new()));
+                            let node = Node { inner: Arc::new (Mutex::new(NodeInner::new())) };
                             self.nodes.insert(nbirth.id.clone(), node.clone());
                             node
                         },
                     };
                     tokio::spawn(async move {
-                        let mut n = node.lock().unwrap();
+                        let mut n = node.inner.lock().unwrap();
                         n.handle_birth(nbirth);
                     });
                 },
@@ -173,7 +207,7 @@ impl Application {
                         None => continue,
                     };
                     tokio::spawn(async move {
-                        let mut n = node.lock().unwrap();
+                        let mut n = node.inner.lock().unwrap();
                         n.handle_death(ndeath);
                     });
                 },
@@ -183,7 +217,7 @@ impl Application {
                         None => todo!("issue rebirth"),
                     };
                     tokio::spawn(async move {
-                        let mut n = node.lock().unwrap();
+                        let mut n = node.inner.lock().unwrap();
                         n.handle_resequencable_message(ndata.seq, ResequenceableEvent::NData(ndata));
                     });
                 },
@@ -193,7 +227,7 @@ impl Application {
                         None => todo!("issue rebirth"),
                     };
                     tokio::spawn(async move {
-                        let mut n = node.lock().unwrap();
+                        let mut n = node.inner.lock().unwrap();
                         n.handle_resequencable_message(dbirth.seq, ResequenceableEvent::DBirth(dbirth));
                     });
                 },
@@ -203,7 +237,7 @@ impl Application {
                         None => todo!("issue rebirth"),
                     };
                     tokio::spawn(async move {
-                        let mut n = node.lock().unwrap();
+                        let mut n = node.inner.lock().unwrap();
                         n.handle_resequencable_message(ddeath.seq, ResequenceableEvent::DDeath(ddeath));
                     });
                 },
@@ -213,7 +247,7 @@ impl Application {
                         None => todo!("issue rebirth"),
                     };
                     tokio::spawn(async move {
-                        let mut n = node.lock().unwrap();
+                        let mut n = node.inner.lock().unwrap();
                         n.handle_resequencable_message(ddata.seq, ResequenceableEvent::DData(ddata));
                     });
                 },
