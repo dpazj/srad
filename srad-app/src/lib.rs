@@ -23,6 +23,7 @@ mod generic;
 pub use app::*;
 pub use config::*;
 pub use metrics::*;
+pub use resequencer::*;
 
 /// Used to uniquely identify a node
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

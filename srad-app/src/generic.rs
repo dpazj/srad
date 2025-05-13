@@ -1,20 +1,22 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
-use srad_types::{payload::DataType, MetricId};
+use srad_types::{payload::DataType, MetricId, MetricValueKind};
 
 use crate::{events::{DBirth, DData, DDeath, NBirth, NData, NDeath}, resequencer::{self, Resequencer}, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier};
 
 struct Metric {
     stale: bool,
-    datatype: DataType
+    datatype: DataType,
+    value: Option<MetricValueKind>
 }
 
 impl Metric {
 
-    fn new(datatype: DataType) -> Self {
+    fn new(datatype: DataType, value: Option<MetricValueKind>) -> Self {
         Self {
             stale: false,
             datatype,
+            value
         }
     }
     
@@ -34,7 +36,7 @@ impl State {
         }
     }
 
-    fn update_from_birth(&mut self, metrics: Vec<(MetricBirthDetails, MetricDetails)>) {
+    fn update_from_birth(&mut self, metrics: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), ()> {
 
         self.stale = false;
 
@@ -48,18 +50,37 @@ impl State {
                 MetricId::Name(x.name.clone())
             };
 
-            let metric = Metric::new(x.datatype);
+            let value = match y.value {
+                Some(val) => match MetricValueKind::try_from_metric_value(x.datatype, val) {
+                    Ok(value) => Some(value),
+                    Err(_) => return Err(()),
+                },
+                None => None,
+            };
+
+            let metric = Metric::new(x.datatype, value);
             self.metrics.insert(id, metric);
         }
 
+        Ok(())
     }
 
     fn update_from_data(&mut self, metrics: Vec<(MetricId, MetricDetails)>) -> Result<(), ()> {
         for (id, details) in metrics {
-            let metric = match self.metrics.get(&id) {
+            let metric = match self.metrics.get_mut(&id) {
                 Some(metric) => metric,
                 None => return Err(()),
             };
+
+            let value = match details.value {
+                Some(val) => match MetricValueKind::try_from_metric_value(metric.datatype, val) {
+                    Ok(value) => Some(value),
+                    Err(_) => return Err(()),
+                },
+                None => None,
+            };
+
+            metric.value = value;
         }
 
         Ok(())
@@ -103,8 +124,12 @@ impl NodeInner {
 
         if details.timestamp <= self.last_birth_timestamp { return }
         if self.bdseq == details.bdseq { return }
+        match self.state.update_from_birth(details.metrics_details) {
+            Ok(_) => todo!(),
+            Err(_) => todo!(),
+        };
+
         self.bdseq = details.bdseq;
-        self.state.update_from_birth(details.metrics_details);
         self.resequencer.reset()
 
 

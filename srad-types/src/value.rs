@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use crate::payload::{
     data_set::data_set_value, metric, property_value, template::parameter, DataType,
 };
-use crate::traits;
+use crate::{traits, PropertySet};
 
 use paste::paste;
 use thiserror::Error;
@@ -598,6 +598,98 @@ impl_vec_type_metric_value_conversions!(
     string_vec_to_proto,
     proto_to_string_vec
 );
+
+pub enum MetricValueKind {
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+    UInt8(u8),
+    UInt16(u16),
+    UInt32(u32),
+    UInt64(u64),
+    Float(f32),
+    Double(f64),
+    Boolean(bool),
+    String(String),
+    DateTime(DateTime),
+    Text(String),
+    Uuid(String),
+    //DataSet,
+    Bytes(Vec<u8>),
+    File(Vec<u8>),
+    //Template
+    Int8Array(Vec<i8>),
+    Int16Array(Vec<i16>),
+    Int32Array(Vec<i32>),
+    Int64Array(Vec<i64>),
+    UInt8Array(Vec<u8>),
+    UInt16Array(Vec<u16>),
+    UInt32Array(Vec<u32>),
+    UInt64Array(Vec<u64>),
+    FloatArray(Vec<f32>),
+    DoubleArray(Vec<f64>),
+    BooleanArray(Vec<bool>),
+    StringArray(Vec<String>),
+    DateTimeArray(Vec<DateTime>)
+}
+
+#[derive(Debug, Error)]
+pub enum FromMetricValueError {
+    #[error("Bytes decoding error: {0}")]
+    ValueDecodeError(#[from] FromValueTypeError),
+    #[error("Unsupported datatype")]
+    UnsupportedDataType(DataType),
+    #[error("Invalid datatype provided")]
+    InvalidDataType
+}
+
+impl MetricValueKind {
+
+    pub fn try_from_metric_value(datatype: DataType, value: MetricValue) -> Result<Self, FromMetricValueError> {
+        let out = match datatype {
+            DataType::Unknown => return Err(FromMetricValueError::InvalidDataType),
+            DataType::Int8 => MetricValueKind::Int8(i8::try_from(value)?),
+            DataType::Int16 => MetricValueKind::Int16(i16::try_from(value)?),
+            DataType::Int32 => MetricValueKind::Int32(i32::try_from(value)?),
+            DataType::Int64 => MetricValueKind::Int64(i64::try_from(value)?),
+            DataType::UInt8 => MetricValueKind::UInt8(u8::try_from(value)?),
+            DataType::UInt16 => MetricValueKind::UInt16(u16::try_from(value)?),
+            DataType::UInt32 => MetricValueKind::UInt32(u32::try_from(value)?),
+            DataType::UInt64 => MetricValueKind::UInt64(u64::try_from(value)?),
+            DataType::Float => MetricValueKind::Float(f32::try_from(value)?),
+            DataType::Double => MetricValueKind::Double(f64::try_from(value)?),
+            DataType::Boolean => MetricValueKind::Boolean(bool::try_from(value)?),
+            DataType::String => MetricValueKind::String(String::try_from(value)?),
+            DataType::DateTime => MetricValueKind::DateTime(DateTime::try_from(value)?),
+            DataType::Text => MetricValueKind::String(String::try_from(value)?),
+            DataType::Uuid => MetricValueKind::Uuid(String::try_from(value)?),
+            DataType::DataSet => return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet)),
+            DataType::Bytes => MetricValueKind::Bytes(Vec::<u8>::try_from(value)?),
+            DataType::File => MetricValueKind::File(Vec::<u8>::try_from(value)?),
+            DataType::Template => return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet)),
+            DataType::PropertySet => return Err(FromMetricValueError::UnsupportedDataType(DataType::PropertySet)),
+            DataType::PropertySetList => return Err(FromMetricValueError::UnsupportedDataType(DataType::PropertySetList)),
+            DataType::Int8Array => MetricValueKind::Int8Array(Vec::<i8>::try_from(value)?),
+            DataType::Int16Array => MetricValueKind::Int16Array(Vec::<i16>::try_from(value)?),
+            DataType::Int32Array => MetricValueKind::Int32Array(Vec::<i32>::try_from(value)?),
+            DataType::Int64Array => MetricValueKind::Int64Array(Vec::<i64>::try_from(value)?),
+            DataType::UInt8Array => MetricValueKind::UInt8Array(Vec::<u8>::try_from(value)?),
+            DataType::UInt16Array => MetricValueKind::UInt16Array(Vec::<u16>::try_from(value)?),
+            DataType::UInt32Array => MetricValueKind::UInt32Array(Vec::<u32>::try_from(value)?),
+            DataType::UInt64Array => MetricValueKind::UInt64Array(Vec::<u64>::try_from(value)?),
+            DataType::FloatArray => MetricValueKind::FloatArray(Vec::<f32>::try_from(value)?),
+            DataType::DoubleArray => MetricValueKind::DoubleArray(Vec::<f64>::try_from(value)?),
+            DataType::BooleanArray => MetricValueKind::BooleanArray(Vec::<bool>::try_from(value)?),
+            DataType::StringArray => MetricValueKind::StringArray(Vec::<String>::try_from(value)?),
+            DataType::DateTimeArray => MetricValueKind::DateTimeArray(Vec::<DateTime>::try_from(value)?)
+        };
+        Ok (out)
+    }
+
+}
+
+
 
 #[cfg(test)]
 mod tests {
