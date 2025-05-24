@@ -18,7 +18,7 @@ use srad_types::{
 
 use crate::{
     config::SubscriptionConfig,
-    events::{self, DBirth, DData, DDeath, NBirth, NData, NDeath, PayloadErrorDetails},
+    events::{AppDeviceEvent, AppNodeEvent, DBirth, DData, DDeath, NBirth, NData, NDeath, PayloadErrorDetails},
     metrics::PublishMetric,
 };
 
@@ -260,24 +260,24 @@ impl AppEventLoop {
     }
 
     fn handle_node_message(message: NodeMessage) -> Result<Option<AppEvent>, PayloadErrorDetails> {
-        match message.message.kind {
-            MessageKind::Birth => Ok(Some(AppEvent::NBirth(NBirth::try_from(message)?))),
-            MessageKind::Death => Ok(Some(AppEvent::NDeath(NDeath::try_from(message)?))),
-            MessageKind::Cmd => Ok(None),
-            MessageKind::Data => Ok(Some(AppEvent::NData(NData::try_from(message)?))),
-            MessageKind::Other(_) => Ok(None),
+        match AppNodeEvent::try_from(message) {
+            Ok(v) => Ok(Some(AppEvent::Node(v))),
+            Err(e) => match e {
+                crate::events::MessageTryFromError::PayloadError(e) => Err(e),
+                crate::events::MessageTryFromError::UnsupportedVerb => Ok(None),
+            }
         }
     }
 
     fn handle_device_message(
         message: DeviceMessage,
     ) -> Result<Option<AppEvent>, PayloadErrorDetails> {
-        match message.message.kind {
-            MessageKind::Birth => Ok(Some(AppEvent::DBirth(DBirth::try_from(message)?))),
-            MessageKind::Death => Ok(Some(AppEvent::DDeath(DDeath::try_from(message)?))),
-            MessageKind::Cmd => Ok(None),
-            MessageKind::Data => Ok(Some(AppEvent::DData(DData::try_from(message)?))),
-            MessageKind::Other(_) => Ok(None),
+        match AppDeviceEvent::try_from(message) {
+            Ok(v) => Ok(Some(AppEvent::Device(v))),
+            Err(e) => match e {
+                crate::events::MessageTryFromError::PayloadError(e) => Err(e),
+                crate::events::MessageTryFromError::UnsupportedVerb => Ok(None),
+            }
         }
     }
 
@@ -356,12 +356,8 @@ pub enum AppEvent {
     Online,
     /// Application is offline and has disconnected from the broker
     Offline,
-    NBirth(events::NBirth),
-    NDeath(events::NDeath),
-    NData(events::NData),
-    DBirth(events::DBirth),
-    DDeath(events::DDeath),
-    DData(events::DData),
+    Device(AppDeviceEvent),
+    Node(AppNodeEvent),
     /// Application has received an invalid payload where it may wish to issue a Rebirth request
     InvalidPayload(PayloadErrorDetails),
     Cancelled,
