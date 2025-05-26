@@ -5,7 +5,7 @@ use srad::client_rumqtt as rumqtt;
 #[tokio::main]
 async fn main() {
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Info)
+        .filter_level(LevelFilter::Trace)
         .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
