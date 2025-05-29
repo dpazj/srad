@@ -28,14 +28,12 @@ enum State {
 }
 
 /// A buffer used to validate the order of and re-sequence Sparkplug messages
-#[allow(dead_code)]
 pub struct Resequencer<T> {
     buffer: BTreeMap<u8, T>,
     next_seq: u8,
     state: State,
 }
 
-#[allow(dead_code)]
 impl<T> Resequencer<T> {
     /// Makes a new empty `Resequencer`
     pub fn new() -> Self {
@@ -44,6 +42,10 @@ impl<T> Resequencer<T> {
             next_seq: 0,
             state: State::Good,
         }
+    }
+
+    pub fn set_next_sequence(&mut self, next_seq: u8) {
+        self.next_seq = next_seq
     }
 
     /// Get the next expected seq value

@@ -1,27 +1,11 @@
-use std::{collections::{HashMap}, pin::Pin, sync::{Arc, Mutex}};
+use std::{collections::HashMap, ops::DerefMut, pin::Pin, rc::Rc, sync::{Arc, Mutex}};
 
 use srad_client::{Client, EventLoop};
 use srad_types::{payload::DataType, utils::timestamp, MetricId, MetricValueKind};
 
 use crate::{app, events::{DBirth, DData, DDeath, DeviceEvent, NBirth, NData, NDeath, NodeEvent}, metrics, resequencer::{self, Resequencer}, AppClient, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier, SubscriptionConfig};
 
-struct Metric {
-    stale: bool,
-    datatype: DataType,
-    value: Option<MetricValueKind>
-}
-
-impl Metric {
-
-    fn new(datatype: DataType, value: Option<MetricValueKind>) -> Self {
-        Self {
-            stale: false,
-            datatype,
-            value
-        }
-    }
-    
-}
+use tokio::sync::mpsc;
 
 pub trait MetricStore {
     fn set_stale(&mut self); 
@@ -41,79 +25,76 @@ enum LifecycleState {
     Stale,
 }
 
-struct State {
-    metrics: HashMap<MetricId, Metric>,
-    lifecycle_state: LifecycleState,
-}
 
-impl State {
+// impl State {
 
-    fn new() -> Self {
-        Self {
-            metrics: HashMap::new(),
-            lifecycle_state: LifecycleState::Unbirthed,
-        }
-    }
+//     fn new() -> Self {
+//         Self {
+//             metrics: HashMap::new(),
+//             lifecycle_state: LifecycleState::Unbirthed,
+//         }
+//     }
 
-    fn set_stale(&mut self) {
-        self.lifecycle_state = LifecycleState::Stale;
-        for x in self.metrics.values_mut() {
-            x.stale = true;
-        }
-    }
+//     fn set_stale(&mut self) {
+//         self.lifecycle_state = LifecycleState::Stale;
+//         for x in self.metrics.values_mut() {
+//             x.stale = true;
+//         }
+//     }
 
-    fn update_from_birth(&mut self, metrics: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), StateUpdateError> {
+//     fn update_from_birth(&mut self, metrics: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), StateUpdateError> {
 
-        self.lifecycle_state = LifecycleState::Birthed;
+//         self.lifecycle_state = LifecycleState::Birthed;
 
-        self.metrics.clear();
+//         self.metrics.clear();
 
-        for (x, y) in metrics {
+//         for (x, y) in metrics {
 
-            let id = if let Some(alias) = x.alias {
-                MetricId::Alias(alias)
-            } else {
-                MetricId::Name(x.name.clone())
-            };
+//             let id = if let Some(alias) = x.alias {
+//                 MetricId::Alias(alias)
+//             } else {
+//                 MetricId::Name(x.name.clone())
+//             };
 
-            let value = match y.value {
-                Some(val) => match MetricValueKind::try_from_metric_value(x.datatype, val) {
-                    Ok(value) => Some(value),
-                    Err(_) => return Err(StateUpdateError::InvalidValue),
-                },
-                None => None,
-            };
+//             let value = match y.value {
+//                 Some(val) => match MetricValueKind::try_from_metric_value(x.datatype, val) {
+//                     Ok(value) => Some(value),
+//                     Err(_) => return Err(StateUpdateError::InvalidValue),
+//                 },
+//                 None => None,
+//             };
 
-            let metric = Metric::new(x.datatype, value);
-            self.metrics.insert(id, metric);
-        }
+//             let metric = Metric::new(x.datatype, value);
+//             self.metrics.insert(id, metric);
+//         }
 
-        Ok(())
-    }
+//         Ok(())
+//     }
 
-    fn update_from_data(&mut self, metrics: Vec<(MetricId, MetricDetails)>) -> Result<(), StateUpdateError> {
-        for (id, details) in metrics {
-            let metric = match self.metrics.get_mut(&id) {
-                Some(metric) => metric,
-                None => return Err(StateUpdateError::UnknownMetric),
-            };
+//     fn update_from_data(&mut self, metrics: Vec<(MetricId, MetricDetails)>) -> Result<(), StateUpdateError> {
+//         for (id, details) in metrics {
+//             let metric = match self.metrics.get_mut(&id) {
+//                 Some(metric) => metric,
+//                 None => return Err(StateUpdateError::UnknownMetric),
+//             };
 
-            let value = match details.value {
-                Some(val) => match MetricValueKind::try_from_metric_value(metric.datatype, val) {
-                    Ok(value) => Some(value),
-                    Err(_) => return Err(StateUpdateError::InvalidValue),
-                },
-                None => None,
-            };
+//             let value = match details.value {
+//                 Some(val) => match MetricValueKind::try_from_metric_value(metric.datatype, val) {
+//                     Ok(value) => Some(value),
+//                     Err(_) => return Err(StateUpdateError::InvalidValue),
+//                 },
+//                 None => None,
+//             };
 
-            metric.value = value;
-        }
+//             metric.value = value;
+//         }
 
-        Ok(())
-    }
+//         Ok(())
+//     }
 
-}
+// }
 
+#[derive(Debug)]
 enum ResequenceableEvent {
     NData(NData),
     DBirth(String, DBirth),
@@ -122,74 +103,90 @@ enum ResequenceableEvent {
 }
 
 struct DeviceInner {
-    state: State
+    //state: State
+    name: String,
+    store: Mutex<Option<Box<dyn MetricStore + Send>>>,
 }
 
 impl DeviceInner {
 
-    fn set_stale(&mut self) {
-        self.state.set_stale();
+    fn set_stale(&self) {
+        let mut store = self.store.lock().unwrap();
+        if let Some(x) = &mut *store {
+            x.set_stale()
+        }
     }
 
-    fn handle_birth(&mut self, details: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), RebirthReason> {
-        if let Err(_) = self.state.update_from_birth(details) {
-            return Err (RebirthReason::InvalidPayload)
+    fn handle_birth(&self, details: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), RebirthReason> {
+        let mut store = self.store.lock().unwrap();
+        if let Some(x) = &mut *store {
+            if let Err(_) = x.update_from_birth(details) {
+                return Err (RebirthReason::InvalidPayload)
+            }
         }
         Ok (())
     }
 
-    fn handle_death(&mut self) {
+    fn handle_death(&self) {
         self.set_stale();
     }
 
-    fn handle_data(&mut self, details: DData) -> Result<(), RebirthReason> {
-        if let Err(e) = self.state.update_from_data(details.metrics_details) {
-            return Err(match e {
-                StateUpdateError::InvalidValue => RebirthReason::InvalidPayload,
-                StateUpdateError::UnknownMetric => RebirthReason::UnknownMetric,
-            });
+    fn handle_data(&self, details: DData) -> Result<(), RebirthReason> {
+        let mut store = self.store.lock().unwrap();
+        if let Some(x) = &mut *store {
+            if let Err(e) = x.update_from_data(details.metrics_details) {
+                return Err(match e {
+                    StateUpdateError::InvalidValue => RebirthReason::InvalidPayload,
+                    StateUpdateError::UnknownMetric => RebirthReason::UnknownMetric,
+                });
+            }
         }
         Ok (())
     }
+
 
 }
 
 #[derive(Clone)]
 pub struct Device {
-    inner: Arc<Mutex<DeviceInner>> 
+    inner: Arc<DeviceInner>
 }
 
 impl Device {
 
-    fn new() -> Self {
+    fn new(name: String) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(DeviceInner { state: State::new() })) 
+           inner: Arc::new(DeviceInner { name, store: Mutex::new(None) } )
         }
     }
 
     fn set_stale(&self) {
-        self.inner.lock().unwrap().set_stale();
+        self.inner.set_stale();
     }
 
     fn handle_birth(&self, details: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), RebirthReason> {
-        self.inner.lock().unwrap().handle_birth(details)
+        self.inner.handle_birth(details)
     }
 
     fn handle_death(&self) {
-        self.inner.lock().unwrap().handle_death()
+        self.inner.handle_death()
     }
 
     fn handle_data(&self, details: DData) -> Result<(), RebirthReason> {
-        self.inner.lock().unwrap().handle_data(details)
+        self.inner.handle_data(details)
     }
 
     pub fn set_metric_store<T: MetricStore + Send + 'static>(&self, store: T) {
-        //self.inner.state.lock().unwrap().store = Some(Box::new(store))
+        *self.inner.store.lock().unwrap() = Some(Box::new(store))
+    }
+
+    pub fn name(&self) -> &str {
+        &self.inner.name
     }
 
 }
 
-struct NodeState {
+pub struct Node {
     lifecycle_state: LifecycleState,
     resequencer: Resequencer<ResequenceableEvent>,
     devices: HashMap<String, Device>,
@@ -200,7 +197,19 @@ struct NodeState {
     device_created_cb: Option<DeviceCreatedCallback>,
 }
 
-impl NodeState {
+impl Node {
+
+    pub fn set_metric_store<T: MetricStore + Send + 'static>(&mut self, store: T) {
+        self.store = Some(Box::new(store))
+    }
+
+    pub fn on_device_created<F>(&mut self, cb: F) 
+        where 
+            F: Fn(&Device) + Send + Sync + 'static,
+    
+    {
+        self.device_created_cb = Some(Box::pin(cb));
+    }
 
     fn new() -> Self {
         Self {
@@ -227,11 +236,11 @@ impl NodeState {
     }
 
     fn handle_birth(&mut self, timestamp: u64, bdseq: u8, details: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<bool, Option<RebirthReason>> {
-
         if timestamp <= self.birth_timestamp { return Err(None) }
         if timestamp < self.stale_timestamp { return Err(None) }
 
-        if self.bdseq == bdseq { return Err(None)}
+        let first_birth = self.lifecycle_state == LifecycleState::Unbirthed;
+        if !first_birth && self.bdseq == bdseq { return Err(None)}
 
         if let Some(store) = &mut self.store { 
             if let Err(_) = store.update_from_birth(details) {
@@ -239,10 +248,11 @@ impl NodeState {
             };
         };
 
-        let first_birth = self.lifecycle_state == LifecycleState::Unbirthed;
         self.lifecycle_state = LifecycleState::Birthed;
         self.bdseq = bdseq;
         self.resequencer.reset();
+        // seq of birth should always be 0 so the next seq we expect is going to be 1
+        self.resequencer.set_next_sequence(1);
 
         Ok (first_birth)
     }
@@ -250,7 +260,7 @@ impl NodeState {
     fn handle_death(&mut self, bdseq: u8, timestamp: u64) -> Result<(), RebirthReason> {
         let mut res = Ok (());
 
-        // If we receive a death that we dont expect then we should invalidate our current state as we are out of sync and issue a rebirth
+        // If we receive a death that we don't expect then we should invalidate our current state as we are out of sync and issue a rebirth
         if bdseq != self.bdseq {
             res = Err(RebirthReason::OutOfSyncBdSeq)
         }
@@ -276,8 +286,12 @@ impl NodeState {
                 let device = match self.devices.get(&device_name) {
                     Some(dev) => dev.clone(),
                     None => {
-                        let dev = Device::new();
+                        let dev = Device::new(device_name.clone());
                         self.devices.insert(device_name, dev.clone());
+                        if let Some(cb) = &self.device_created_cb {
+                            cb(&dev)
+                        }
+
                         dev
                     } 
                 };
@@ -306,9 +320,12 @@ impl NodeState {
 
         if self.lifecycle_state != LifecycleState::Birthed { return Ok (()) }
 
+        println!("resequence: message {message:?}");
+
         let message = match self.resequencer.process(seq, message) {
             resequencer::ProcessResult::MessageNextInSequence(message) => message,
             resequencer::ProcessResult::OutOfSequenceMessageInserted => return Ok(()),
+            //resequencer::ProcessResult::DuplicateMessageSequence => return Ok(()),
             resequencer::ProcessResult::DuplicateMessageSequence => return Err(RebirthReason::ReorderTimeout),
         };
 
@@ -327,36 +344,43 @@ impl NodeState {
 
 }
 
-struct NodeInner {
-    state: Mutex<NodeState>,
+enum RebirthTimerMessage {
+    Start(Arc<NodeIdentifier>),
+    Cancel(Arc<NodeIdentifier>),
+}
+
+struct NodeWrapper {
+    node: Mutex<Node>,
     id: Arc<NodeIdentifier>,
     client: AppClient,
     rebirth_config: Arc<RebirthConfig>,
+    rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>
 }
 
-impl NodeInner {
+impl NodeWrapper {
 
-    fn new(id: Arc<NodeIdentifier>, client: AppClient, rebirth_config: Arc<RebirthConfig>) -> Self {
+    fn new(id: Arc<NodeIdentifier>, client: AppClient, rebirth_config: Arc<RebirthConfig>, rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>) -> Self {
         Self {
-            state: Mutex::new(NodeState::new()),
+            node: Mutex::new(Node::new()),
             id,
             client,
-            rebirth_config
+            rebirth_config,
+            rebirth_timer_tx
         }
     }
 
 }
 
 #[derive(Clone)]
-pub struct Node {
-    inner: Arc<NodeInner>
+struct ArcNode {
+    inner: Arc<NodeWrapper>
 }
 
-impl Node {
+impl ArcNode {
 
-    fn new(client: AppClient, id: Arc<NodeIdentifier>, rebirth_config: Arc<RebirthConfig>) -> Self {
+    fn new(client: AppClient, id: Arc<NodeIdentifier>, rebirth_config: Arc<RebirthConfig>, rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>) -> Self {
         Self { 
-            inner: Arc::new (NodeInner::new(id, client, rebirth_config)),
+            inner: Arc::new (NodeWrapper::new(id, client, rebirth_config, rebirth_timer_tx)),
         }
     }
 
@@ -380,12 +404,12 @@ impl Node {
     }
 
     fn handle_birth(&self, timestamp: u64, bdseq: u8, details: Vec<(MetricBirthDetails, MetricDetails)>, cb: &Option<NodeCreatedCallback>) -> Result<(), RebirthReason> {
-        let mut state = self.inner.state.lock().unwrap();
-        match state.handle_birth(timestamp, bdseq, details) {
+        let mut node= self.inner.node.lock().unwrap();
+        match node.handle_birth(timestamp, bdseq, details) {
             Ok(first_birth) => {
                 if first_birth {
                     if let Some(cb) = cb {
-                        cb(Node { inner: self.inner.clone() })
+                        cb(&self.inner.id, node.deref_mut())
                     }
                 } 
             },
@@ -397,31 +421,25 @@ impl Node {
     }
 
     fn handle_death(&self, bdseq: u8, timestamp: u64) -> Result<(), RebirthReason> {
-        self.inner.state.lock().unwrap().handle_death(bdseq, timestamp)
+        self.inner.node.lock().unwrap().handle_death(bdseq, timestamp)
     }
 
     fn handle_resequencable_message(&self, seq: u8, message: ResequenceableEvent) -> Result<(), RebirthReason> {
-        self.inner.state.lock().unwrap().handle_resequencable_message(seq, message)
+        self.inner.node.lock().unwrap().handle_resequencable_message(seq, message)
     }
 
     fn set_stale(&self, timestamp: u64) {
-        self.inner.state.lock().unwrap().set_stale(timestamp);
+        self.inner.node.lock().unwrap().set_stale(timestamp);
     }
 
-    pub fn set_metric_store<T: MetricStore + Send + 'static>(&self, store: T) {
-        self.inner.state.lock().unwrap().store = Some(Box::new(store))
-    }
 
-    pub fn set_device_created_cb<F>(&self, cb: F) 
-        where 
-            F: Fn(Device) + Send + Sync + 'static,
-    
-    {
-        self.inner.state.lock().unwrap().device_created_cb = Some(Box::pin(cb));
+    pub fn id(&self) -> &NodeIdentifier {
+        &self.inner.id
     }
 
 }
 
+#[derive(Debug)]
 enum RebirthReason {
     InvalidPayload,
     OutOfSyncBdSeq,
@@ -454,14 +472,14 @@ impl Default for RebirthConfig {
 }
 
 pub struct ApplicationState {
-    nodes: HashMap<Arc<NodeIdentifier>, Node>,
+    nodes: HashMap<Arc<NodeIdentifier>, ArcNode>,
 }
 
 pub type OnlineCallback = Pin<Box<dyn Fn() + Send>>;
 pub type OfflineCallback = Pin<Box<dyn Fn() + Send>>;
 
-pub type NodeCreatedCallback = Pin<Box<dyn Fn(Node) + Send + Sync>>;
-pub type DeviceCreatedCallback = Pin<Box<dyn Fn(Device) + Send + Sync>>;
+pub type NodeCreatedCallback = Pin<Box<dyn Fn(&NodeIdentifier, &mut Node) + Send + Sync>>;
+pub type DeviceCreatedCallback = Pin<Box<dyn Fn(&Device) + Send + Sync>>;
 
 struct AppCallbacks {
     online: Option<OnlineCallback>,
@@ -481,6 +499,8 @@ pub struct Application {
     client: AppClient,
     rebirth_config: Arc<RebirthConfig>,
     cbs: AppCallbacks,
+    rebirth_rx: mpsc::Receiver<RebirthTimerMessage>,
+    rebirth_tx: mpsc::Sender<RebirthTimerMessage>,
 }
 
 impl Application {
@@ -492,26 +512,63 @@ impl Application {
         subscription_config: SubscriptionConfig,
     ) -> Self {
         let (eventloop, client) = AppEventLoop::new(app_id, subscription_config, eventloop, client);
-
+        let (rebirth_tx, rebirth_rx) = mpsc::channel(1);
         Self {
             state: Arc::new(Mutex::new(ApplicationState { nodes: HashMap::new() })),
             eventloop,
             client,
             rebirth_config: Arc::new(RebirthConfig::default()),
-            cbs: AppCallbacks::new() 
+            cbs: AppCallbacks::new(),
+            rebirth_rx,
+            rebirth_tx
         }
     }
 
-    fn get_node_or_issue_rebirth(&mut self, id: NodeIdentifier) -> Option<Node> {
+    pub fn on_node_created<F>(mut self, cb: F) -> Self 
+        where 
+            F: Fn(&NodeIdentifier, &mut Node) + Send + Sync + 'static 
+    {
+        self.cbs.node_created = Arc::new(Some(Box::pin(cb)));
+        self
+    }
 
-        let mut app_state = self.state.lock().unwrap();
-        if let Some(node) = app_state.nodes.get(&id) {
-            return Some(node.clone());
-        }
+    pub fn on_online<F>(mut self, cb: F) -> Self 
+        where 
+            F: Fn() + Send + 'static 
+    {
+        self.cbs.online = Some(Box::pin(cb));
+        self
+    }
 
-        let id = Arc::new(id);
-        let node = Node::new(self.client.clone(), id.clone(), self.rebirth_config.clone());
-        app_state.nodes.insert(id, node.clone());
+    pub fn on_offline<F>(mut self, cb: F) -> Self 
+        where 
+            F: Fn() + Send + 'static 
+    {
+        self.cbs.offline = Some(Box::pin(cb));
+        self
+    }
+
+    fn get_node_or_issue_rebirth(&mut self, id: NodeIdentifier) -> Option<ArcNode> {
+
+
+        let node = {
+            let mut app_state = self.state.lock().unwrap();
+            if let Some(node) = app_state.nodes.get(&id) {
+
+                if node.inner.node.lock().unwrap().lifecycle_state == LifecycleState::Birthed {
+                    return Some(node.clone());
+                }
+
+                node.clone()
+            }
+            else {
+                let id = Arc::new(id);
+                let node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone());
+                app_state.nodes.insert(id, node.clone());
+                node
+            }
+        };
+
 
         tokio::spawn(async move {
             node.issue_rebirth(RebirthReason::UnknownNode).await;
@@ -519,6 +576,15 @@ impl Application {
 
         None 
     }
+
+    fn node_handle_resequenceable_message(node: ArcNode, seq: u8, event: ResequenceableEvent)
+    {
+        tokio::spawn(async move {
+            if let Err(e) = node.handle_resequencable_message(seq, event) {
+                node.issue_rebirth(e).await
+            }
+        });
+    } 
 
     pub async fn run(&mut self) {
         loop {
@@ -529,14 +595,11 @@ impl Application {
                     }
                 },
                 AppEvent::Offline => {
-                    let state = self.state.clone();
                     let timestamp = timestamp();
-                    tokio::spawn(async move {
-                        let app_state = state.lock().unwrap();
-                        for x in app_state.nodes.values() {
-                            x.set_stale(timestamp);
-                        }
-                    });
+                    let app_state = self.state.lock().unwrap();
+                    for x in app_state.nodes.values() {
+                        x.set_stale(timestamp);
+                    }
                     if let Some(on_offline) = &self.cbs.offline {
                         on_offline()
                     }
@@ -550,7 +613,7 @@ impl Application {
                                 Some(node) => node.clone(),
                                 None => {
                                     let id = Arc::new(id);
-                                    let node = Node::new(self.client.clone(), id.clone(), self.rebirth_config.clone());
+                                    let node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone());
                                     app_state.nodes.insert(id, node.clone());
                                     node
                                 },
@@ -578,11 +641,7 @@ impl Application {
                         },
                         NodeEvent::NData(ndata) => {
                             if let Some(node) = self.get_node_or_issue_rebirth(id) {
-                                tokio::spawn(async move {
-                                    if let Err(e) = node.handle_resequencable_message(ndata.seq,ResequenceableEvent::NData(ndata)) {
-                                        node.issue_rebirth(e).await
-                                    }
-                                });
+                                Self::node_handle_resequenceable_message(node, ndata.seq, ResequenceableEvent::NData(ndata))
                             }
                         },
                     }
@@ -591,37 +650,17 @@ impl Application {
 
                     let node = match self.get_node_or_issue_rebirth(device_event.id) {
                         Some(node) => node,
-                        None => return,
+                        None => continue,
                     };
                     let device_name = device_event.name;
 
                     match device_event.event {
-                        DeviceEvent::DBirth(dbirth) => {
-                            tokio::spawn(async move {
-                                if let Err(e) = node.handle_resequencable_message(dbirth.seq, ResequenceableEvent::DBirth(device_name, dbirth)) {
-                                    node.issue_rebirth(e).await
-                                }
-                            });
-                        },
-                        DeviceEvent::DDeath(ddeath) => {
-                            tokio::spawn(async move {
-                                if let Err(e) = node.handle_resequencable_message(ddeath.seq, ResequenceableEvent::DDeath(device_name)) {
-                                    node.issue_rebirth(e).await
-                                }
-                            });
-                        },
-                        DeviceEvent::DData(ddata) => {
-                            tokio::spawn(async move {
-                                if let Err(e) = node.handle_resequencable_message(ddata.seq, ResequenceableEvent::DData(device_name, ddata)) {
-                                    node.issue_rebirth(e).await
-                                }
-                            });
-                        },
+                        DeviceEvent::DBirth(dbirth) => Self::node_handle_resequenceable_message(node, dbirth.seq, ResequenceableEvent::DBirth(device_name, dbirth)),
+                        DeviceEvent::DDeath(ddeath) => Self::node_handle_resequenceable_message(node, ddeath.seq, ResequenceableEvent::DDeath(device_name)),
+                        DeviceEvent::DData(ddata) => Self::node_handle_resequenceable_message(node, ddata.seq, ResequenceableEvent::DData(device_name, ddata)),
                     }
                 },
                 AppEvent::InvalidPayload(details) => {
-
-                    
 
                 },
                 AppEvent::Cancelled => break,
