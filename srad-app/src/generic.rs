@@ -1,11 +1,12 @@
-use std::{collections::HashMap, ops::DerefMut, pin::Pin, rc::Rc, sync::{Arc, Mutex}};
+use std::{collections::{HashMap, VecDeque}, future::Future, ops::DerefMut, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration};
 
 use srad_client::{Client, EventLoop};
 use srad_types::{payload::DataType, utils::timestamp, MetricId, MetricValueKind};
 
 use crate::{app, events::{DBirth, DData, DDeath, DeviceEvent, NBirth, NData, NDeath, NodeEvent}, metrics, resequencer::{self, Resequencer}, AppClient, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier, SubscriptionConfig};
 
-use tokio::sync::mpsc;
+use tokio::{select, sync::mpsc, time::{sleep, Sleep}};
+use tokio::time::timeout;
 
 pub trait MetricStore {
     fn set_stale(&mut self); 
@@ -345,7 +346,7 @@ impl Node {
 }
 
 enum RebirthTimerMessage {
-    Start(Arc<NodeIdentifier>),
+    Start(ArcNode),
     Cancel(Arc<NodeIdentifier>),
 }
 
@@ -471,8 +472,9 @@ impl Default for RebirthConfig {
     }
 }
 
-pub struct ApplicationState {
+struct ApplicationState {
     nodes: HashMap<Arc<NodeIdentifier>, ArcNode>,
+    reorder_timers: HashMap<Arc<NodeIdentifier>, ()>
 }
 
 pub type OnlineCallback = Pin<Box<dyn Fn() + Send>>;
@@ -494,7 +496,7 @@ impl AppCallbacks {
 }
 
 pub struct Application {
-    state: Arc<Mutex<ApplicationState>>,
+    state: ApplicationState,
     eventloop: AppEventLoop,
     client: AppClient,
     rebirth_config: Arc<RebirthConfig>,
@@ -514,7 +516,7 @@ impl Application {
         let (eventloop, client) = AppEventLoop::new(app_id, subscription_config, eventloop, client);
         let (rebirth_tx, rebirth_rx) = mpsc::channel(1);
         Self {
-            state: Arc::new(Mutex::new(ApplicationState { nodes: HashMap::new() })),
+            state: ApplicationState { nodes: HashMap::new(), reorder_timers: HashMap::new()},
             eventloop,
             client,
             rebirth_config: Arc::new(RebirthConfig::default()),
@@ -552,8 +554,7 @@ impl Application {
 
 
         let node = {
-            let mut app_state = self.state.lock().unwrap();
-            if let Some(node) = app_state.nodes.get(&id) {
+            if let Some(node) = self.state.nodes.get(&id) {
 
                 if node.inner.node.lock().unwrap().lifecycle_state == LifecycleState::Birthed {
                     return Some(node.clone());
@@ -564,7 +565,7 @@ impl Application {
             else {
                 let id = Arc::new(id);
                 let node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone());
-                app_state.nodes.insert(id, node.clone());
+                self.state.nodes.insert(id, node.clone());
                 node
             }
         };
@@ -586,85 +587,121 @@ impl Application {
         });
     } 
 
+    fn handle_event(&mut self, event: AppEvent) -> bool {
+        match event {
+            AppEvent::Online => {
+                if let Some(on_online) = &self.cbs.online {
+                    on_online()
+                }
+            },
+            AppEvent::Offline => {
+                let timestamp = timestamp();
+                for x in self.state.nodes.values() {
+                    x.set_stale(timestamp);
+                }
+                if let Some(on_offline) = &self.cbs.offline {
+                    on_offline()
+                }
+            },
+            AppEvent::Node(node_event) => {
+                let id = node_event.id;
+                match node_event.event {
+                    NodeEvent::NBirth(nbirth) => {
+                        let node = match self.state.nodes.get(&id) {
+                            Some(node) => node.clone(),
+                            None => {
+                                let id = Arc::new(id);
+                                let node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone());
+                                self.state.nodes.insert(id, node.clone());
+                                node
+                            },
+                        };
+                        let timestamp = nbirth.timestamp;
+                        let bdseq = nbirth.bdseq;
+                        let details = nbirth.metrics_details;
+                        let cb = self.cbs.node_created.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = node.handle_birth(timestamp, bdseq, details, &cb) {
+                                node.issue_rebirth(e).await
+                            }
+                        });
+                    },
+                    NodeEvent::NDeath(ndeath) => {
+                        let node = match self.state.nodes.get(&id) {
+                            Some(node) => node.clone(),
+                            None => return false,
+                        };
+                        let timestamp = timestamp();
+                        tokio::spawn(async move {
+                            node.handle_death(ndeath.bdseq, timestamp)
+                        });
+                    },
+                    NodeEvent::NData(ndata) => {
+                        if let Some(node) = self.get_node_or_issue_rebirth(id) {
+                            Self::node_handle_resequenceable_message(node, ndata.seq, ResequenceableEvent::NData(ndata))
+                        }
+                    },
+                }
+            },
+            AppEvent::Device(device_event) => {
+
+                let node = match self.get_node_or_issue_rebirth(device_event.id) {
+                    Some(node) => node,
+                    None => return false,
+                };
+                let device_name = device_event.name;
+
+                match device_event.event {
+                    DeviceEvent::DBirth(dbirth) => Self::node_handle_resequenceable_message(node, dbirth.seq, ResequenceableEvent::DBirth(device_name, dbirth)),
+                    DeviceEvent::DDeath(ddeath) => Self::node_handle_resequenceable_message(node, ddeath.seq, ResequenceableEvent::DDeath(device_name)),
+                    DeviceEvent::DData(ddata) => Self::node_handle_resequenceable_message(node, ddata.seq, ResequenceableEvent::DData(device_name, ddata)),
+                }
+            },
+            AppEvent::InvalidPayload(details) => {
+
+            },
+            AppEvent::Cancelled => return true,
+        };
+        return false;
+ 
+    }
+
+    fn handle_rx_request(&mut self, request: RebirthTimerMessage) {
+        match request {
+            RebirthTimerMessage::Start(node) => {
+                let fut = Box::pin(async {
+                    sleep(Duration::from_secs(3)).await;
+                    node.issue_rebirth(RebirthReason::ReorderTimeout)
+                });
+                //self.state.reorder_timers.insert(node.inner.id.clone(), fut);
+            },
+            RebirthTimerMessage::Cancel(node_identifier) => {
+                self.state.reorder_timers.remove(&node_identifier);
+            },
+        }
+    }
+
+    async fn poll_for_timeout(&self) {
+        let timeout = sleep(Duration::from_millis(1000));
+
+        //let mut futures: [Pin<&mut Sleep>; ]
+
+        for timeout in self.state.reorder_timers.values() {
+            
+            //let a = x.as_mut();
+        }
+    }
+
     pub async fn run(&mut self) {
         loop {
-            match self.eventloop.poll().await {
-                AppEvent::Online => {
-                    if let Some(on_online) = &self.cbs.online {
-                        on_online()
-                    }
+            select! {
+                event = self.eventloop.poll() => {
+                    if self.handle_event(event) == true { break }
                 },
-                AppEvent::Offline => {
-                    let timestamp = timestamp();
-                    let app_state = self.state.lock().unwrap();
-                    for x in app_state.nodes.values() {
-                        x.set_stale(timestamp);
-                    }
-                    if let Some(on_offline) = &self.cbs.offline {
-                        on_offline()
-                    }
-                },
-                AppEvent::Node(node_event) => {
-                    let id = node_event.id;
-                    match node_event.event {
-                        NodeEvent::NBirth(nbirth) => {
-                            let mut app_state = self.state.lock().unwrap();
-                            let node = match app_state.nodes.get(&id) {
-                                Some(node) => node.clone(),
-                                None => {
-                                    let id = Arc::new(id);
-                                    let node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone());
-                                    app_state.nodes.insert(id, node.clone());
-                                    node
-                                },
-                            };
-                            let timestamp = nbirth.timestamp;
-                            let bdseq = nbirth.bdseq;
-                            let details = nbirth.metrics_details;
-                            let cb = self.cbs.node_created.clone();
-                            tokio::spawn(async move {
-                                if let Err(e) = node.handle_birth(timestamp, bdseq, details, &cb) {
-                                    node.issue_rebirth(e).await
-                                }
-                            });
-                        },
-                        NodeEvent::NDeath(ndeath) => {
-                            let app_state = self.state.lock().unwrap();
-                            let node = match app_state.nodes.get(&id) {
-                                Some(node) => node.clone(),
-                                None => continue,
-                            };
-                            let timestamp = timestamp();
-                            tokio::spawn(async move {
-                                node.handle_death(ndeath.bdseq, timestamp)
-                            });
-                        },
-                        NodeEvent::NData(ndata) => {
-                            if let Some(node) = self.get_node_or_issue_rebirth(id) {
-                                Self::node_handle_resequenceable_message(node, ndata.seq, ResequenceableEvent::NData(ndata))
-                            }
-                        },
-                    }
-                },
-                AppEvent::Device(device_event) => {
+                request = self.rebirth_rx.recv() => {
 
-                    let node = match self.get_node_or_issue_rebirth(device_event.id) {
-                        Some(node) => node,
-                        None => continue,
-                    };
-                    let device_name = device_event.name;
-
-                    match device_event.event {
-                        DeviceEvent::DBirth(dbirth) => Self::node_handle_resequenceable_message(node, dbirth.seq, ResequenceableEvent::DBirth(device_name, dbirth)),
-                        DeviceEvent::DDeath(ddeath) => Self::node_handle_resequenceable_message(node, ddeath.seq, ResequenceableEvent::DDeath(device_name)),
-                        DeviceEvent::DData(ddata) => Self::node_handle_resequenceable_message(node, ddata.seq, ResequenceableEvent::DData(device_name, ddata)),
-                    }
-                },
-                AppEvent::InvalidPayload(details) => {
-
-                },
-                AppEvent::Cancelled => break,
+                }
             }
-        }        
+        }
     }
 }
