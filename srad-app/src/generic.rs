@@ -5,8 +5,10 @@ use srad_types::{payload::DataType, utils::timestamp, MetricId, MetricValueKind}
 
 use crate::{app, events::{DBirth, DData, DDeath, DeviceEvent, NBirth, NData, NDeath, NodeEvent}, metrics, resequencer::{self, Resequencer}, AppClient, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier, SubscriptionConfig};
 
-use tokio::{select, sync::mpsc, time::{sleep, Sleep}};
+use tokio::{select, sync::{mpsc, oneshot}, time::{sleep, Sleep}};
 use tokio::time::timeout;
+
+use futures::{stream::FuturesUnordered, StreamExt};
 
 pub trait MetricStore {
     fn set_stale(&mut self); 
@@ -196,6 +198,7 @@ pub struct Node {
     birth_timestamp: u64,
     stale_timestamp: u64,
     device_created_cb: Option<DeviceCreatedCallback>,
+    reorder_timeout_cancel_token: Option<oneshot::Sender<()>>
 }
 
 impl Node {
@@ -221,7 +224,8 @@ impl Node {
             birth_timestamp: 0,
             stale_timestamp: 0,
             store: None, 
-            device_created_cb: None
+            device_created_cb: None,
+            reorder_timeout_cancel_token: None
         }
     }
 
@@ -317,17 +321,20 @@ impl Node {
         Ok(())
     }
 
-    fn handle_resequencable_message(&mut self, seq: u8, message: ResequenceableEvent) -> Result<(), RebirthReason> {
+    fn handle_resequencable_message(&mut self, seq: u8, message: ResequenceableEvent) -> Result<Option<oneshot::Receiver<()>>, RebirthReason> {
 
-        if self.lifecycle_state != LifecycleState::Birthed { return Ok (()) }
+        if self.lifecycle_state != LifecycleState::Birthed { return Ok (None) }
 
         println!("resequence: message {message:?}");
 
         let message = match self.resequencer.process(seq, message) {
             resequencer::ProcessResult::MessageNextInSequence(message) => message,
-            resequencer::ProcessResult::OutOfSequenceMessageInserted => return Ok(()),
-            //resequencer::ProcessResult::DuplicateMessageSequence => return Ok(()),
-            resequencer::ProcessResult::DuplicateMessageSequence => return Err(RebirthReason::ReorderTimeout),
+            resequencer::ProcessResult::OutOfSequenceMessageInserted => {
+                let (tx, rx) = oneshot::channel();
+                self.reorder_timeout_cancel_token = Some(tx);
+                return Ok(Some(rx))
+            },
+            resequencer::ProcessResult::DuplicateMessageSequence => return Err(RebirthReason::ReorderTimeout), //todo created special rebirth reason
         };
 
         self.process_in_sequence_message(message)?;
@@ -340,14 +347,13 @@ impl Node {
             }
         }
 
-        Ok(())
+        Ok(None)
     }
 
 }
 
 enum RebirthTimerMessage {
-    Start(ArcNode),
-    Cancel(Arc<NodeIdentifier>),
+    Start(ArcNode, oneshot::Receiver<()>),
 }
 
 struct NodeWrapper {
@@ -425,8 +431,15 @@ impl ArcNode {
         self.inner.node.lock().unwrap().handle_death(bdseq, timestamp)
     }
 
-    fn handle_resequencable_message(&self, seq: u8, message: ResequenceableEvent) -> Result<(), RebirthReason> {
-        self.inner.node.lock().unwrap().handle_resequencable_message(seq, message)
+    async fn handle_resequencable_message(&self, seq: u8, message: ResequenceableEvent) -> Result<(), RebirthReason> {
+        let res = self.inner.node.lock().unwrap().handle_resequencable_message(seq, message)?;
+        if let Some(rx) = res {
+            _ = self.inner.rebirth_timer_tx.send(RebirthTimerMessage::Start(
+                ArcNode {inner: self.inner.clone()},
+                rx
+            ) ).await;
+        }
+        Ok(())
     }
 
     fn set_stale(&self, timestamp: u64) {
@@ -474,7 +487,7 @@ impl Default for RebirthConfig {
 
 struct ApplicationState {
     nodes: HashMap<Arc<NodeIdentifier>, ArcNode>,
-    reorder_timers: HashMap<Arc<NodeIdentifier>, ()>
+    reorder_timers: FuturesUnordered<Pin<Box<dyn Future<Output=()> + Send + 'static>>> 
 }
 
 pub type OnlineCallback = Pin<Box<dyn Fn() + Send>>;
@@ -516,7 +529,7 @@ impl Application {
         let (eventloop, client) = AppEventLoop::new(app_id, subscription_config, eventloop, client);
         let (rebirth_tx, rebirth_rx) = mpsc::channel(1);
         Self {
-            state: ApplicationState { nodes: HashMap::new(), reorder_timers: HashMap::new()},
+            state: ApplicationState { nodes: HashMap::new(), reorder_timers: FuturesUnordered::new() },
             eventloop,
             client,
             rebirth_config: Arc::new(RebirthConfig::default()),
@@ -581,7 +594,7 @@ impl Application {
     fn node_handle_resequenceable_message(node: ArcNode, seq: u8, event: ResequenceableEvent)
     {
         tokio::spawn(async move {
-            if let Err(e) = node.handle_resequencable_message(seq, event) {
+            if let Err(e) = node.handle_resequencable_message(seq, event).await {
                 node.issue_rebirth(e).await
             }
         });
@@ -668,27 +681,18 @@ impl Application {
 
     fn handle_rx_request(&mut self, request: RebirthTimerMessage) {
         match request {
-            RebirthTimerMessage::Start(node) => {
-                let fut = Box::pin(async {
-                    sleep(Duration::from_secs(3)).await;
-                    node.issue_rebirth(RebirthReason::ReorderTimeout)
-                });
-                //self.state.reorder_timers.insert(node.inner.id.clone(), fut);
-            },
-            RebirthTimerMessage::Cancel(node_identifier) => {
-                self.state.reorder_timers.remove(&node_identifier);
-            },
-        }
-    }
-
-    async fn poll_for_timeout(&self) {
-        let timeout = sleep(Duration::from_millis(1000));
-
-        //let mut futures: [Pin<&mut Sleep>; ]
-
-        for timeout in self.state.reorder_timers.values() {
-            
-            //let a = x.as_mut();
+            RebirthTimerMessage::Start(node, cancel_token) => {
+                self.state.reorder_timers.push(Box::pin(
+                    async move {
+                        select! {
+                            _ = sleep(Duration::from_secs(3)) => {
+                                _ = node.issue_rebirth(RebirthReason::ReorderTimeout).await;
+                            },
+                            _ = cancel_token => ()
+                        };
+                    }
+                ));
+            }
         }
     }
 
@@ -698,9 +702,8 @@ impl Application {
                 event = self.eventloop.poll() => {
                     if self.handle_event(event) == true { break }
                 },
-                request = self.rebirth_rx.recv() => {
-
-                }
+                Some(request) = self.rebirth_rx.recv() => self.handle_rx_request(request),
+                _ = self.state.reorder_timers.next() => ()
             }
         }
     }
