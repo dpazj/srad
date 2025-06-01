@@ -12,7 +12,7 @@
 //!  - Payload validation and transformation to ergonomic types
 //!
 
-mod app;
+mod eventloop;
 mod config;
 mod events;
 mod metrics;
@@ -20,7 +20,7 @@ mod resequencer;
 
 pub mod generic;
 
-pub use app::*;
+pub use eventloop::*;
 pub use config::*;
 pub use metrics::*;
 pub use resequencer::*;
