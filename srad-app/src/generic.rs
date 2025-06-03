@@ -159,14 +159,12 @@ impl Node {
             return Err(None) 
         }
 
-        // // This is a duplicate birth message that we will have already received
-        // if self.lifecycle_state == LifecycleState::Birthed && self.bdseq == bdseq { 
-
-        // };
-
-        if let Some(store) = &mut self.store { 
-            if let Err(_) = store.update_from_birth(details) {
-                return Err (Some(RebirthReason::InvalidPayload))
+        // If this is a duplicate birth message that we will have already received we dont need to notify the metric store
+        if !(self.lifecycle_state == LifecycleState::Birthed && self.bdseq == bdseq) { 
+            if let Some(store) = &mut self.store { 
+                if let Err(_) = store.update_from_birth(details) {
+                    return Err (Some(RebirthReason::InvalidPayload))
+                };
             };
         };
 
