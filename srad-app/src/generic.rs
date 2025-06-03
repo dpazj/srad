@@ -1,6 +1,6 @@
 use std::{collections::{HashMap}, future::Future, ops::DerefMut, pin::Pin, sync::{Arc, Mutex}, time::Duration};
 
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use srad_client::{Client, EventLoop};
 use srad_types::{utils::timestamp, MetricId};
 
@@ -23,7 +23,6 @@ pub enum StateUpdateError {
 
 #[derive(PartialEq, Eq)]
 enum LifecycleState {
-    Unbirthed, 
     Birthed, 
     Stale,
 }
@@ -124,7 +123,7 @@ impl Node {
             id,
             resequencer: Resequencer::new(),
             devices: HashMap::new(),
-            lifecycle_state: LifecycleState::Unbirthed,
+            lifecycle_state: LifecycleState::Stale,
             bdseq: 0,
             birth_timestamp: 0,
             store: None, 
@@ -138,6 +137,7 @@ impl Node {
         if timestamp < self.birth_timestamp { return }
         debug!("Setting Node = {:?} Stale", self.id);
         self.resequencer.reset();
+        self.cancel_reorder_timeout();
         self.lifecycle_state = LifecycleState::Stale;
         if let Some(store) = &mut self.store { store.set_stale()};
         for x in self.devices.values_mut() {
@@ -153,13 +153,16 @@ impl Node {
     }
 
     fn handle_birth(&mut self, timestamp: u64, bdseq: u8, details: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), Option<RebirthReason>> {
+
         if timestamp <= self.birth_timestamp { 
             debug!("Node {:?} got birth with birth timestamp {} older than most recent timestamp {} - ignoring", self.id, timestamp, self.birth_timestamp);
             return Err(None) 
         }
 
-        let first_birth = self.lifecycle_state == LifecycleState::Unbirthed;
-        if !first_birth && self.bdseq == bdseq { return Err(None)}
+        // // This is a duplicate birth message that we will have already received
+        // if self.lifecycle_state == LifecycleState::Birthed && self.bdseq == bdseq { 
+
+        // };
 
         if let Some(store) = &mut self.store { 
             if let Err(_) = store.update_from_birth(details) {
@@ -168,6 +171,7 @@ impl Node {
         };
 
         self.cancel_reorder_timeout();
+        self.birth_timestamp = timestamp;
         self.lifecycle_state = LifecycleState::Birthed;
         self.bdseq = bdseq;
         self.resequencer.reset();
@@ -234,16 +238,24 @@ impl Node {
         Ok(())
     }
 
-    fn handle_resequencable_message(&mut self, seq: u8, message: ResequenceableEvent) -> Result<bool, RebirthReason> {
+    fn handle_resequencable_message(&mut self, seq: u8, timestamp: u64, message: ResequenceableEvent) -> Result<bool, RebirthReason> {
 
         if self.lifecycle_state != LifecycleState::Birthed { 
-            debug!("Ignoring message for Node = ({:?}) as its current state is Stale)", self.id);
+            debug!("Ignoring message for Node = ({:?}) as its current state is stale", self.id);
+            return Ok (false) 
+        }
+
+        if timestamp < self.birth_timestamp {
+            warn!("Ignoring message for Node = ({:?}) as it's timestamp is before the current birth timestamp", self.id);
             return Ok (false) 
         }
 
         let message = match self.resequencer.process(seq, message) {
             resequencer::ProcessResult::MessageNextInSequence(message) => message,
-            resequencer::ProcessResult::OutOfSequenceMessageInserted => return Ok(self.reorder_timeout_cancel_token.is_none()),
+            resequencer::ProcessResult::OutOfSequenceMessageInserted => {
+                warn!("Node {:?} Got out of order seq {}, expected {}", self.id, seq, self.resequencer.next_sequence());
+                return Ok(self.reorder_timeout_cancel_token.is_none())
+            },
             resequencer::ProcessResult::DuplicateMessageSequence => return Err(RebirthReason::ReorderFail),
         };
 
@@ -279,9 +291,9 @@ struct NodeWrapper {
 
 impl NodeWrapper {
 
-    fn new(id: Arc<NodeIdentifier>, client: AppClient, rebirth_config: Arc<RebirthConfig>, rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>) -> Self {
+    fn new(id: Arc<NodeIdentifier>, client: AppClient, rebirth_config: Arc<RebirthConfig>, rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>, node: Node) -> Self {
         Self {
-            node: Mutex::new(Node::new(id.clone())),
+            node: Mutex::new(node),
             id,
             client,
             rebirth_config,
@@ -298,9 +310,9 @@ struct ArcNode {
 
 impl ArcNode {
 
-    fn new(client: AppClient, id: Arc<NodeIdentifier>, rebirth_config: Arc<RebirthConfig>, rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>) -> Self {
+    fn new(client: AppClient, id: Arc<NodeIdentifier>, rebirth_config: Arc<RebirthConfig>, rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>, node: Node) -> Self {
         Self { 
-            inner: Arc::new (NodeWrapper::new(id, client, rebirth_config, rebirth_timer_tx)),
+            inner: Arc::new (NodeWrapper::new(id, client, rebirth_config, rebirth_timer_tx, node)),
         }
     }
 
@@ -340,10 +352,10 @@ impl ArcNode {
         self.inner.node.lock().unwrap().handle_death(bdseq, timestamp)
     }
 
-    async fn handle_resequencable_message(&self, seq: u8, message: ResequenceableEvent) -> Result<(), RebirthReason> {
+    async fn handle_resequencable_message(&self, seq: u8, timestamp: u64, message: ResequenceableEvent) -> Result<(), RebirthReason> {
         let rx = {
             let mut node = self.inner.node.lock().unwrap();
-            let detected_out_of_order = node.handle_resequencable_message(seq, message)?;
+            let detected_out_of_order = node.handle_resequencable_message(seq, timestamp, message)?;
             if detected_out_of_order && self.inner.rebirth_config.reorder_timeout.is_some() {
                 debug!("Detected out of order message for Node = {:?}", node.id);
                 let (tx, rx) = oneshot::channel();
@@ -485,26 +497,30 @@ impl Application {
         self
     }
 
+    fn create_node(&mut self, id: NodeIdentifier) -> ArcNode {
+        info!("Creating new Node = ({:?})", id);
+        let id = Arc::new(id);
+        let mut node = Node::new(id.clone());
+
+        if let Some(cb) = &self.cbs.node_created {
+            cb(&id, &mut node)
+        }
+
+        let arc_node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone(), node);
+        self.state.nodes.insert(id, arc_node.clone());
+        arc_node
+    }
+
     fn get_node_or_issue_rebirth(&mut self, id: NodeIdentifier) -> Option<ArcNode> {
-
-
         let node = {
             if let Some(node) = self.state.nodes.get(&id) {
-
-                if node.inner.node.lock().unwrap().lifecycle_state == LifecycleState::Birthed {
-                    return Some(node.clone());
-                }
-
+                if node.inner.node.lock().unwrap().lifecycle_state == LifecycleState::Birthed { return Some(node.clone()); }
                 node.clone()
             }
             else {
-                let id = Arc::new(id);
-                let node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone());
-                self.state.nodes.insert(id, node.clone());
-                node
+               self.create_node(id) 
             }
         };
-
 
         tokio::spawn(async move {
             node.issue_rebirth(RebirthReason::UnknownNode).await;
@@ -513,10 +529,10 @@ impl Application {
         None 
     }
 
-    fn node_handle_resequenceable_message(node: ArcNode, seq: u8, event: ResequenceableEvent)
+    fn node_handle_resequenceable_message(node: ArcNode, seq: u8, timestamp: u64, event: ResequenceableEvent)
     {
         tokio::spawn(async move {
-            if let Err(e) = node.handle_resequencable_message(seq, event).await {
+            if let Err(e) = node.handle_resequencable_message(seq, timestamp, event).await {
                 node.issue_rebirth(e).await
             }
         });
@@ -526,23 +542,14 @@ impl Application {
         match self.state.nodes.get(&id) {
             Some(node) => node.clone(),
             None => {
-                info!("Creating new Node = ({:?})", id);
-                let id = Arc::new(id);
-                let node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone());
-
-                if let Some(cb) = &self.cbs.node_created {
-                    let mut inner_node = node.inner.node.lock().unwrap();
-                    cb(&id, &mut inner_node)
-                }
-
-                self.state.nodes.insert(id, node.clone());
-                node
+               self.create_node(id) 
             },
         }
     }
 
     fn handle_event(&mut self, event: AppEvent) -> bool {
         trace!("Application event = ({event:?})");
+        debug!("Application event = ({event:?})");
         match event {
             AppEvent::Online => {
                 if let Some(on_online) = &self.cbs.online {
@@ -584,7 +591,7 @@ impl Application {
                     },
                     NodeEvent::NData(ndata) => {
                         if let Some(node) = self.get_node_or_issue_rebirth(id) {
-                            Self::node_handle_resequenceable_message(node, ndata.seq, ResequenceableEvent::NData(ndata))
+                            Self::node_handle_resequenceable_message(node, ndata.seq, ndata.timestamp, ResequenceableEvent::NData(ndata))
                         }
                     },
                 }
@@ -598,9 +605,9 @@ impl Application {
                 let device_name = device_event.name;
 
                 match device_event.event {
-                    DeviceEvent::DBirth(dbirth) => Self::node_handle_resequenceable_message(node, dbirth.seq, ResequenceableEvent::DBirth(device_name, dbirth)),
-                    DeviceEvent::DDeath(ddeath) => Self::node_handle_resequenceable_message(node, ddeath.seq, ResequenceableEvent::DDeath(device_name)),
-                    DeviceEvent::DData(ddata) => Self::node_handle_resequenceable_message(node, ddata.seq, ResequenceableEvent::DData(device_name, ddata)),
+                    DeviceEvent::DBirth(dbirth) => Self::node_handle_resequenceable_message(node, dbirth.seq, dbirth.timestamp,ResequenceableEvent::DBirth(device_name, dbirth)),
+                    DeviceEvent::DDeath(ddeath) => Self::node_handle_resequenceable_message(node, ddeath.seq, ddeath.timestamp, ResequenceableEvent::DDeath(device_name)),
+                    DeviceEvent::DData(ddata) => Self::node_handle_resequenceable_message(node, ddata.seq, ddata.timestamp, ResequenceableEvent::DData(device_name, ddata)),
                 }
             },
             AppEvent::InvalidPayload(details) => {

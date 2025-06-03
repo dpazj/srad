@@ -26,7 +26,7 @@ impl MetricStoreImpl {
 impl MetricStore for MetricStoreImpl {
 
     fn set_stale(&mut self) {
-        info!("Node ({:?}) Device ({:?} Stale", self.node, self.node);
+        info!("Node ({:?}) Device ({:?}) Stale", self.node, self.device);
     }
 
     fn update_from_birth(&mut self, details: Vec<(srad::app::MetricBirthDetails, srad::app::MetricDetails)>) -> Result<(), generic::StateUpdateError> {
@@ -36,13 +36,13 @@ impl MetricStore for MetricStoreImpl {
             let value = match value_details.value {
                 Some(val) => match MetricValueKind::try_from_metric_value(birth_details.datatype, val) {
                     Ok(val) => Some(val),
-                    Err(e) => {
+                    Err(_) => {
                         return Err(StateUpdateError::InvalidValue)
                     },
                 },
                 None => None,
             };
-            info!("Node ({:?}) Device ({:?} Got birth metric {:?} with value {:?}", self.node, self.device, id, value);
+            info!("Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}", self.node, self.device, id, value);
             if let Some(_) = self.metric_types.insert(id, birth_details.datatype) { return Err(StateUpdateError::InvalidValue) }
         }
         Ok (())
@@ -70,7 +70,7 @@ impl MetricStore for MetricStoreImpl {
 #[tokio::main]
 async fn main() {
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Debug)
+        .filter_level(LevelFilter::Info)
         .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
