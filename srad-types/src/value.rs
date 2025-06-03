@@ -599,6 +599,7 @@ impl_vec_type_metric_value_conversions!(
     proto_to_string_vec
 );
 
+#[derive(Debug)]
 pub enum MetricValueKind {
     Int8(i8),
     Int16(i16),

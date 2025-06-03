@@ -18,7 +18,7 @@ use srad_types::{
 
 use crate::{
     config::SubscriptionConfig,
-    events::{AppDeviceEvent, AppNodeEvent, DBirth, DData, DDeath, NBirth, NData, NDeath, PayloadErrorDetails},
+    events::{AppDeviceEvent, AppNodeEvent, PayloadErrorDetails},
     metrics::PublishMetric,
 };
 
