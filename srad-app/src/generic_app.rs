@@ -140,7 +140,7 @@ impl Device {
         details: Vec<(MetricBirthDetails, MetricDetails)>,
     ) -> Result<(), RebirthReason> {
         if let Some(x) = &mut self.store {
-            if let Err(_) = x.update_from_birth(details) {
+            if x.update_from_birth(details).is_err() {
                 return Err(RebirthReason::InvalidPayload);
             }
         }
@@ -255,7 +255,7 @@ impl Node {
             return false;
         }
         self.last_rebirth = now;
-        return true;
+        true
     }
 
     fn cancel_reorder_timeout(&mut self) {
@@ -279,7 +279,7 @@ impl Node {
         // If this is a duplicate birth message that we will have already received we dont need to notify the metric store
         if !(self.lifecycle_state == LifecycleState::Birthed && self.bdseq == bdseq) {
             if let Some(store) = &mut self.store {
-                if let Err(_) = store.update_from_birth(details) {
+                if store.update_from_birth(details).is_err() {
                     return Err(Some(RebirthReason::InvalidPayload));
                 };
             };
@@ -470,7 +470,7 @@ impl ArcNode {
             RebirthReason::UnknownNode => config.unknown_node,
             RebirthReason::UnknownDevice => config.unknown_device,
             RebirthReason::UnknownMetric => config.unknown_metric,
-            RebirthReason::ReorderTimeout => config.reorder_timeout != None,
+            RebirthReason::ReorderTimeout => config.reorder_timeout.is_some(),
             RebirthReason::ReorderFail => config.reorder_failure,
             RebirthReason::RecordedStateStale => config.recorded_state_stale,
         }
@@ -811,7 +811,7 @@ impl Application {
             AppEvent::Node(node_event) => {
                 let id = node_event.id;
                 match node_event.event {
-                    NodeEvent::NBirth(nbirth) => {
+                    NodeEvent::Birth(nbirth) => {
                         let node = self.get_or_create_node(id);
                         let timestamp = nbirth.timestamp;
                         let bdseq = nbirth.bdseq;
@@ -820,7 +820,7 @@ impl Application {
                             tokio::spawn(async move { node.issue_rebirth(e).await });
                         }
                     }
-                    NodeEvent::NDeath(ndeath) => {
+                    NodeEvent::Death(ndeath) => {
                         let node = match self.state.nodes.get(&id) {
                             Some(node) => node.clone(),
                             None => return false,
@@ -828,7 +828,7 @@ impl Application {
                         let timestamp = timestamp();
                         tokio::spawn(async move { node.handle_death(ndeath.bdseq, timestamp) });
                     }
-                    NodeEvent::NData(ndata) => {
+                    NodeEvent::Data(ndata) => {
                         if let Some(node) = self.get_node_or_issue_rebirth(id) {
                             Self::node_handle_resequenceable_message(
                                 node,
@@ -848,19 +848,19 @@ impl Application {
                 let device_name = device_event.name;
 
                 match device_event.event {
-                    DeviceEvent::DBirth(dbirth) => Self::node_handle_resequenceable_message(
+                    DeviceEvent::Birth(dbirth) => Self::node_handle_resequenceable_message(
                         node,
                         dbirth.seq,
                         dbirth.timestamp,
                         ResequenceableEvent::DBirth(device_name, dbirth),
                     ),
-                    DeviceEvent::DDeath(ddeath) => Self::node_handle_resequenceable_message(
+                    DeviceEvent::Death(ddeath) => Self::node_handle_resequenceable_message(
                         node,
                         ddeath.seq,
                         ddeath.timestamp,
                         ResequenceableEvent::DDeath(device_name),
                     ),
-                    DeviceEvent::DData(ddata) => Self::node_handle_resequenceable_message(
+                    DeviceEvent::Data(ddata) => Self::node_handle_resequenceable_message(
                         node,
                         ddata.seq,
                         ddata.timestamp,
@@ -882,14 +882,14 @@ impl Application {
             }
             AppEvent::Cancelled => return true,
         };
-        return false;
+        false
     }
 
     fn handle_rx_request(&mut self, request: RebirthTimerMessage) {
         match request {
             RebirthTimerMessage::Start(node, cancel_token) => {
                 let duration = match self.rebirth_config.reorder_timeout {
-                    Some(duration) => duration.clone(),
+                    Some(duration) => duration,
                     None => return,
                 };
                 self.state.reorder_timers.push(Box::pin(async move {
@@ -914,7 +914,7 @@ impl Application {
         loop {
             select! {
                 event = self.eventloop.poll() => {
-                    if self.handle_event(event) == true { break }
+                    if self.handle_event(event) { break }
                 },
                 Some(request) = self.rebirth_rx.recv() => self.handle_rx_request(request),
                 Some(_) = self.state.reorder_timers.next() => (),

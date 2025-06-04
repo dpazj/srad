@@ -133,6 +133,12 @@ impl<T> Resequencer<T> {
     }
 }
 
+impl<T> Default for Resequencer<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::resequencer::{DrainResult, ProcessResult};

@@ -52,9 +52,9 @@ pub enum MessageTryFromError {
 
 #[derive(Debug)]
 pub enum NodeEvent {
-    NBirth(NBirth),
-    NDeath(NDeath),
-    NData(NData),
+    Birth(NBirth),
+    Death(NDeath),
+    Data(NData),
 }
 
 #[derive(Debug)]
@@ -74,7 +74,7 @@ impl TryFrom<NodeMessage> for AppNodeEvent {
 
         let event = match value.message.kind {
             srad_client::MessageKind::Birth => match NBirth::try_from(value.message.payload) {
-                Ok(v) => NodeEvent::NBirth(v),
+                Ok(v) => NodeEvent::Birth(v),
                 Err(e) => {
                     return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
                         id, e,
@@ -82,7 +82,7 @@ impl TryFrom<NodeMessage> for AppNodeEvent {
                 }
             },
             srad_client::MessageKind::Death => match NDeath::try_from(value.message.payload) {
-                Ok(v) => NodeEvent::NDeath(v),
+                Ok(v) => NodeEvent::Death(v),
                 Err(e) => {
                     return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
                         id, e,
@@ -91,7 +91,7 @@ impl TryFrom<NodeMessage> for AppNodeEvent {
             },
             srad_client::MessageKind::Cmd => return Err(MessageTryFromError::UnsupportedVerb),
             srad_client::MessageKind::Data => match NData::try_from(value.message.payload) {
-                Ok(v) => NodeEvent::NData(v),
+                Ok(v) => NodeEvent::Data(v),
                 Err(e) => {
                     return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
                         id, e,
@@ -106,9 +106,9 @@ impl TryFrom<NodeMessage> for AppNodeEvent {
 
 #[derive(Debug)]
 pub enum DeviceEvent {
-    DBirth(DBirth),
-    DDeath(DDeath),
-    DData(DData),
+    Birth(DBirth),
+    Death(DDeath),
+    Data(DData),
 }
 
 #[derive(Debug)]
@@ -130,7 +130,7 @@ impl TryFrom<DeviceMessage> for AppDeviceEvent {
 
         let event = match value.message.kind {
             srad_client::MessageKind::Birth => match DBirth::try_from(value.message.payload) {
-                Ok(v) => DeviceEvent::DBirth(v),
+                Ok(v) => DeviceEvent::Birth(v),
                 Err(e) => {
                     return Err(MessageTryFromError::PayloadError(
                         PayloadErrorDetails::new(id, e).with_device(name),
@@ -138,7 +138,7 @@ impl TryFrom<DeviceMessage> for AppDeviceEvent {
                 }
             },
             srad_client::MessageKind::Death => match DDeath::try_from(value.message.payload) {
-                Ok(v) => DeviceEvent::DDeath(v),
+                Ok(v) => DeviceEvent::Death(v),
                 Err(e) => {
                     return Err(MessageTryFromError::PayloadError(
                         PayloadErrorDetails::new(id, e).with_device(name),
@@ -147,7 +147,7 @@ impl TryFrom<DeviceMessage> for AppDeviceEvent {
             },
             srad_client::MessageKind::Cmd => return Err(MessageTryFromError::UnsupportedVerb),
             srad_client::MessageKind::Data => match DData::try_from(value.message.payload) {
-                Ok(v) => DeviceEvent::DData(v),
+                Ok(v) => DeviceEvent::Data(v),
                 Err(e) => {
                     return Err(MessageTryFromError::PayloadError(
                         PayloadErrorDetails::new(id, e).with_device(name),
