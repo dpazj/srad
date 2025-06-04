@@ -12,7 +12,7 @@ env_logger = "0.11.7"
 
 [[example]]
 name = "app-eventloop"
-path = "app/simple.rs"
+path = "app/eventloop.rs"
 
 [[example]]
 name = "generic-app"

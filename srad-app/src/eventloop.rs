@@ -5,7 +5,7 @@ use std::{
 
 use log::{debug, info};
 use srad_client::{
-    Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, MessageKind, NodeMessage,
+    Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage,
     StatePayload,
 };
 use srad_types::{
@@ -156,6 +156,12 @@ struct AppState {
 }
 
 /// A Sparkplug Application EventLoop
+/// 
+/// On top of [srad_client::EventLoop] functionality, AppEventLoop provides some specific application functionality:
+/// 
+/// * Topic Subscription setup and management
+/// * Application State message publishing
+/// * Topic specific message payload verification and transformation 
 pub struct AppEventLoop {
     online: bool,
     state: Arc<AppState>,

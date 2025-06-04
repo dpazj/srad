@@ -1,6 +1,6 @@
-use std::{collections::{HashMap}, future::Future, ops::DerefMut, pin::Pin, sync::{Arc, Mutex}, time::Duration};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::{Arc, Mutex}, time::{Duration, SystemTime, UNIX_EPOCH}};
 
-use log::{debug, error, info, trace, warn};
+use log::{debug, info, trace, warn};
 use srad_client::{Client, EventLoop};
 use srad_types::{utils::timestamp, MetricId};
 
@@ -10,14 +10,68 @@ use tokio::{select, sync::{mpsc, oneshot}, time::{sleep}};
 
 use futures::{stream::FuturesUnordered, StreamExt};
 
+/// A trait the [Application] uses to interface with custom implementations
+/// 
+/// `MetricStore` provides an interface for managing metrics for a device or node, creating new metrics from a birth message and updating existing metrics with new data 
+/// 
+/// # Examples
+///
+/// ```rust
+/// use std::collections::HashMap;
+/// use srad_app::generic::{MetricStore, StateUpdateError};
+/// use srad_app::{MetricBirthDetails, MetricDetails};
+/// use srad_types::MetricId;
+///
+/// struct InMemoryMetricStore {
+///     metrics: HashMap<MetricId, MetricDetails>,
+///     is_stale: bool,
+/// }
+///
+/// impl MetricStore for InMemoryMetricStore {
+///     fn set_stale(&mut self) {
+///         self.is_stale = true;
+///     }
+///
+///     fn update_from_birth(&mut self, details: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), StateUpdateError> {
+///         for (birth_details, metric_details) in details {
+///             let metric_id = birth_details.get_metric_id();
+///             self.metrics.insert(metric_id, metric_details);
+///         }
+///         Ok(())
+///     }
+///
+///     fn update_from_data(&mut self, details: Vec<(MetricId, MetricDetails)>) -> Result<(), StateUpdateError> {
+///         for (id, metric_update_details) in details {
+///             match self.metrics.get_mut(&id) {
+///                 Some(details) => *details = metric_update_details,
+///                 None => return Err(StateUpdateError::UnknownMetric)
+///             }
+///         }
+///         Ok(())
+///     }
+/// }
+/// ``` 
 pub trait MetricStore {
+    /// Mark metrics in the store to be stale. 
+    /// 
+    /// This method is called when one of the following situations is met:
+    /// - A DEATH message is received for the associated Node or Device
+    /// - The application goes Offline
+    /// - The application detects that there is some form of state synchronisation issue and needs to issue a rebirth command to the Node
     fn set_stale(&mut self); 
+
+    /// Called on the occurrence of a new BIRTH message to initialise or reset the known metrics for the Node/Devices lifetime
     fn update_from_birth(&mut self, details: Vec<(MetricBirthDetails, MetricDetails)>) -> Result<(), StateUpdateError>; 
+
+    /// Called on the occurrence of a new DATA message to indicate there is a new value for one or more metrics
     fn update_from_data(&mut self, details: Vec<(MetricId, MetricDetails)>) -> Result<(), StateUpdateError>; 
 }
 
+/// An error type that can be returned by [MetricStore] to indicate an error when updating it's internal state
 pub enum StateUpdateError {
+    /// The value provided was invalid 
     InvalidValue,
+    /// The metric provided was unknown
     UnknownMetric,
 }
 
@@ -35,8 +89,12 @@ enum ResequenceableEvent {
     DData(String, DData)
 }
 
+/// A struct that represents the instance of a Device.
+/// 
+/// Provided to the user in a callback when the Application creates the device; users should register their [MetricStore] implementations with the device then.
 pub struct Device {
     name: String,
+    lifecycle_state: LifecycleState,
     store: Option<Box<dyn MetricStore + Send>>,
 }
 
@@ -45,11 +103,13 @@ impl Device {
     fn new(name: String) -> Self {
         Self {
             name, 
+            lifecycle_state: LifecycleState::Stale,
             store: None
         }
     }
 
     fn set_stale(&mut self) {
+        self.lifecycle_state = LifecycleState::Stale;
         if let Some(x) = &mut self.store {
             x.set_stale()
         }
@@ -61,6 +121,7 @@ impl Device {
                 return Err (RebirthReason::InvalidPayload)
             }
         }
+        self.lifecycle_state = LifecycleState::Birthed;
         Ok (())
     }
 
@@ -69,6 +130,7 @@ impl Device {
     }
 
     fn handle_data(&mut self, details: DData) -> Result<(), RebirthReason> {
+        if self.lifecycle_state == LifecycleState::Stale { return Err(RebirthReason::RecordedStateStale) }
         if let Some(x) = &mut self.store {
             if let Err(e) = x.update_from_data(details.metrics_details) {
                 return Err(match e {
@@ -80,18 +142,21 @@ impl Device {
         Ok (())
     }
 
-    pub fn set_metric_store<T: MetricStore + Send + 'static>(&mut self, store: T) {
+    /// Register a [MetricStore] implementation with the device
+    pub fn register_metric_store<T: MetricStore + Send + 'static>(&mut self, store: T) {
         self.store = Some(Box::new(store))
     }
 
+    /// Get the name of the device
     pub fn name(&self) -> &str {
         &self.name
     }
 
-
 }
 
-
+/// A struct that represents the instance of a Node.
+/// 
+/// Provided to the user in a callback when the Application creates the node; users should register their [MetricStore] implementations with the node then.
 pub struct Node {
     id: Arc<NodeIdentifier>,
     lifecycle_state: LifecycleState,
@@ -101,21 +166,31 @@ pub struct Node {
     bdseq: u8,
     birth_timestamp: u64,
     device_created_cb: Option<DeviceCreatedCallback>,
-    reorder_timeout_cancel_token: Option<oneshot::Sender<()>>
+    reorder_timeout_cancel_token: Option<oneshot::Sender<()>>,
+    last_rebirth: Duration,
 }
 
 impl Node {
 
-    pub fn set_metric_store<T: MetricStore + Send + 'static>(&mut self, store: T) {
+    /// Register a [MetricStore] implementation with the node 
+    pub fn register_metric_store<T: MetricStore + Send + 'static>(&mut self, store: T) {
         self.store = Some(Box::new(store))
     }
 
+    /// Register a callback to be notified when a new device for this node is created.
+    /// 
+    /// Typical use should just involve creating and registering custom [MetricStore] implementations with the device.
     pub fn on_device_created<F>(&mut self, cb: F) 
         where 
             F: Fn(&mut Device) + Send + Sync + 'static,
     
     {
         self.device_created_cb = Some(Box::pin(cb));
+    }
+
+    /// Get the NodeIdentifier of the Node
+    pub fn id(&self) -> &Arc<NodeIdentifier> {
+        &self.id
     }
 
     fn new(id: Arc<NodeIdentifier>) -> Self {
@@ -128,12 +203,14 @@ impl Node {
             birth_timestamp: 0,
             store: None, 
             device_created_cb: None,
-            reorder_timeout_cancel_token: None
+            reorder_timeout_cancel_token: None,
+            last_rebirth: Duration::new(0,0)
         }
     }
 
     fn set_stale(&mut self, timestamp: u64) 
     {
+        if self.lifecycle_state == LifecycleState::Stale { return }
         if timestamp < self.birth_timestamp { return }
         debug!("Setting Node = {:?} Stale", self.id);
         self.resequencer.reset();
@@ -143,6 +220,13 @@ impl Node {
         for x in self.devices.values_mut() {
             x.set_stale();
         }
+    }
+
+    fn rebirth_cooldown_expired_and_update(&mut self, cooldown: &Duration) -> bool {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        if (now - self.last_rebirth) < *cooldown { return false }
+        self.last_rebirth = now;
+        return true;
     }
 
     fn cancel_reorder_timeout(&mut self) {
@@ -239,12 +323,12 @@ impl Node {
     fn handle_resequencable_message(&mut self, seq: u8, timestamp: u64, message: ResequenceableEvent) -> Result<bool, RebirthReason> {
 
         if self.lifecycle_state != LifecycleState::Birthed { 
-            debug!("Ignoring message for Node = ({:?}) as its current state is stale", self.id);
-            return Ok (false) 
+            debug!("Node = ({:?}) received message but its current state is stale", self.id);
+            return Err(RebirthReason::RecordedStateStale) 
         }
 
         if timestamp < self.birth_timestamp {
-            warn!("Ignoring message for Node = ({:?}) as it's timestamp is before the current birth timestamp", self.id);
+            debug!("Ignoring message for Node = ({:?}) as it's timestamp is before the current birth timestamp", self.id);
             return Ok (false) 
         }
 
@@ -285,6 +369,7 @@ struct NodeWrapper {
     client: AppClient,
     rebirth_config: Arc<RebirthConfig>,
     rebirth_timer_tx: mpsc::Sender<RebirthTimerMessage>
+    
 }
 
 impl NodeWrapper {
@@ -323,12 +408,23 @@ impl ArcNode {
             RebirthReason::UnknownDevice => config.unknown_device,
             RebirthReason::UnknownMetric => config.unknown_metric,
             RebirthReason::ReorderTimeout => config.reorder_timeout != None,
-            RebirthReason::ReorderFail => config.reorder_failure
+            RebirthReason::ReorderFail => config.reorder_failure,
+            RebirthReason::RecordedStateStale => config.recorded_state_stale,
         }
     }
 
     async fn issue_rebirth(&self, reason: RebirthReason) {
         if !Self::evaluate_rebirth_reason(&self.inner.rebirth_config, &reason) {
+            return
+        }
+
+        let can_rebirth = {
+            let mut node = self.inner.node.lock().unwrap();
+            node.set_stale(timestamp()); 
+            node.rebirth_cooldown_expired_and_update(&self.inner.rebirth_config.rebirth_cooldown)
+        };
+        if !can_rebirth {
+            info!("Skipping rebirth for Node = ({:?}), reason = ({:?}) as rebirth cooldown not expired", self.inner.id, reason);
             return
         }
         info!("Issuing rebirth for Node = ({:?}), reason = ({:?})", self.inner.id, reason);
@@ -384,17 +480,30 @@ enum RebirthReason {
     UnknownDevice,
     UnknownMetric,
     ReorderTimeout, 
-    ReorderFail
+    ReorderFail,
+    RecordedStateStale,
 }
 
+/// A configuration struct used to determine how the Application will handle various situations that might require the issuing of a Node Rebirth CMD
 pub struct RebirthConfig {
+    /// Cooldown time between rebirth requests for a node 
+    pub rebirth_cooldown: Duration,
+    /// Issue rebirths if we encounter an invalid payload 
     pub invalid_payload: bool,
+    /// Issue rebirths if an unexpected bdseq value in a NDEATH message, indicating our state is not correctly synced
     pub out_of_sync_bdseq: bool,
+    /// Issue rebirth if a message is received from a node not seen before 
     pub unknown_node: bool,
+    /// Issue rebirth if a message is received from a device not seen before 
     pub unknown_device: bool,
+    /// Issue rebirth if metric is received that has not been seen in a birth/death message 
     pub unknown_metric: bool,
+    /// Issue rebirth if we were unable to reorder an out of sequence message 
+    pub reorder_failure: bool,
+    /// Issue rebirth if we have the state for the node as stale but we receive an unexpected message
+    pub recorded_state_stale: bool,
+    /// Issue rebirth if out of sequence messages could not be reordered in the specified timeout
     pub reorder_timeout: Option<Duration>,
-    pub reorder_failure: bool
 }
 
 impl Default for RebirthConfig {
@@ -406,7 +515,9 @@ impl Default for RebirthConfig {
             unknown_device: true,
             unknown_metric: true,
             reorder_timeout: Some(Duration::from_secs(3)),
-            reorder_failure: true
+            reorder_failure: true,
+            rebirth_cooldown: Duration::from_secs(5),
+            recorded_state_stale: true
         }
     }
 }
@@ -419,7 +530,7 @@ struct ApplicationState {
 pub type OnlineCallback = Pin<Box<dyn Fn() + Send>>;
 pub type OfflineCallback = Pin<Box<dyn Fn() + Send>>;
 
-pub type NodeCreatedCallback = Pin<Box<dyn Fn(&NodeIdentifier, &mut Node) + Send + Sync>>;
+pub type NodeCreatedCallback = Pin<Box<dyn Fn(&mut Node) + Send + Sync>>;
 pub type DeviceCreatedCallback = Pin<Box<dyn Fn(&mut Device) + Send + Sync>>;
 
 struct AppCallbacks {
@@ -434,6 +545,9 @@ impl AppCallbacks {
     }
 }
 
+/// The Application struct.
+/// 
+/// Internally uses an [AppEventLoop]. The corresponding [AppClient] returned from [Application::new()] can be used to interact with the Sparkplug namespace by publishing CMD messages.
 pub struct Application {
     state: ApplicationState,
     eventloop: AppEventLoop,
@@ -445,7 +559,8 @@ pub struct Application {
 }
 
 impl Application {
-    
+
+    /// Create a new [Application] instance. 
     pub fn new<E: EventLoop + Send + 'static, C: Client + Send + Sync + 'static, S: Into<String>>(
         app_id : S, 
         eventloop: E,
@@ -466,14 +581,23 @@ impl Application {
         (app, client)
     }
 
+    /// Register a callback to be notified when a new node is created.
+    /// 
+    /// This is called when the application first discovers the existence of a node, not to be confused with receiving a NBIRTH message from the node.
+    /// 
+    /// Typical use should just involve creating and registering custom [MetricStore] implementations and device added callbacks with the node.
+    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
     pub fn on_node_created<F>(mut self, cb: F) -> Self 
         where 
-            F: Fn(&NodeIdentifier, &mut Node) + Send + Sync + 'static 
+            F: Fn(&mut Node) + Send + Sync + 'static 
     {
         self.cbs.node_created = Some(Box::pin(cb));
         self
     }
 
+    /// Register a callback to be notified the Application is Online and has published it's state online message.
+    /// 
+    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
     pub fn on_online<F>(mut self, cb: F) -> Self 
         where 
             F: Fn() + Send + 'static 
@@ -482,6 +606,9 @@ impl Application {
         self
     }
 
+    /// Register a callback to be notified the Application is Offline i.e it has disconnected from the broker.
+    /// 
+    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
     pub fn on_offline<F>(mut self, cb: F) -> Self 
         where 
             F: Fn() + Send + 'static 
@@ -490,6 +617,7 @@ impl Application {
         self
     }
 
+    /// Provide the `Application` with a configuration for how it should handle various Rebirth conditions
     pub fn with_rebirth_config(mut self, config: RebirthConfig) -> Self {
         self.rebirth_config = Arc::new(config);
         self
@@ -501,7 +629,7 @@ impl Application {
         let mut node = Node::new(id.clone());
 
         if let Some(cb) = &self.cbs.node_created {
-            cb(&id, &mut node)
+            cb(&mut node)
         }
 
         let arc_node = ArcNode::new(self.client.clone(), id.clone(), self.rebirth_config.clone(), self.rebirth_tx.clone(), node);
@@ -547,7 +675,6 @@ impl Application {
 
     fn handle_event(&mut self, event: AppEvent) -> bool {
         trace!("Application event = ({event:?})");
-        debug!("Application event = ({event:?})");
         match event {
             AppEvent::Online => {
                 if let Some(on_online) = &self.cbs.online {
@@ -643,7 +770,10 @@ impl Application {
         }
     }
 
-    pub async fn run(&mut self) {
+    /// Run the Application
+    ///
+    /// Runs the Application until [AppClient::cancel()] is called
+    pub async fn run(mut self) {
         self.state.nodes.clear();
         self.state.reorder_timers.clear();
         self.state.reorder_timers.next().await;

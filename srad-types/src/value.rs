@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use crate::payload::{
     data_set::data_set_value, metric, property_value, template::parameter, DataType,
 };
-use crate::{traits, PropertySet};
+use crate::traits;
 
 use paste::paste;
 use thiserror::Error;

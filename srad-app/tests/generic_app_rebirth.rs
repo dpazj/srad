@@ -1,34 +1,12 @@
 use std::{time::Duration};
 
 use srad_client::{channel::{ChannelEventLoop, OutboundMessage}, Message, NodeMessage};
-use srad_app::{generic::{Application, RebirthConfig}, AppClient, SubscriptionConfig};
+use srad_app::{generic_app::{Application, RebirthConfig}, SubscriptionConfig};
 use srad_types::{payload::{DataType, Metric}, topic::NodeTopic, utils::timestamp, MetricValue};
 use tokio::time::timeout;
 use utils::payloads::assert_payload_is_rebirth_request;
 
 mod utils;
-
-// #[tokio::test]
-// async fn basic_rebirths() {
-//     let (eventloop, client, mut broker) = ChannelEventLoop::new();
-//     let (application, _) = Application::new(
-//         "foo",
-//         eventloop,
-//         client,
-//         SubscriptionConfig::SingleGroup {
-//             group_id: "test".into(),
-//         },
-//     );
-
-//     tokio::spawn(async move {
-//         application.with_rebirth_config(
-//             RebirthConfig { invalid_payload: true, out_of_sync_bdseq: true, unknown_node: true, unknown_device: true, unknown_metric: true, reorder_timeout: Some(Duration::from_millis(100)), reorder_failure: true }
-//         ).run().await;
-//     });
-    
-//     broker.tx_event.send(srad_client::Event::Online).unwrap();
-//     timeout(Duration::from_secs(1), broker.rx_outbound.recv()).await.unwrap().unwrap();
-// }
 
 #[tokio::test]
 async fn reorder_rebirths() {
@@ -45,7 +23,17 @@ async fn reorder_rebirths() {
 
     tokio::spawn(async move {
         application.with_rebirth_config(
-            RebirthConfig { invalid_payload: true, out_of_sync_bdseq: true, unknown_node: true, unknown_device: true, unknown_metric: true, reorder_timeout: Some(Duration::from_millis(reorder_timeout)), reorder_failure: true }
+            RebirthConfig { 
+                invalid_payload: true, 
+                out_of_sync_bdseq: true,
+                unknown_node: true, 
+                unknown_device: true,
+                unknown_metric: true,
+                reorder_timeout: Some(Duration::from_millis(reorder_timeout)), 
+                reorder_failure: true,
+                recorded_state_stale: true,
+                rebirth_cooldown: Duration::from_secs(1)
+            }
         )
         .run().await;
     });

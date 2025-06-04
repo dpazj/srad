@@ -44,6 +44,7 @@ impl<T> Resequencer<T> {
         }
     }
 
+    /// Set the next expected sequence value
     pub fn set_next_sequence(&mut self, next_seq: u8) {
         self.next_seq = next_seq
     }
