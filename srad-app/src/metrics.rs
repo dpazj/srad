@@ -110,7 +110,11 @@ impl MetricBirthDetails {
     }
 
     pub fn get_metric_id(&self) -> MetricId {
-        if let Some(alias) = self.alias { MetricId::Alias(alias) } else { MetricId::Name(self.name.clone())}
+        if let Some(alias) = self.alias {
+            MetricId::Alias(alias)
+        } else {
+            MetricId::Name(self.name.clone())
+        }
     }
 }
 

@@ -632,7 +632,7 @@ pub enum MetricValueKind {
     DoubleArray(Vec<f64>),
     BooleanArray(Vec<bool>),
     StringArray(Vec<String>),
-    DateTimeArray(Vec<DateTime>)
+    DateTimeArray(Vec<DateTime>),
 }
 
 #[derive(Debug, Error)]
@@ -642,12 +642,14 @@ pub enum FromMetricValueError {
     #[error("Unsupported datatype")]
     UnsupportedDataType(DataType),
     #[error("Invalid datatype provided")]
-    InvalidDataType
+    InvalidDataType,
 }
 
 impl MetricValueKind {
-
-    pub fn try_from_metric_value(datatype: DataType, value: MetricValue) -> Result<Self, FromMetricValueError> {
+    pub fn try_from_metric_value(
+        datatype: DataType,
+        value: MetricValue,
+    ) -> Result<Self, FromMetricValueError> {
         let out = match datatype {
             DataType::Unknown => return Err(FromMetricValueError::InvalidDataType),
             DataType::Int8 => MetricValueKind::Int8(i8::try_from(value)?),
@@ -665,12 +667,24 @@ impl MetricValueKind {
             DataType::DateTime => MetricValueKind::DateTime(DateTime::try_from(value)?),
             DataType::Text => MetricValueKind::String(String::try_from(value)?),
             DataType::Uuid => MetricValueKind::Uuid(String::try_from(value)?),
-            DataType::DataSet => return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet)),
+            DataType::DataSet => {
+                return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet))
+            }
             DataType::Bytes => MetricValueKind::Bytes(Vec::<u8>::try_from(value)?),
             DataType::File => MetricValueKind::File(Vec::<u8>::try_from(value)?),
-            DataType::Template => return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet)),
-            DataType::PropertySet => return Err(FromMetricValueError::UnsupportedDataType(DataType::PropertySet)),
-            DataType::PropertySetList => return Err(FromMetricValueError::UnsupportedDataType(DataType::PropertySetList)),
+            DataType::Template => {
+                return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet))
+            }
+            DataType::PropertySet => {
+                return Err(FromMetricValueError::UnsupportedDataType(
+                    DataType::PropertySet,
+                ))
+            }
+            DataType::PropertySetList => {
+                return Err(FromMetricValueError::UnsupportedDataType(
+                    DataType::PropertySetList,
+                ))
+            }
             DataType::Int8Array => MetricValueKind::Int8Array(Vec::<i8>::try_from(value)?),
             DataType::Int16Array => MetricValueKind::Int16Array(Vec::<i16>::try_from(value)?),
             DataType::Int32Array => MetricValueKind::Int32Array(Vec::<i32>::try_from(value)?),
@@ -683,14 +697,13 @@ impl MetricValueKind {
             DataType::DoubleArray => MetricValueKind::DoubleArray(Vec::<f64>::try_from(value)?),
             DataType::BooleanArray => MetricValueKind::BooleanArray(Vec::<bool>::try_from(value)?),
             DataType::StringArray => MetricValueKind::StringArray(Vec::<String>::try_from(value)?),
-            DataType::DateTimeArray => MetricValueKind::DateTimeArray(Vec::<DateTime>::try_from(value)?)
+            DataType::DateTimeArray => {
+                MetricValueKind::DateTimeArray(Vec::<DateTime>::try_from(value)?)
+            }
         };
-        Ok (out)
+        Ok(out)
     }
-
 }
-
-
 
 #[cfg(test)]
 mod tests {

@@ -20,7 +20,7 @@ pub enum PayloadError {
     #[error("invalid bdseq")]
     MissingTimestamp,
     #[error("Metric error: {0}")]
-    MetricError(#[from] PayloadMetricError)
+    MetricError(#[from] PayloadMetricError),
 }
 
 #[derive(Debug)]
@@ -47,7 +47,7 @@ impl PayloadErrorDetails {
 
 pub enum MessageTryFromError {
     PayloadError(PayloadErrorDetails),
-    UnsupportedVerb
+    UnsupportedVerb,
 }
 
 #[derive(Debug)]
@@ -60,37 +60,42 @@ pub enum NodeEvent {
 #[derive(Debug)]
 pub struct AppNodeEvent {
     pub id: NodeIdentifier,
-    pub event: NodeEvent
+    pub event: NodeEvent,
 }
 
 impl TryFrom<NodeMessage> for AppNodeEvent {
     type Error = MessageTryFromError;
-    
-    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
         let id = NodeIdentifier {
             group: value.group_id,
             node: value.node_id,
         };
 
         let event = match value.message.kind {
-            srad_client::MessageKind::Birth => {
-                match NBirth::try_from(value.message.payload) {
-                    Ok(v) => NodeEvent::NBirth(v),
-                    Err(e) => return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(id, e))),
+            srad_client::MessageKind::Birth => match NBirth::try_from(value.message.payload) {
+                Ok(v) => NodeEvent::NBirth(v),
+                Err(e) => {
+                    return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
+                        id, e,
+                    )))
                 }
             },
-            srad_client::MessageKind::Death => {
-                match NDeath::try_from(value.message.payload) {
-                    Ok(v) => NodeEvent::NDeath(v),
-                    Err(e) => return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(id, e))),
+            srad_client::MessageKind::Death => match NDeath::try_from(value.message.payload) {
+                Ok(v) => NodeEvent::NDeath(v),
+                Err(e) => {
+                    return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
+                        id, e,
+                    )))
                 }
             },
             srad_client::MessageKind::Cmd => return Err(MessageTryFromError::UnsupportedVerb),
-            srad_client::MessageKind::Data => {
-                match NData::try_from(value.message.payload) {
-                    Ok(v) => NodeEvent::NData(v),
-                    Err(e) => return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(id, e))),
+            srad_client::MessageKind::Data => match NData::try_from(value.message.payload) {
+                Ok(v) => NodeEvent::NData(v),
+                Err(e) => {
+                    return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
+                        id, e,
+                    )))
                 }
             },
             srad_client::MessageKind::Other(_) => return Err(MessageTryFromError::UnsupportedVerb),
@@ -110,14 +115,13 @@ pub enum DeviceEvent {
 pub struct AppDeviceEvent {
     pub id: NodeIdentifier,
     pub name: String,
-    pub event: DeviceEvent
+    pub event: DeviceEvent,
 }
 
 impl TryFrom<DeviceMessage> for AppDeviceEvent {
     type Error = MessageTryFromError;
-    
-    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
 
+    fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
         let id = NodeIdentifier {
             group: value.group_id,
             node: value.node_id,
@@ -125,23 +129,29 @@ impl TryFrom<DeviceMessage> for AppDeviceEvent {
         let name = value.device_id;
 
         let event = match value.message.kind {
-            srad_client::MessageKind::Birth => {
-                match DBirth::try_from(value.message.payload) {
-                    Ok(v) => DeviceEvent::DBirth(v),
-                    Err(e) => return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(id, e).with_device(name))),
+            srad_client::MessageKind::Birth => match DBirth::try_from(value.message.payload) {
+                Ok(v) => DeviceEvent::DBirth(v),
+                Err(e) => {
+                    return Err(MessageTryFromError::PayloadError(
+                        PayloadErrorDetails::new(id, e).with_device(name),
+                    ))
                 }
             },
-            srad_client::MessageKind::Death => {
-                match DDeath::try_from(value.message.payload) {
-                    Ok(v) => DeviceEvent::DDeath(v),
-                    Err(e) => return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(id, e).with_device(name))),
+            srad_client::MessageKind::Death => match DDeath::try_from(value.message.payload) {
+                Ok(v) => DeviceEvent::DDeath(v),
+                Err(e) => {
+                    return Err(MessageTryFromError::PayloadError(
+                        PayloadErrorDetails::new(id, e).with_device(name),
+                    ))
                 }
             },
             srad_client::MessageKind::Cmd => return Err(MessageTryFromError::UnsupportedVerb),
-            srad_client::MessageKind::Data => {
-                match DData::try_from(value.message.payload) {
-                    Ok(v) => DeviceEvent::DData(v),
-                    Err(e) => return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(id, e).with_device(name))),
+            srad_client::MessageKind::Data => match DData::try_from(value.message.payload) {
+                Ok(v) => DeviceEvent::DData(v),
+                Err(e) => {
+                    return Err(MessageTryFromError::PayloadError(
+                        PayloadErrorDetails::new(id, e).with_device(name),
+                    ))
                 }
             },
             srad_client::MessageKind::Other(_) => return Err(MessageTryFromError::UnsupportedVerb),
@@ -243,7 +253,6 @@ impl TryFrom<Payload> for NData {
             metrics_details,
         })
     }
-
 }
 
 #[derive(Debug)]
@@ -266,15 +275,19 @@ impl TryFrom<Payload> for DBirth {
 
         let timestamp = match payload.timestamp {
             Some(ts) => ts,
-            None => return Err(PayloadError::MissingTimestamp)
+            None => return Err(PayloadError::MissingTimestamp),
         };
 
         let metrics_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
             Ok(details) => details,
-            Err(e) => return Err(PayloadError::MetricError(e))
+            Err(e) => return Err(PayloadError::MetricError(e)),
         };
 
-        Ok(DBirth { seq, timestamp, metrics_details })
+        Ok(DBirth {
+            seq,
+            timestamp,
+            metrics_details,
+        })
     }
 }
 
@@ -290,18 +303,15 @@ impl TryFrom<Payload> for DDeath {
     fn try_from(payload: Payload) -> Result<Self, Self::Error> {
         let seq = match payload.seq {
             Some(seq) => seq as u8,
-            None => return Err(PayloadError::MissingSeq)
+            None => return Err(PayloadError::MissingSeq),
         };
 
         let timestamp = match payload.timestamp {
             Some(ts) => ts,
-            None => return Err(PayloadError::MissingTimestamp)
+            None => return Err(PayloadError::MissingTimestamp),
         };
 
-        Ok(DDeath {
-            seq,
-            timestamp,
-        })
+        Ok(DDeath { seq, timestamp })
     }
 }
 
@@ -318,18 +328,18 @@ impl TryFrom<Payload> for DData {
     fn try_from(payload: Payload) -> Result<Self, Self::Error> {
         let seq = match payload.seq {
             Some(seq) => seq as u8,
-            None => return Err(PayloadError::MissingSeq)
+            None => return Err(PayloadError::MissingSeq),
         };
 
         let timestamp = match payload.timestamp {
             Some(ts) => ts,
-            None => return Err(PayloadError::MissingTimestamp)
+            None => return Err(PayloadError::MissingTimestamp),
         };
 
         let metrics_details = match get_metric_id_and_details_from_payload_metrics(payload.metrics)
         {
             Ok(details) => details,
-            Err(e) => return Err(PayloadError::MetricError(e))
+            Err(e) => return Err(PayloadError::MetricError(e)),
         };
 
         Ok(DData {
@@ -338,5 +348,4 @@ impl TryFrom<Payload> for DData {
             metrics_details,
         })
     }
-
 }

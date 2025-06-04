@@ -5,8 +5,7 @@ use std::{
 
 use log::{debug, info};
 use srad_client::{
-    Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage,
-    StatePayload,
+    Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage, StatePayload,
 };
 use srad_types::{
     constants::NODE_CONTROL_REBIRTH,
@@ -156,12 +155,12 @@ struct AppState {
 }
 
 /// A Sparkplug Application EventLoop
-/// 
+///
 /// On top of [srad_client::EventLoop] functionality, AppEventLoop provides some specific application functionality:
-/// 
+///
 /// * Topic Subscription setup and management
 /// * Application State message publishing
-/// * Topic specific message payload verification and transformation 
+/// * Topic specific message payload verification and transformation
 pub struct AppEventLoop {
     online: bool,
     state: Arc<AppState>,
@@ -271,7 +270,7 @@ impl AppEventLoop {
             Err(e) => match e {
                 crate::events::MessageTryFromError::PayloadError(e) => Err(e),
                 crate::events::MessageTryFromError::UnsupportedVerb => Ok(None),
-            }
+            },
         }
     }
 
@@ -283,7 +282,7 @@ impl AppEventLoop {
             Err(e) => match e {
                 crate::events::MessageTryFromError::PayloadError(e) => Err(e),
                 crate::events::MessageTryFromError::UnsupportedVerb => Ok(None),
-            }
+            },
         }
     }
 
