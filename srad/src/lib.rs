@@ -34,7 +34,7 @@
 //! ```rust no_run
 //! use srad::app::{SubscriptionConfig, generic_app::Application};
 //! use srad::client_rumqtt;
-//! 
+//!
 //! #[tokio::main]
 //! async fn main() {
 //!     let opts = client_rumqtt::MqttOptions::new("foo", "localhost", 1883);
