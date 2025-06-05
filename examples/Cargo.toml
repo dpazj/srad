@@ -25,3 +25,7 @@ path = "node/simple.rs"
 [[example]]
 name = "node-datatypes"
 path = "node/metric_datatypes.rs"
+
+[[example]]
+name = "many-nodes"
+path = "node/many_nodes.rs"
