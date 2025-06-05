@@ -32,7 +32,7 @@ async fn main() {
         }
 
         let (mut eon, handle) = EoNBuilder::new(eventloop, client)
-            .with_group_id("iotech")
+            .with_group_id("foo")
             .with_node_id(format!("node-{i}"))
             .with_metric_manager(node_metrics.clone())
             .build()
