@@ -26,39 +26,8 @@ async fn main() {
         match application.poll().await {
             srad::app::AppEvent::Online => info!("App online"),
             srad::app::AppEvent::Offline => info!("App offline"),
-            srad::app::AppEvent::NBirth(nbirth) => {
-                info!(
-                    "Node {:?} born at {} metrics = {:?}",
-                    nbirth.id, nbirth.timestamp, nbirth.metrics_details
-                )
-            }
-            srad::app::AppEvent::NDeath(ndeath) => {
-                info!("Node {:?} death", ndeath.id);
-            }
-            srad::app::AppEvent::NData(ndata) => {
-                info!(
-                    "Node {:?} data at {} metrics = {:?}",
-                    ndata.id, ndata.timestamp, ndata.metrics_details
-                )
-            }
-            srad::app::AppEvent::DBirth(dbirth) => {
-                info!(
-                    "Device {} Node {:?} born at {} metrics = {:?}",
-                    dbirth.device_name, dbirth.node_id, dbirth.timestamp, dbirth.metrics_details
-                );
-            }
-            srad::app::AppEvent::DDeath(ddeath) => {
-                info!(
-                    "Device {} Node {:?} death at {}",
-                    ddeath.device_name, ddeath.node_id, ddeath.timestamp
-                )
-            }
-            srad::app::AppEvent::DData(ddata) => {
-                info!(
-                    "Device {} Node {:?} data at {} metrics = {:?}",
-                    ddata.device_name, ddata.node_id, ddata.timestamp, ddata.metrics_details
-                );
-            }
+            srad::app::AppEvent::Node(node_event) => info!("Node event {node_event:?}"),
+            srad::app::AppEvent::Device(device_event) => info!("Device event {device_event:?}"),
             srad::app::AppEvent::InvalidPayload(details) => {
                 info!(
                     "Issuing rebirth request to node {0:?}, due to invalid payload: {1:?}",

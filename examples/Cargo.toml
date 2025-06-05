@@ -11,13 +11,17 @@ tokio = { workspace = true }
 env_logger = "0.11.7"
 
 [[example]]
-name = "simple-app"
-path = "app/simple.rs"
+name = "app-eventloop"
+path = "app/eventloop.rs"
+
+[[example]]
+name = "generic-app"
+path = "app/generic.rs"
 
 [[example]]
 name = "simple-node"
-path = "eon/simple.rs"
+path = "node/simple.rs"
 
 [[example]]
 name = "node-datatypes"
-path = "eon/metric_datatypes.rs"
+path = "node/metric_datatypes.rs"
