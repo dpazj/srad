@@ -1,6 +1,6 @@
 use srad::{
     client_rumqtt as rumqtt,
-    eon::{EoNBuilder, SimpleMetricManager},
+    eon::{EoNBuilder, NoMetricManager, SimpleMetricManager},
 };
 use std::time::Duration;
 
@@ -14,46 +14,24 @@ async fn main() {
 
     const NODE_COUNT: u32 = 5;
     const DEVICE_COUNT: u32 = 10;
-    const METRIC_COUNT: u32 = 20;
+    const PER_DEVICE_METRIC_COUNT: u32 = 20;
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
         let opts = rumqtt::MqttOptions::new(node_name, "localhost", 1883);
         let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
-        let node_metrics = SimpleMetricManager::new();
-        let mut metric = None;
-        for j in 0..METRIC_COUNT {
-            metric = Some(
-                node_metrics
-                    .register_metric(format!("metric-{j}"), 0_u64)
-                    .unwrap(),
-            );
-        }
-
         let (mut eon, handle) = EoNBuilder::new(eventloop, client)
-            .with_group_id("foo")
+            .with_group_id("iotech")
             .with_node_id(format!("node-{i}"))
-            .with_metric_manager(node_metrics.clone())
+            .with_metric_manager(NoMetricManager::new())
             .build()
             .unwrap();
 
-        tokio::spawn({
-            async move {
-                let metric = metric.unwrap();
-                loop {
-                    _ = node_metrics
-                        .publish_metric(metric.update(|x| *x = x.wrapping_add(1)))
-                        .await;
-                    tokio::time::sleep(Duration::from_secs(1)).await
-                }
-            }
-        });
-
         for j in 0..DEVICE_COUNT {
             let device_metrics = SimpleMetricManager::new();
-            let mut metrics = Vec::with_capacity(METRIC_COUNT as usize);
-            for k in 0..METRIC_COUNT {
+            let mut metrics = Vec::with_capacity(PER_DEVICE_METRIC_COUNT as usize);
+            for k in 0..PER_DEVICE_METRIC_COUNT {
                 metrics.push(
                     device_metrics
                         .register_metric(format!("metric-{k}"), 0_u64)
