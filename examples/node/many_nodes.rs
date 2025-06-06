@@ -22,7 +22,7 @@ async fn main() {
         let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
         let (mut eon, handle) = EoNBuilder::new(eventloop, client)
-            .with_group_id("iotech")
+            .with_group_id("foo")
             .with_node_id(format!("node-{i}"))
             .with_metric_manager(NoMetricManager::new())
             .build()
