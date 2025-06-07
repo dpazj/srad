@@ -1,4 +1,4 @@
-# Release steps
+# Releasing srad
 
 ## Update tasks
 
@@ -12,5 +12,8 @@
 
 ## Release
 
+- On `master` create a release tag
+  - e.g `srad-v0.1.1`
 - Create Tags and Publish to crates.io with:
-  - `cargo release --workspace`
+  - `./publish_release.sh`
+- Push tag 
