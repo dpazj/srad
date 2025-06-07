@@ -15,6 +15,7 @@
 - **breaking change** Remove `App`
 - Add specific application eventloop implementation
 - Add generic Application implementation
+- Add message resequencer struct `Resequencer`
 
 ## [0.1.1]
 
