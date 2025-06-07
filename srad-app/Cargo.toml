@@ -12,13 +12,13 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-srad-types = { path = "../srad-types", version = "0.1.1" }
-srad-client = { path = "../srad-client", version = "0.1.1" }
+srad-types = { path = "../srad-types", version = "0.2.0" }
+srad-client = { path = "../srad-client", version = "0.2.0" }
 tokio = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-srad-client = { path = "../srad-client", version = "0.1.1", features=["channel-client"] }
+srad-client = { path = "../srad-client", version = "0.2.0", features=["channel-client"] }
 tokio = { workspace = true, features = ["full"] }
