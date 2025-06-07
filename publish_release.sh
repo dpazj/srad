@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script which automates publishing a crates.io release of the prost crates.
+# Script which automates publishing a crates.io release of the srad crates.
 
 set -ex
 
