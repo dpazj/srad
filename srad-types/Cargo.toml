@@ -1,6 +1,6 @@
 [package]
 name = "srad-types"
-version = "0.2.0"
+version = "0.2.1"
 description = "Sparkplug types and utilities"
 readme = "README.md"
 keywords = ["sparkplug", "sparkplug-b", "mqtt", "iot", "async"]
