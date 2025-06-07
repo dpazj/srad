@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.1]
+
+- Update project deps
+
 ## [0.2.0]
 
 ### Types
