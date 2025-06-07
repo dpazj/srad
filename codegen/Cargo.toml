@@ -5,6 +5,7 @@ homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 authors.workspace = true
+publish = false
 
 [dependencies]
 prost-build = { workspace = true }
