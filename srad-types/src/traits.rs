@@ -45,19 +45,3 @@ pub trait ParameterValue:
 {
 }
 
-
-pub trait Template 
-{
-    fn template_definition() -> payload::Template;
-    fn template_instance(&self) -> payload::Template;
-}
-
-impl<T> HasDataType for T 
-where 
-    T: Template 
-{
-    fn supported_datatypes() -> &'static [DataType] {
-        static SUPPORTED_TYPES: [DataType;1] = [DataType::Template];
-        &SUPPORTED_TYPES
-    }
-}

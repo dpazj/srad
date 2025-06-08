@@ -10,6 +10,7 @@ pub mod payload;
 pub mod topic;
 
 mod property_set;
+mod template;
 
 pub mod utils;
 
@@ -21,6 +22,9 @@ pub use metadata::*;
 pub use property_set::*;
 pub use quality::*;
 pub use value::*;
+pub use template::*;
+
+
 
 pub mod traits;
 
