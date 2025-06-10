@@ -2,6 +2,18 @@
 
 ## General
 
+**Features**
+
+- Full datatype support
+  - Templates
+  - Datasets
+- Multi part metric support
+- Wait for states
+- Multi broker support
+
+
+**Others**
+
 - more tests
 - use tck to test
 - better examples
@@ -13,7 +25,7 @@
 
 - dont need protoc for all actions
 - use Swatinem/rust-cache@v2?
-- Coverage?
+- Coverage
 
 ## Srad
 
@@ -37,8 +49,6 @@
 
 ## App
 
-- check sequence order and issue rebirths if invalid after timeout
-- add ability to reorder out of sequence messages
 - app state change callbacks
 
 - check result of subscribe and publishes and handle failures accordingly
@@ -60,8 +70,8 @@
 
 ## Types
 
-- impl to value types for reference to types
-- impl to value types for atomic types  
+- impl to value types for reference to types ?
+- impl to value types for atomic types ?
 
 - template support
 - dataset support

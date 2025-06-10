@@ -1,6 +1,6 @@
 [package]
 name = "srad-client"
-version = "0.1.1"
+version = "0.2.1"
 description = "Types and traits for implementing Sparkplug Clients"
 readme = "README.md"
 keywords = ["sparkplug", "sparkplug-b", "mqtt", "iot", "async"]
@@ -15,7 +15,7 @@ authors.workspace = true
 channel-client = []
 
 [dependencies]
-srad-types = { path = "../srad-types", version = "0.1.1" }
+srad-types = { path = "../srad-types", version = "0.2.1" }
 prost = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
