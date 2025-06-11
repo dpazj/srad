@@ -1,4 +1,4 @@
-use crate::{payload::{self, metric, DataType}, traits::HasDataType, MetricValue, ParameterValue};
+use crate::{payload::{self, metric, DataType}, traits::{self, HasDataType}, MetricValue as MetricValue, ParameterValue};
 
 
 type TemplateMetric = payload::Metric;
@@ -39,7 +39,6 @@ impl From<TemplateInstance> for payload::Template {
     }
 }
 
-
 pub trait TemplateMetadata {
     fn version() -> Option<&'static str>;
     fn name() -> &'static str;
@@ -49,8 +48,17 @@ pub trait Template: TemplateMetadata
 {
     fn template_definition() -> TemplateDefinition;
     fn template_instance(&self) -> TemplateInstance;
-    fn template_instance_from_difference(&self, other: &Self) -> TemplateInstance;
+
+    // // for each field compare and if not eq field.to_metric_value()
+    // fn template_instance_from_difference(&self, other: &Self) -> TemplateInstance;
+
+    // // for each field provided in instance run field.update_from_metric()
+    // fn update_from_instance(&self, instance: TemplateInstance) -> Result<(), ()>;
 }
+
+
+
+
 
 impl<T> From<T> for metric::Value 
 where 
@@ -70,3 +78,21 @@ where
         &SUPPORTED_TYPES
     }
 }
+
+
+// /// Trait used to update a value from a [value::MetricValue]
+// pub trait TemplateMetricValueUpdatable{
+//     fn update_from_metric_value(&mut self, metric_value: MetricValue) -> Result<(), ()>;
+// }
+
+// impl<T> TemplateMetricValueUpdatable for T 
+// where 
+//     T: traits::MetricValue
+// {
+//     fn update_from_metric_value(&mut self, value: MetricValue) -> Result<(), ()> {
+//         let res = Self::try_from(value).map_err(|e| return ())?;
+//         *self = res;
+//         Ok(())
+//     }
+// }
+

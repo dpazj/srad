@@ -22,6 +22,7 @@ pub trait MetricValue:
     fn birth_metadata(&self) -> Option<MetaData> {
         self.publish_metadata()
     }
+
     fn publish_metadata(&self) -> Option<MetaData> {
         None
     }
