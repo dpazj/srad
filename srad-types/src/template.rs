@@ -40,8 +40,8 @@ impl From<TemplateInstance> for payload::Template {
 }
 
 pub trait TemplateMetadata {
-    fn version() -> Option<&'static str>;
-    fn name() -> &'static str;
+    fn template_version() -> Option<&'static str> { None }
+    fn template_name() -> &'static str;
 }
 
 pub trait Template: TemplateMetadata 
@@ -55,10 +55,6 @@ pub trait Template: TemplateMetadata
     // // for each field provided in instance run field.update_from_metric()
     // fn update_from_instance(&self, instance: TemplateInstance) -> Result<(), ()>;
 }
-
-
-
-
 
 impl<T> From<T> for metric::Value 
 where 
