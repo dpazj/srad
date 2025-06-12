@@ -308,7 +308,9 @@ impl Node {
     }
 }
 
-/// Structure that represents a Sparkplug Edge Node instance
+/// Structure that represents a Sparkplug Edge Node instance.
+///
+/// See [EoNBuilder] on how to create an [EoN] instance.
 pub struct EoN {
     node: Arc<Node>,
     eventloop: Box<DynEventLoop>,

@@ -2,7 +2,7 @@
 //!
 //! # Overview
 //!
-//! `srad-app` provides a generic [Application](generic_app::Application) implementation which supports:
+//! `srad-app` provides a general implementation of a Sparkplug application (see [Application](generic_app::Application)) which supports:
 //!
 //!  - Node and Device state management
 //!  - Message sequence reordering
