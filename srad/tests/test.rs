@@ -21,6 +21,7 @@ pub fn test(){
 
     println!("{x:?}");
     a.template_instance();
+    panic!("A")
 }
 
 // #[derive(Template)]

@@ -19,7 +19,7 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
         let name = x.ident.as_ref().unwrap().to_string();
         let ty = x.ty.clone();
         quote! {
-            ::srad::types::TemplateMetric::new_template_metric(#name.to_string(), <#ty as Default>::default()),
+            ::srad::types::TemplateMetric::new_template_metric(#name.to_string(), <#ty as Default>::default())
         }
     });
 
@@ -32,7 +32,7 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
             {
                 let parameters = vec![];
                 let metrics = vec![
-                    #(#default_metrics)*
+                    #(#default_metrics),*
                 ];
                 ::srad::types::TemplateDefinition {
                     name: Self::template_name().to_owned(),
