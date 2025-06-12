@@ -3,7 +3,9 @@
 //! # Overview
 //!
 //! `srad` aims to make it easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.  
-//!
+//! 
+//! This is a convenient crate that re-exports the other 'srad' crates. See those crates for docs etc.
+//! 
 //! # Example
 //!  
 //! Some super simple "Hello, World!" examples:
@@ -55,14 +57,15 @@
 //! - `rumqtt-client`: Enables the Rumqtt client implementation. Enabled by default.
 //!
 
-pub use srad_client as client;
-pub use srad_types as types;
-
-#[cfg(feature = "rumqtt-client")]
-pub use srad_client_rumqtt as client_rumqtt;
-
 #[cfg(feature = "eon")]
 pub use srad_eon as eon;
 
 #[cfg(feature = "app")]
 pub use srad_app as app;
+
+pub use srad_client as client;
+
+#[cfg(feature = "rumqtt-client")]
+pub use srad_client_rumqtt as client_rumqtt;
+
+pub use srad_types as types;
