@@ -1,41 +1,69 @@
-use crate::{payload::{self, metric, DataType}, traits::{self, HasDataType}, MetricValue as MetricValue, ParameterValue};
+use crate::{payload::{self, metric, DataType}, traits::{self, HasDataType}};
 
 
-type TemplateMetric = payload::Metric;
+pub type TemplateMetric = payload::Metric;
 
 impl TemplateMetric {
 
+    pub fn new_template_metric<T: traits::MetricValue>(name: String, value: T) -> Self {
+        TemplateMetric {
+            name: Some(name),
+            alias: None,
+            timestamp: None,
+            datatype: Some(T::default_datatype() as u32),
+            is_historical: None,
+            is_transient: None,
+            is_null: None,
+            metadata: None,
+            properties: None,
+            value: Some(metric::Value::from(value.into())),
+        }
+    }
+
 }
 
-type TemplateParameter = payload::template::Parameter;
+pub type TemplateParameter = payload::template::Parameter;
 
 impl TemplateParameter {
 
 }
 
+#[derive(Debug)]
 pub struct TemplateDefinition {
-    name: String,
-    version: Option<String>,
-    metrics: Vec<TemplateMetric>,
-    parameters: Vec<TemplateParameter>
+    pub name: String,
+    pub version: Option<String>,
+    pub metrics: Vec<TemplateMetric>,
+    pub parameters: Vec<TemplateParameter>
 }
 
 impl From<TemplateDefinition> for payload::Template {
     fn from(value: TemplateDefinition) -> Self {
-        todo!()
+        payload::Template { 
+            version: value.version, 
+            metrics: value.metrics, 
+            parameters: value.parameters, 
+            template_ref: None, 
+            is_definition: Some(true)
+        }
     }
 }
 
 pub struct TemplateInstance {
-    name: String,
-    version: Option<String>,
-    metrics: Vec<TemplateMetric>,
-    parameters: Vec<TemplateParameter>
+    pub name: String,
+    pub version: Option<String>,
+    pub metrics: Vec<TemplateMetric>,
+    pub parameters: Vec<TemplateParameter>
 }
 
 impl From<TemplateInstance> for payload::Template {
     fn from(value: TemplateInstance) -> Self {
-        todo!()
+        payload::Template { 
+            version: value.version, 
+            metrics: value.metrics, 
+            parameters: value.parameters, 
+            template_ref: Some(value.name), 
+            is_definition: Some(false)
+        }
     }
 }
 

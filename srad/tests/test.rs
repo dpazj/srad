@@ -17,7 +17,9 @@ impl TemplateMetadata for Test {
 #[test]
 pub fn test(){
     let a = Test { x: 1, y: 1};
-    Test::template_definition();
+    let x = Test::template_definition();
+
+    println!("{x:?}");
     a.template_instance();
 }
 
