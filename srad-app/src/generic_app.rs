@@ -647,8 +647,8 @@ impl AppCallbacks {
 
 /// The Application struct.
 ///
-/// A tokio task is created for each incoming message, except for NBirth and NDeath messages. 
-/// 
+/// A tokio task is created for each incoming message, except for NBirth and NDeath messages.
+///
 /// Internally uses an [AppEventLoop]. The corresponding [AppClient] returned from [Application::new()] can be used to interact with the Sparkplug namespace by publishing CMD messages.
 pub struct Application {
     state: ApplicationState,

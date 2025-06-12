@@ -3,9 +3,9 @@
 //! # Overview
 //!
 //! `srad` aims to make it easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.  
-//! 
+//!
 //! This is a convenient crate that re-exports the other 'srad' crates. See those crates for docs etc.
-//! 
+//!
 //! # Example
 //!  
 //! Some super simple "Hello, World!" examples:
