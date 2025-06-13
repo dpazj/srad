@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use log::{info, LevelFilter};
 use srad::app::generic_app::{MetricStore, StateUpdateError};
@@ -7,6 +8,9 @@ use srad::app::{generic_app, NodeIdentifier, SubscriptionConfig};
 use srad::client_rumqtt as rumqtt;
 use srad::types::payload::DataType;
 use srad::types::{MetricId, MetricValueKind};
+
+use tokio::runtime::Handle;
+use tokio::time::sleep;
 
 struct MetricStoreImpl {
     node: Arc<NodeIdentifier>,
@@ -54,10 +58,10 @@ impl MetricStore for MetricStoreImpl {
                 }
                 None => None,
             };
-            info!(
-                "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
-                self.node, self.device, id, value
-            );
+            // info!(
+            //     "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
+            //     self.node, self.device, id, value
+            // );
             if let Some(_) = self.metric_types.insert(id, birth_details.datatype) {
                 return Err(StateUpdateError::InvalidValue);
             }
@@ -81,10 +85,10 @@ impl MetricStore for MetricStoreImpl {
                 },
                 None => None,
             };
-            info!(
-                "Node ({:?}) Device ({:?}) Got data metric {:?} with value {:?}",
-                self.node, self.device, id, value
-            );
+            // info!(
+            //     "Node ({:?}) Device ({:?}) Got data metric {:?} with value {:?}",
+            //     self.node, self.device, id, value
+            // );
         }
         Ok(())
     }
@@ -98,21 +102,30 @@ async fn main() {
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
-    let (application, _) =
+    let (application, client) =
         generic_app::Application::new("foo", eventloop, client, SubscriptionConfig::AllGroups);
-    application
-        .on_node_created(|node| {
-            info!("Node created {:?}", node.id());
-            node.register_metric_store(MetricStoreImpl::new(node.id().clone(), None));
-            let node_id = node.id().clone();
-            node.on_device_created(move |dev| {
-                info!("Device created {} node {:?}", dev.name(), node_id);
-                dev.register_metric_store(MetricStoreImpl::new(
-                    node_id.clone(),
-                    Some(dev.name().to_string()),
-                ));
-            });
-        })
-        .run()
-        .await;
+
+    tokio::spawn(async move {
+        application
+            .on_node_created(|node| {
+                info!("Node created {:?}", node.id());
+                node.register_metric_store(MetricStoreImpl::new(node.id().clone(), None));
+                let node_id = node.id().clone();
+                node.on_device_created(move |dev| {
+                    info!("Device created {} node {:?}", dev.name(), node_id);
+                    dev.register_metric_store(MetricStoreImpl::new(
+                        node_id.clone(),
+                        Some(dev.name().to_string()),
+                    ));
+                });
+            })
+            .run()
+            .await;
+    });
+
+    if let Err(e) = tokio::signal::ctrl_c().await {
+        println!("Failed to register CTRL-C handler: {e}");
+        return;
+    }
+    client.cancel().await;
 }

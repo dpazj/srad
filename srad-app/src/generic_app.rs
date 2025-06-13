@@ -377,7 +377,7 @@ impl Node {
         let message = match self.resequencer.process(seq, message) {
             resequencer::ProcessResult::MessageNextInSequence(message) => message,
             resequencer::ProcessResult::OutOfSequenceMessageInserted => {
-                warn!(
+                debug!(
                     "Node {:?} Got out of order seq {}, expected {}",
                     self.id,
                     seq,
@@ -483,17 +483,18 @@ impl ArcNode {
 
         let can_rebirth = {
             let mut node = self.inner.node.lock().unwrap();
-            node.set_stale(timestamp());
+            //node.set_stale(timestamp());
             node.rebirth_cooldown_expired_and_update(&self.inner.rebirth_config.rebirth_cooldown)
         };
         if !can_rebirth {
-            info!("Skipping rebirth for Node = ({:?}), reason = ({:?}) as rebirth cooldown not expired", self.inner.id, reason);
+            debug!("Skipping rebirth for Node = ({:?}), reason = ({:?}) as rebirth cooldown not expired", self.inner.id, reason);
             return;
         }
         info!(
             "Issuing rebirth for Node = ({:?}), reason = ({:?})",
             self.inner.id, reason
         );
+
         _ = self
             .inner
             .client
