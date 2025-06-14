@@ -379,8 +379,6 @@ impl Node {
         message: ResequenceableEvent,
     ) -> Result<bool, RebirthReason> {
 
-        self.process_in_sequence_message(message)?;
-        return Ok(false);
 
         if self.lifecycle_state != LifecycleState::Birthed {
             debug!(
