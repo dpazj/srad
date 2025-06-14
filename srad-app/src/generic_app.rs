@@ -66,6 +66,7 @@ use futures::{stream::FuturesUnordered, StreamExt};
 ///     }
 /// }
 /// ```
+
 pub trait MetricStore {
     /// Mark metrics in the store to be stale.
     ///
@@ -154,6 +155,7 @@ impl Device {
 
     fn handle_data(&mut self, details: DData) -> Result<(), RebirthReason> {
         if self.lifecycle_state == LifecycleState::Stale {
+            info!("Device {} data but is stale", self.name);
             return Err(RebirthReason::RecordedStateStale);
         }
         if let Some(x) = &mut self.store {
@@ -376,6 +378,10 @@ impl Node {
         timestamp: u64,
         message: ResequenceableEvent,
     ) -> Result<bool, RebirthReason> {
+
+        self.process_in_sequence_message(message)?;
+        return Ok(false);
+
         if self.lifecycle_state != LifecycleState::Birthed {
             debug!(
                 "Node = ({:?}) received message but its current state is stale",
@@ -547,6 +553,7 @@ impl ArcNode {
 
         let res = {
             let mut node = self.inner.node.lock().unwrap();
+            info!("SEQ: {seq}");
             match node.handle_resequencable_message(seq, timestamp, message) {
                 Ok(out_of_order) => {
                     if out_of_order && self.inner.rebirth_config.reorder_timeout.is_some() {
@@ -559,8 +566,10 @@ impl ArcNode {
                     }
                 },
                 Err(rebirth_reason) => {
-                    node.eval_rebirth(&self.inner.rebirth_config, &rebirth_reason);
-                    Err(rebirth_reason)
+                    match node.eval_rebirth(&self.inner.rebirth_config, &rebirth_reason) {
+                        true => Err(rebirth_reason), //we want to publish a rebirth
+                        false => Ok(None), //we dont need to publish a rebirth 
+                    }
                 }
             }
         };
@@ -585,8 +594,8 @@ impl ArcNode {
 
     }
 
-    fn set_stale(&self, timestamp: u64) {
-        self.inner.node.lock().unwrap().set_stale(timestamp);
+    fn set_stale(&self) {
+        self.inner.node.lock().unwrap().set_stale(timestamp());
     }
 }
 
@@ -829,9 +838,8 @@ impl Application {
                 }
             }
             AppEvent::Offline => {
-                let timestamp = timestamp();
                 for x in self.state.nodes.values() {
-                    x.set_stale(timestamp);
+                    x.set_stale();
                 }
                 if let Some(on_offline) = &self.cbs.offline {
                     on_offline()
@@ -852,8 +860,7 @@ impl Application {
                             Some(node) => node.clone(),
                             None => return false,
                         };
-                        let timestamp = timestamp();
-                        tokio::spawn(async move { node.handle_death(ndeath.bdseq, timestamp) });
+                        tokio::spawn(async move { node.handle_death(ndeath.bdseq, timestamp()) });
                     }
                     NodeEvent::Data(ndata) => {
                         if let Some(node) = self.get_node_or_issue_rebirth(id) {

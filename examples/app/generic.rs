@@ -37,6 +37,7 @@ impl MetricStore for MetricStoreImpl {
         &mut self,
         details: Vec<(srad::app::MetricBirthDetails, srad::app::MetricDetails)>,
     ) -> Result<(), generic_app::StateUpdateError> {
+        info!("Birth Node {:?} Device {:?}", self.node, self.device);
         self.metric_types.clear();
         for (birth_details, value_details) in details {
             let id = birth_details.get_metric_id();

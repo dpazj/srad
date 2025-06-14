@@ -34,6 +34,8 @@ pub use config::*;
 pub use eventloop::*;
 pub use metrics::*;
 
+pub mod generic;
+
 /// Struct used to uniquely identify a node within a Sparkplug namespace
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct NodeIdentifier {
