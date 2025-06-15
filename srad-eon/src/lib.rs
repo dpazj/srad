@@ -1,6 +1,16 @@
 //! Part of [srad](https://crates.io/crates/srad), a general purpose [Sparkplug](https://sparkplug.eclipse.org/) development library in rust.
 //!
 //! This library defines a framework for implementing Sparkplug Edge of Network Nodes.
+//!
+//! # Overview
+//!
+//! `srad-eon` provides a general implementation of a Sparkplug Node.
+//!
+//! The implementation requires the provision of [MetricManager] implementations to the node or when registering devices. This allows for
+//! defining metrics which belong to the node or device as well as the custom handling of CMD messages for those metrics.
+//!
+//! The node starts a tokio `task` for each incoming CMD message.
+//!
 
 mod birth;
 mod builder;

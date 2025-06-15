@@ -24,7 +24,9 @@ use tokio::{
 
 /// A trait the [Application] uses to interface with custom implementations
 ///
-/// `MetricStore` provides an interface for managing metrics for a device or node, creating new metrics from a birth message and updating existing metrics with new data
+/// `MetricStore` provides an interface for managing metrics for a device or node, creating new metrics from a birth message and updating existing metrics with new data.
+///
+/// It should be noted: all calls to this struct are blocking and will prevent progress the node/node of the device can make in progressing it's state e.g processing incoming messages.
 ///
 /// # Examples
 ///
@@ -651,6 +653,8 @@ impl AppCallbacks {
 
 /// The Application struct.
 ///
+/// An actor model is used where each node has a dedicated channel and tokio task for it's incoming messages and receiving from that channel.
+///
 /// Internally uses an [AppEventLoop]. The corresponding [AppClient] returned from [Application::new()] can be used to interact with the Sparkplug namespace by publishing CMD messages.
 pub struct Application {
     state: ApplicationState,
@@ -673,7 +677,6 @@ impl Application {
         subscription_config: SubscriptionConfig,
     ) -> (Self, AppClient) {
         let (eventloop, client) = AppEventLoop::new(app_id, subscription_config, eventloop, client);
-        //let (rebirth_tx, rebirth_rx) = mpsc::channel(1);
         let app = Self {
             state: ApplicationState {
                 nodes: HashMap::new(),
