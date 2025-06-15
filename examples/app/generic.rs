@@ -98,21 +98,30 @@ async fn main() {
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
-    let (application, _) =
+    let (application, client) =
         generic_app::Application::new("foo", eventloop, client, SubscriptionConfig::AllGroups);
-    application
-        .on_node_created(|node| {
-            info!("Node created {:?}", node.id());
-            node.register_metric_store(MetricStoreImpl::new(node.id().clone(), None));
-            let node_id = node.id().clone();
-            node.on_device_created(move |dev| {
-                info!("Device created {} node {:?}", dev.name(), node_id);
-                dev.register_metric_store(MetricStoreImpl::new(
-                    node_id.clone(),
-                    Some(dev.name().to_string()),
-                ));
-            });
-        })
-        .run()
-        .await;
+
+    tokio::spawn(async move {
+        application
+            .on_node_created(|node| {
+                info!("Node created {:?}", node.id());
+                node.register_metric_store(MetricStoreImpl::new(node.id().clone(), None));
+                let node_id = node.id().clone();
+                node.on_device_created(move |dev| {
+                    info!("Device created {} node {:?}", dev.name(), node_id);
+                    dev.register_metric_store(MetricStoreImpl::new(
+                        node_id.clone(),
+                        Some(dev.name().to_string()),
+                    ));
+                });
+            })
+            .run()
+            .await;
+    });
+
+    if let Err(e) = tokio::signal::ctrl_c().await {
+        println!("Failed to register CTRL-C handler: {e}");
+        return;
+    }
+    client.cancel().await;
 }

@@ -9,12 +9,12 @@ use log::LevelFilter;
 #[tokio::main]
 async fn main() {
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Trace)
+        .filter_level(LevelFilter::Info)
         .init();
 
     const NODE_COUNT: u32 = 5;
     const DEVICE_COUNT: u32 = 10;
-    const PER_DEVICE_METRIC_COUNT: u32 = 20;
+    const PER_DEVICE_METRIC_COUNT: u32 = 10;
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
