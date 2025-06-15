@@ -54,10 +54,10 @@ impl MetricStore for MetricStoreImpl {
                 }
                 None => None,
             };
-            // info!(
-            //     "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
-            //     self.node, self.device, id, value
-            // );
+            info!(
+                "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
+                self.node, self.device, id, value
+            );
             if let Some(_) = self.metric_types.insert(id, birth_details.datatype) {
                 return Err(StateUpdateError::InvalidValue);
             }
@@ -81,10 +81,10 @@ impl MetricStore for MetricStoreImpl {
                 },
                 None => None,
             };
-            // info!(
-            //     "Node ({:?}) Device ({:?}) Got data metric {:?} with value {:?}",
-            //     self.node, self.device, id, value
-            // );
+            info!(
+                "Node ({:?}) Device ({:?}) Got data metric {:?} with value {:?}",
+                self.node, self.device, id, value
+            );
         }
         Ok(())
     }
