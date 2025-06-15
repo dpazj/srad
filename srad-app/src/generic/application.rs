@@ -251,8 +251,9 @@ struct Node {
     rx: Receiver<Message>,
 
     resequencer: Resequencer<ResequenceableEvent>,
-
     devices: HashMap<String, Device>,
+    store: Option<Box<dyn MetricStore + Send>>,
+    device_created_cb: Option<DeviceCreatedCallback>,
 
     //state
     lifecycle_state: LifecycleState,
@@ -273,6 +274,8 @@ impl Node {
             devices: HashMap::new(),
             resequencer: Resequencer::new(),
             lifecycle_state: LifecycleState::Stale,
+            store: None,
+            device_created_cb: None,
             birth_timestamp: 0,
             bdseq: 0
         };
@@ -295,11 +298,11 @@ impl Node {
 
         // If this is a duplicate birth message that we will have already received we dont need to notify the metric store
         if !(self.lifecycle_state == LifecycleState::Birthed && self.bdseq == birth.bdseq) {
-            // if let Some(store) = &mut self.store {
-            //     if store.update_from_birth(birth.metrics_details).is_err() {
-            //         return Err(Some(RebirthReason::InvalidPayload));
-            //     };
-            // };
+            if let Some(store) = &mut self.store {
+                if store.update_from_birth(birth.metrics_details).is_err() {
+                    return Err(Some(RebirthReason::InvalidPayload));
+                };
+            };
         };
 
         self.cancel_reorder_timeout();
@@ -322,9 +325,9 @@ impl Node {
         self.resequencer.reset();
         self.cancel_reorder_timeout();
         self.lifecycle_state = LifecycleState::Stale;
-        // if let Some(store) = &mut self.store {
-        //     store.set_stale()
-        // };
+        if let Some(store) = &mut self.store {
+            store.set_stale()
+        };
         for x in self.devices.values_mut() {
             x.set_stale();
         }
@@ -345,12 +348,12 @@ impl Node {
     ) -> Result<(), RebirthReason> {
         match message {
             ResequenceableEvent::NData(ndata) => {
-                // if let Some(store) = &mut self.store {
-                //     match store.update_from_data(ndata.metrics_details) {
-                //         Ok(_) => return Ok(()),
-                //         Err(_) => return Err(RebirthReason::InvalidPayload),
-                //     }
-                // }
+                if let Some(store) = &mut self.store {
+                    match store.update_from_data(ndata.metrics_details) {
+                        Ok(_) => return Ok(()),
+                        Err(_) => return Err(RebirthReason::InvalidPayload),
+                    }
+                }
             }
             ResequenceableEvent::DBirth(device_name, dbirth) => {
                 let device = match self.devices.get_mut(&device_name) {
@@ -359,9 +362,9 @@ impl Node {
                         let dev = Device::new(device_name.clone());
                         self.devices.insert(device_name.clone(), dev);
                         let dev_ref = self.devices.get_mut(&device_name).unwrap();
-                        // if let Some(cb) = &self.device_created_cb {
-                        //     cb(dev_ref)
-                        // }
+                        if let Some(cb) = &self.device_created_cb {
+                            cb(dev_ref)
+                        }
                         dev_ref
                     }
                 };
@@ -479,7 +482,8 @@ enum Message {
     DBirth(String,DBirth),
     DData(String,DData),
     DDeath(String,DDeath),
-    Offline
+    Offline,
+
 }
 
 #[derive(Clone)]
@@ -497,6 +501,10 @@ impl NodeHandle {
 
     async fn send_message(&self ,message: Message) {
         self.tx.send(message).await.unwrap();
+    }
+
+    async fn issue_rebirth(&self) {
+        todo!("")
     }
 
 }
@@ -626,17 +634,14 @@ impl Application {
         handle 
     }
 
-    fn get_node_or_issue_rebirth(&mut self, id: NodeIdentifier) -> Option<NodeHandle> {
+    async fn get_node_or_issue_rebirth(&mut self, id: NodeIdentifier) -> Option<NodeHandle> {
 
         if let Some(node) = self.state.nodes.get(&id) {
-                return Some(node.clone())
+            return Some(node.clone())
         } 
 
-        let client = self.client.clone(); 
-        self.create_node(id.clone());
-        tokio::spawn(async move {
-            client.publish_node_rebirth(&id.group, &id.node).await;
-        });
+        let node = self.create_node(id.clone());
+        node.issue_rebirth().await; 
         None
     }
 
@@ -671,14 +676,14 @@ impl Application {
                         node.send_message(Message::NBirth(nbirth)).await;
                     }
                     NodeEvent::Death(ndeath) => {
-                        let node = match self.get_node_or_issue_rebirth(id) {
+                        let node = match self.state.nodes.get(&id).await {
                             Some(node) => node,
                             None => return true,
                         };
                         node.send_message(Message::NDeath(ndeath, timestamp())).await
                     }
                     NodeEvent::Data(ndata) => {
-                        let node = match self.get_node_or_issue_rebirth(id) {
+                        let node = match self.get_node_or_issue_rebirth(id).await {
                             Some(node) => node,
                             None => return true,
                         };
@@ -687,7 +692,7 @@ impl Application {
                 }
             }
             AppEvent::Device(device_event) => {
-                let node = match self.get_node_or_issue_rebirth(device_event.id) {
+                let node = match self.get_node_or_issue_rebirth(device_event.id).await {
                     Some(node) => node,
                     None => return true,
                 };
@@ -700,14 +705,14 @@ impl Application {
                 }
             }
             AppEvent::InvalidPayload(details) => {
-                // debug!(
-                //     "Got invalid payload from Node = {:?}, Error = {:?}",
-                //     details.node_id, details.error
-                // );
-                // if self.rebirth_config.invalid_payload {
-                //     let node = self.get_or_create_node(details.node_id);
-                //     node.try_rebirth_task(RebirthReason::InvalidPayload);
-                // }
+                debug!(
+                    "Got invalid payload from Node = {:?}, Error = {:?}",
+                    details.node_id, details.error
+                );
+                if self.rebirth_config.invalid_payload {
+                    let node = self.get_or_create_node(details.node_id);
+                    node.issue_rebirth().await;
+                }
             }
             AppEvent::Cancelled => return false,
         };
