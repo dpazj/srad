@@ -1,11 +1,34 @@
-use crate::{payload::{self, metric, DataType}, traits::{self, HasDataType}};
+use crate::{payload::{self, metric, DataType}, traits::{self, HasDataType}, MetricValue};
 
+pub trait TemplateMetricValue {
+
+    fn to_template_metric_value(self) -> Option<MetricValue>;
+
+}
+
+impl<T> TemplateMetricValue for T
+where 
+    T: traits::MetricValue
+{
+    fn to_template_metric_value(self) -> Option<MetricValue> {
+        Some(T::into(self))
+    }
+}
+
+impl<T> TemplateMetricValue for Option<T>
+where 
+    T: traits::MetricValue
+{
+    fn to_template_metric_value(self) -> Option<MetricValue> {
+        self.map(T::into)
+    }
+}
 
 pub type TemplateMetric = payload::Metric;
 
 impl TemplateMetric {
 
-    pub fn new_template_metric<T: traits::MetricValue>(name: String, value: T) -> Self {
+    pub fn new_template_metric<T: TemplateMetricValue + traits::HasDataType>(name: String, value: T) -> Self {
         TemplateMetric {
             name: Some(name),
             alias: None,
@@ -16,9 +39,10 @@ impl TemplateMetric {
             is_null: None,
             metadata: None,
             properties: None,
-            value: Some(metric::Value::from(value.into())),
+            value: value.to_template_metric_value().map(payload::metric::Value::from) 
         }
     }
+
 
 }
 
@@ -48,6 +72,7 @@ impl From<TemplateDefinition> for payload::Template {
     }
 }
 
+#[derive(Debug)]
 pub struct TemplateInstance {
     pub name: String,
     pub version: Option<String>,

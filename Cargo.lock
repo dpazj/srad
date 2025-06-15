@@ -947,7 +947,6 @@ dependencies = [
  "srad-client",
  "srad-client-rumqtt",
  "srad-eon",
- "srad-macros",
  "srad-types",
  "tokio",
 ]
@@ -1002,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "srad-macros"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1017,6 +1016,7 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
+ "srad-macros",
  "thiserror",
 ]
 

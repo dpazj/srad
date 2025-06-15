@@ -73,5 +73,9 @@
 - impl to value types for reference to types ?
 - impl to value types for atomic types ?
 
+- compile time checks HasDatatype default type is provided in supported type
+  - also checks in places where user overrides default type
+
+
 - template support
 - dataset support

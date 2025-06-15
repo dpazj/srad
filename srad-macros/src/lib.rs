@@ -1,5 +1,13 @@
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use syn::{parse_macro_input, Data, DeriveInput, Type, TypePath};
+
+/// TODO 
+/// - attributes 
+///     - default
+///     - rename 
+///     - is parameter
+///     - metric type override 
+///   
 
 
 fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
@@ -15,11 +23,25 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
         _ => panic!("Template can only be derived for structs with named fields"),
     };
 
-    let default_metrics = fields.named.iter().map(|x| {
+    let instance_metrics = fields.named.iter().map(|x| {
+        let field = &x.ident;
+        let name = x.ident.as_ref().unwrap().to_string();
+        quote! {
+            ::srad_types::TemplateMetric::new_template_metric(
+                #name.to_string(), 
+                self.#field.clone()
+            )
+        }
+    });
+
+    let definition_metrics = fields.named.iter().map(|x| {
         let name = x.ident.as_ref().unwrap().to_string();
         let ty = x.ty.clone();
         quote! {
-            ::srad::types::TemplateMetric::new_template_metric(#name.to_string(), <#ty as Default>::default())
+            ::srad_types::TemplateMetric::new_template_metric(
+                #name.to_string(), 
+                <#ty as Default>::default()
+            )
         }
     });
 
@@ -28,13 +50,13 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
     quote!{
         impl Template for #name {
 
-            fn template_definition() -> ::srad::types::TemplateDefinition 
+            fn template_definition() -> ::srad_types::TemplateDefinition 
             {
                 let parameters = vec![];
                 let metrics = vec![
-                    #(#default_metrics),*
+                    #(#definition_metrics),*
                 ];
-                ::srad::types::TemplateDefinition {
+                ::srad_types::TemplateDefinition {
                     name: Self::template_name().to_owned(),
                     version: Self::template_version().map(|version| version.to_owned()),
                     metrics,
@@ -46,9 +68,9 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
             {
                 let parameters = vec![];
                 let metrics = vec![
-                    todo!()
+                   #(#instance_metrics),*
                 ];
-                ::srad::types::TemplateInstance{
+                ::srad_types::TemplateInstance{
                     name: Self::template_name().to_owned(),
                     version: Self::template_version().map(|version| version.to_owned()),
                     metrics,
@@ -59,7 +81,6 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
         }
     }.into()
 }
-
 
 #[proc_macro_derive(Template)]
 pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream{

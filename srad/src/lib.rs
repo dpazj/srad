@@ -69,5 +69,3 @@ pub use srad_client as client;
 pub use srad_client_rumqtt as client_rumqtt;
 
 pub use srad_types as types;
-
-pub use srad_macros::Template;

@@ -1,11 +1,11 @@
-use srad::{types::{Template, TemplateInstance, TemplateDefinition}, Template};
-use srad_types::TemplateMetadata;
+use srad_types::{Template, TemplateInstance, TemplateMetadata};
 
 
 #[derive(Template)]
 struct Test {
     x: i32,
     y: i32,
+    z: Option<i32>
 }
 
 impl TemplateMetadata for Test {
@@ -16,11 +16,12 @@ impl TemplateMetadata for Test {
 
 #[test]
 pub fn test(){
-    let a = Test { x: 1, y: 1};
+    let a = Test { x: 1, y: 1, z: Some(69)};
     let x = Test::template_definition();
 
-    println!("{x:?}");
-    a.template_instance();
+    println!("{x:#?}");
+    let y = a.template_instance();
+    println!("{y:#?}");
     panic!("A")
 }
 

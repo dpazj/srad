@@ -15,6 +15,18 @@ pub trait HasDataType {
     }
 }
 
+impl<T> HasDataType for Option<T> where T: HasDataType {
+
+    fn supported_datatypes() -> &'static [DataType] {
+        T::supported_datatypes()
+    }
+
+    fn default_datatype() -> DataType {
+        T::default_datatype()
+    }
+
+}
+
 /// Trait used to represent that a type can represent a [value::MetricValue]
 pub trait MetricValue:
     TryFrom<value::MetricValue> + Into<value::MetricValue> + HasDataType

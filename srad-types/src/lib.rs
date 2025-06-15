@@ -24,7 +24,7 @@ pub use quality::*;
 pub use value::*;
 pub use template::*;
 
-
+pub use srad_macros::Template;
 
 pub mod traits;
 
