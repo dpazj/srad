@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.2]
+
+### App
+
+- Fix reliability and performance issues in generic application when large number of metrics/second from the same node are received
+
 ## [0.2.1]
 
 - Update project deps
