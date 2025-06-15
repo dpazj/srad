@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use log::{info, LevelFilter};
 use srad::app::generic_app::{MetricStore, StateUpdateError};
@@ -8,9 +7,6 @@ use srad::app::{generic_app, NodeIdentifier, SubscriptionConfig};
 use srad::client_rumqtt as rumqtt;
 use srad::types::payload::DataType;
 use srad::types::{MetricId, MetricValueKind};
-
-use tokio::runtime::Handle;
-use tokio::time::sleep;
 
 struct MetricStoreImpl {
     node: Arc<NodeIdentifier>,
@@ -37,7 +33,6 @@ impl MetricStore for MetricStoreImpl {
         &mut self,
         details: Vec<(srad::app::MetricBirthDetails, srad::app::MetricDetails)>,
     ) -> Result<(), generic_app::StateUpdateError> {
-        info!("Birth Node {:?} Device {:?}", self.node, self.device);
         self.metric_types.clear();
         for (birth_details, value_details) in details {
             let id = birth_details.get_metric_id();

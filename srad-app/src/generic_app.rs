@@ -1,8 +1,7 @@
 use std::{
     collections::HashMap,
-    future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{Arc},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -19,11 +18,9 @@ use crate::{
 
 use tokio::{
     select,
-    sync::{mpsc::{self, Receiver, Sender}, oneshot},
+    sync::{mpsc::{self, Receiver, Sender}},
     time::sleep,
 };
-
-use futures::{stream::FuturesUnordered, StreamExt};
 
 /// A trait the [Application] uses to interface with custom implementations
 ///
@@ -356,8 +353,10 @@ impl Node {
         };
 
         let rebirth_tx = self.rebirth_tx.clone();
+        let id = self.id.clone();
         let abort_handle = tokio::spawn(async move {
             sleep(timeout).await;
+            warn!("Unable to reorder out of sequence messages in {}ms - Node = ({id:?}) issuing rebirth.", timeout.as_millis());
             _ = rebirth_tx.try_send(RebirthReason::ReorderTimeout);
         }).abort_handle();
        self.resequence_timeout_task = Some(abort_handle)

@@ -12,7 +12,7 @@ async fn main() {
         .filter_level(LevelFilter::Info)
         .init();
 
-    const NODE_COUNT: u32 = 1;
+    const NODE_COUNT: u32 = 10;
     const DEVICE_COUNT: u32 = 10;
     const PER_DEVICE_METRIC_COUNT: u32 = 200;
 
