@@ -63,7 +63,6 @@ use tokio::{
 ///     }
 /// }
 /// ```
-
 pub trait MetricStore {
     /// Mark metrics in the store to be stale.
     ///
