@@ -12,9 +12,9 @@ async fn main() {
         .filter_level(LevelFilter::Info)
         .init();
 
-    const NODE_COUNT: u32 = 10;
+    const NODE_COUNT: u32 = 5;
     const DEVICE_COUNT: u32 = 10;
-    const PER_DEVICE_METRIC_COUNT: u32 = 200;
+    const PER_DEVICE_METRIC_COUNT: u32 = 10;
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
