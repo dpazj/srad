@@ -941,7 +941,7 @@ dependencies = [
 
 [[package]]
 name = "srad"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "srad-app",
  "srad-client",
@@ -953,7 +953,7 @@ dependencies = [
 
 [[package]]
 name = "srad-app"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "futures",
  "log",
@@ -965,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "srad-client"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "prost",
@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "srad-client-rumqtt"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "log",
@@ -988,7 +988,7 @@ dependencies = [
 
 [[package]]
 name = "srad-eon"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "futures",
@@ -1001,7 +1001,7 @@ dependencies = [
 
 [[package]]
 name = "srad-types"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "paste",
  "prost",

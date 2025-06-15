@@ -1,6 +1,6 @@
 [package]
 name = "srad"
-version = "0.2.1"
+version = "0.2.2"
 description = "Sparkplug development framework"
 readme = "../README.md"
 keywords = ["sparkplug", "sparkplug-b", "mqtt", "iot", "async"]
@@ -18,11 +18,11 @@ app = []
 rumqtt-client = []
 
 [dependencies]
-srad-eon = { path = "../srad-eon", version = "0.2.1" }
-srad-app = { path = "../srad-app", version = "0.2.1" }
-srad-client = { path = "../srad-client", version = "0.2.1" }
-srad-client-rumqtt = { path = "../srad-client-rumqtt", version = "0.2.1" }
-srad-types = { path = "../srad-types", version = "0.2.1" }
+srad-eon = { path = "../srad-eon", version = "0.2.2" }
+srad-app = { path = "../srad-app", version = "0.2.2" }
+srad-client = { path = "../srad-client", version = "0.2.2" }
+srad-client-rumqtt = { path = "../srad-client-rumqtt", version = "0.2.2" }
+srad-types = { path = "../srad-types", version = "0.2.2" }
 
 [dev-dependencies]
 tokio = { workspace = true }
