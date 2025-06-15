@@ -14,7 +14,7 @@ async fn main() {
 
     const NODE_COUNT: u32 = 1;
     const DEVICE_COUNT: u32 = 10;
-    const PER_DEVICE_METRIC_COUNT: u32 = 2000;
+    const PER_DEVICE_METRIC_COUNT: u32 = 200;
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
