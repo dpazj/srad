@@ -3,6 +3,7 @@ use srad::{
     eon::{EoNBuilder, NoMetricManager, SimpleMetricManager},
 };
 use std::time::Duration;
+use rand::Rng;
 
 use log::LevelFilter;
 
@@ -12,9 +13,9 @@ async fn main() {
         .filter_level(LevelFilter::Info)
         .init();
 
-    const NODE_COUNT: u32 = 5;
-    const DEVICE_COUNT: u32 = 10;
-    const PER_DEVICE_METRIC_COUNT: u32 = 10;
+    const NODE_COUNT: u32 = 10;
+    const DEVICE_COUNT: u32 = 1000;
+    const PER_DEVICE_METRIC_COUNT: u32 = 100;
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
@@ -22,7 +23,7 @@ async fn main() {
         let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
         let (mut eon, handle) = EoNBuilder::new(eventloop, client)
-            .with_group_id("foo")
+            .with_group_id("iotech")
             .with_node_id(format!("node-{i}"))
             .with_metric_manager(NoMetricManager::new())
             .build()
@@ -45,14 +46,24 @@ async fn main() {
                 .enable()
                 .await;
 
+
             tokio::spawn({
+                let mut rng = rand::thread_rng();
+                let millis = rng.gen_range(0..=1000);
                 async move {
+                    tokio::time::sleep(Duration::from_millis(millis)).await;
                     loop {
-                        for metric in &metrics {
-                            _ = device_metrics
-                                .publish_metric(metric.update(|x| *x = x.wrapping_add(1)))
-                                .await;
-                        }
+                        let publish = metrics.iter().map(|x| {
+                                x.update(|x| *x = x.wrapping_add(1))
+                        }).collect();
+                        _ = device_metrics.publish_metrics(publish).await;
+
+                        // for metric in &metrics {
+                        //     _ = device_metrics
+                        //         .publish_metric(metric.update(|x| *x = x.wrapping_add(1)))
+                        //         .await;
+                        // }
+
                         tokio::time::sleep(Duration::from_secs(1)).await
                     }
                 }

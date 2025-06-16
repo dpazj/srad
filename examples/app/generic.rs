@@ -93,7 +93,7 @@ impl MetricStore for MetricStoreImpl {
 #[tokio::main]
 async fn main() {
     env_logger::Builder::new()
-        .filter_level(LevelFilter::Info)
+        .filter_level(LevelFilter::Off)
         .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
