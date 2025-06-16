@@ -1,5 +1,6 @@
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Type, TypePath};
+use quote::{quote, ToTokens};
+use syn::{parse_macro_input, Attribute, Data, DeriveInput, Type, TypePath};
+use proc_macro2;
 
 /// TODO 
 /// - attributes 
@@ -9,8 +10,49 @@ use syn::{parse_macro_input, Data, DeriveInput, Type, TypePath};
 ///     - metric type override 
 ///   
 
+#[derive(Default)]
+struct TemplateFieldAttributes {
+    skip: bool,
+    parameter: bool,
+    rename: Option<String>,
+    default: Option<proc_macro2::TokenStream>,
+}
 
-fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
+fn parse_builder_attributes(attrs: &[Attribute]) -> syn::Result<TemplateFieldAttributes> {
+    let mut field_attrs = TemplateFieldAttributes::default();
+    
+    for attr in attrs {
+        if !attr.path().is_ident("template") {
+            continue;
+        }
+
+        attr.parse_nested_meta(|meta| {
+
+            if meta.path.is_ident("skip") {
+                field_attrs.skip = true;
+                return Ok(())
+            }
+
+            if meta.path.is_ident("parameter") {
+                field_attrs.parameter = true;
+                return Ok(())
+            }
+
+            if meta.path.is_ident("default") {
+                let value = meta.value()?;
+                let expr: syn::Expr = value.parse()?;
+                field_attrs.default = Some(expr.into_token_stream());
+                return Ok(());
+            }
+
+            Err(meta.error("Unrecognised template attribute"))
+        })?;
+    }
+    
+    Ok(field_attrs)
+}
+
+fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
     let data_struct = match input.data {
         Data::Struct(variant_data) => variant_data,
@@ -23,32 +65,45 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
         _ => panic!("Template can only be derived for structs with named fields"),
     };
 
-    let instance_metrics = fields.named.iter().map(|x| {
-        let field = &x.ident;
-        let name = x.ident.as_ref().unwrap().to_string();
-        quote! {
-            ::srad_types::TemplateMetric::new_template_metric(
-                #name.to_string(), 
-                self.#field.clone()
-            )
+    let mut instance_metrics = Vec::new();
+    let mut definition_metrics = Vec::new();
+
+    for field in fields.named {
+
+        let field_ident = &field.ident;
+        let name = field.ident.as_ref().unwrap().to_string();
+        let ty = field.ty.clone();
+        let attrs = parse_builder_attributes(&field.attrs)?;
+
+        if !attrs.skip {
+            //template definition
+            definition_metrics.push(
+                quote! {
+                    ::srad_types::TemplateMetric::new_template_metric(
+                        #name.to_string(), 
+                        <#ty as Default>::default()
+                    )
+                }
+            );
+
+            //template instance
+            instance_metrics.push(
+                quote! {
+                    ::srad_types::TemplateMetric::new_template_metric(
+                        #name.to_string(), 
+                        self.#field_ident.clone()
+                    )
+                }
+            );
         }
-    });
 
-    let definition_metrics = fields.named.iter().map(|x| {
-        let name = x.ident.as_ref().unwrap().to_string();
-        let ty = x.ty.clone();
-        quote! {
-            ::srad_types::TemplateMetric::new_template_metric(
-                #name.to_string(), 
-                <#ty as Default>::default()
-            )
-        }
-    });
 
-    let name = &input.ident;
+    }
 
-    quote!{
-        impl Template for #name {
+    let type_name = &input.ident;
+
+    Ok(quote!{
+        impl Template for #type_name {
 
             fn template_definition() -> ::srad_types::TemplateDefinition 
             {
@@ -79,11 +134,14 @@ fn try_template(input: DeriveInput) -> proc_macro::TokenStream {
             }
 
         }
-    }.into()
+    }.into())
 }
 
-#[proc_macro_derive(Template)]
+#[proc_macro_derive(Template, attributes(template))]
 pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream{
     let input = parse_macro_input!(input as DeriveInput);
-    try_template(input)
+    match try_template(input) {
+        Ok(tokens) => tokens,
+        Err(err) => err.into_compile_error().into(),
+    }
 }

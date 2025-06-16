@@ -5,7 +5,9 @@ use srad_types::{Template, TemplateInstance, TemplateMetadata};
 struct Test {
     x: i32,
     y: i32,
-    z: Option<i32>
+    z: Option<i32>,
+    #[template(skip)]
+    ignore: i32
 }
 
 impl TemplateMetadata for Test {
@@ -16,7 +18,7 @@ impl TemplateMetadata for Test {
 
 #[test]
 pub fn test(){
-    let a = Test { x: 1, y: 1, z: Some(69)};
+    let a = Test { x: 1, y: 1, z: Some(69), ignore: 1234};
     let x = Test::template_definition();
 
     println!("{x:#?}");
