@@ -1,4 +1,4 @@
-use crate::{payload::{self, metric, DataType}, traits::{self, HasDataType}, MetricValue};
+use crate::{payload::{self, metric, DataType}, traits::{self, HasDataType}, MetricValue, ParameterValue};
 
 pub trait TemplateMetricValue {
 
@@ -20,6 +20,28 @@ where
     T: traits::MetricValue
 {
     fn to_template_metric_value(self) -> Option<MetricValue> {
+        self.map(T::into)
+    }
+}
+
+pub trait TemplateParameterValue {
+    fn to_template_parameter_value(self) -> Option<ParameterValue>;
+}
+
+impl<T> TemplateParameterValue for T
+where 
+    T: traits::ParameterValue
+{
+    fn to_template_parameter_value(self) -> Option<ParameterValue> {
+        Some(T::into(self))
+    }
+}
+
+impl<T> TemplateParameterValue for Option<T>
+where 
+    T: traits::ParameterValue
+{
+    fn to_template_parameter_value(self) -> Option<ParameterValue> {
         self.map(T::into)
     }
 }
@@ -49,6 +71,14 @@ impl TemplateMetric {
 pub type TemplateParameter = payload::template::Parameter;
 
 impl TemplateParameter {
+
+    pub fn new_template_parameter<T: TemplateParameterValue + traits::HasDataType>(name: String, value: T) -> Self {
+        TemplateParameter {
+            name: Some (name),
+            r#type: Some(T::default_datatype() as u32),
+            value: value.to_template_parameter_value().map(payload::template::parameter::Value::from),
+        }
+    }
 
 }
 

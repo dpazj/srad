@@ -65,8 +65,11 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
         _ => panic!("Template can only be derived for structs with named fields"),
     };
 
-    let mut instance_metrics = Vec::new();
     let mut definition_metrics = Vec::new();
+    let mut definition_parameters= Vec::new();
+
+    let mut instance_metrics = Vec::new();
+    let mut instance_parameters = Vec::new();
 
     for field in fields.named {
 
@@ -75,18 +78,46 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
         let ty = field.ty.clone();
         let attrs = parse_builder_attributes(&field.attrs)?;
 
-        if !attrs.skip {
-            //template definition
-            definition_metrics.push(
+        if attrs.skip { continue }
+
+        let default = if let Some(default) = attrs.default {
+            default
+        } else {
+            quote! { <#ty as Default>::default() }
+        };
+
+        if attrs.parameter {
+
+            definition_parameters.push(
                 quote! {
-                    ::srad_types::TemplateMetric::new_template_metric(
+                    ::srad_types::TemplateParameter::new_template_parameter::<#ty>(
                         #name.to_string(), 
-                        <#ty as Default>::default()
+                        #default 
                     )
                 }
             );
 
-            //template instance
+            instance_parameters.push(
+                quote! {
+                    ::srad_types::TemplateParameter::new_template_parameter(
+                        #name.to_string(), 
+                        self.#field_ident.clone()
+                    )
+                }
+            );
+
+        }
+        else {
+
+            definition_metrics.push(
+                quote! {
+                    ::srad_types::TemplateMetric::new_template_metric::<#ty>(
+                        #name.to_string(), 
+                        #default
+                    )
+                }
+            );
+
             instance_metrics.push(
                 quote! {
                     ::srad_types::TemplateMetric::new_template_metric(
@@ -95,8 +126,8 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     )
                 }
             );
-        }
 
+        }
 
     }
 
@@ -107,7 +138,9 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
             fn template_definition() -> ::srad_types::TemplateDefinition 
             {
-                let parameters = vec![];
+                let parameters = vec![
+                    #(#definition_parameters),*
+                ];
                 let metrics = vec![
                     #(#definition_metrics),*
                 ];
@@ -121,7 +154,9 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
             fn template_instance(&self) -> TemplateInstance 
             {
-                let parameters = vec![];
+                let parameters = vec![
+                   #(#instance_parameters),*
+                ];
                 let metrics = vec![
                    #(#instance_metrics),*
                 ];
