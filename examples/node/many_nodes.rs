@@ -13,9 +13,9 @@ async fn main() {
         .filter_level(LevelFilter::Info)
         .init();
 
-    const NODE_COUNT: u32 = 10;
-    const DEVICE_COUNT: u32 = 1000;
-    const PER_DEVICE_METRIC_COUNT: u32 = 100;
+    const NODE_COUNT: u32 = 200;
+    const DEVICE_COUNT: u32 = 20;
+    const PER_DEVICE_METRIC_COUNT: u32 = 25;
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
@@ -39,17 +39,29 @@ async fn main() {
                         .unwrap(),
                 );
             }
-            handle
+
+            let device_handle = handle
                 .register_device(format!("device-{j}"), device_metrics.clone())
                 .await
-                .unwrap()
-                .enable()
-                .await;
+                .unwrap();
 
+
+            let rebirth_handle = device_handle.clone();
+            // device_metrics.register_metric_with_cmd_handler("Device Control/Rebirth", false, move |manager, metric, x| {
+            // let value = rebirth_handle.clone();
+            // async move {
+            //     if let Some(rebirth) = x {
+            //         println!("AAAEEEOOO");
+            //         if rebirth { value.rebirth().await } 
+            //     }
+            // }
+            // });
+
+            device_handle.enable().await;
 
             tokio::spawn({
                 let mut rng = rand::thread_rng();
-                let millis = rng.gen_range(0..=1000);
+                let millis = rng.gen_range(0..=10000);
                 async move {
                     tokio::time::sleep(Duration::from_millis(millis)).await;
                     loop {
@@ -64,7 +76,7 @@ async fn main() {
                         //         .await;
                         // }
 
-                        tokio::time::sleep(Duration::from_secs(1)).await
+                        tokio::time::sleep(Duration::from_millis(100)).await
                     }
                 }
             });

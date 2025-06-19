@@ -75,6 +75,7 @@ where
     fn birth_metric(&self, name: &str, bi: &mut BirthInitializer) -> MetricId {
         let mut metric = self.data.lock().unwrap();
         let val = metric.value.clone();
+
         let token = bi
             .register_metric(BirthMetricDetails::new_with_initial_value(name, val).use_alias(true))
             .unwrap();
