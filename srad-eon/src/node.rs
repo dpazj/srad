@@ -21,7 +21,7 @@ use srad_types::{
 use tokio::{
     select,
     sync::{
-        mpsc::{self, Sender},
+        mpsc::{self, Sender, UnboundedSender},
         oneshot,
     },
     task,
@@ -103,7 +103,7 @@ impl NodeHandle {
     ///
     /// This will cancel [EoN::run()]
     pub async fn cancel(&self) {
-        info!("Edge node stopping");
+        info!("Edge node stopping. Node = {}", self.node.state.edge_node_id);
         let topic = NodeTopic::new(
             &self.node.state.group_id,
             NodeMessageType::NDeath,
@@ -300,7 +300,7 @@ impl Node {
         if birth_type == BirthType::Rebirth && !self.state.birthed.load(Ordering::SeqCst) {
             return;
         }
-        info!("Birthing Node. Type: {:?}", birth_type);
+        info!("Birthing Node. Node = {}, Type = {:?}", self.state.edge_node_id, birth_type);
         self.node_birth().await;
         self.devices.lock().unwrap().birth_devices(birth_type);
         drop(guard)
@@ -316,7 +316,7 @@ impl Node {
         if self.state.online.swap(true, Ordering::SeqCst) {
             return;
         }
-        info!("Edge node online");
+        info!("Edge node online. Node = {}", self.state.edge_node_id);
         let sub_topics = self.state.sub_topics();
 
         if self.client.subscribe_many(sub_topics).await.is_ok() {
@@ -328,7 +328,7 @@ impl Node {
         if !self.state.online.swap(false, Ordering::SeqCst) {
             return;
         }
-        info!("Edge node offline");
+        info!("Edge node offline. Node = {}", self.state.edge_node_id);
         self.death().await;
         let new_lastwill = self.create_last_will();
         _ = will_sender.send(new_lastwill);
@@ -470,22 +470,21 @@ impl EoN {
         self.eventloop.set_last_will(lastwill);
     }
 
-    async fn on_online(&mut self, node_tx: &Sender<EoNNodeMessage>) {
-        _ = node_tx.send(EoNNodeMessage::Online).await;
+    fn on_online(&mut self, node_tx: &UnboundedSender<EoNNodeMessage>) {
+        _ = node_tx.send(EoNNodeMessage::Online);
     }
 
-    async fn on_offline(&mut self, node_tx: &Sender<EoNNodeMessage>) {
+    async fn on_offline(&mut self, node_tx: &UnboundedSender<EoNNodeMessage>) {
         let (lastwill_tx, lastwill_rx) = oneshot::channel();
-        _ = node_tx.send(EoNNodeMessage::Offline(lastwill_tx)).await;
+        _ = node_tx.send(EoNNodeMessage::Offline(lastwill_tx));
         if let Ok(will) = lastwill_rx.await {
             self.update_last_will(will)
         }
     }
 
-    async fn on_node_message(&mut self, message: Message, node_tx: &Sender<EoNNodeMessage>) {
+    fn on_node_message(&mut self, message: Message, node_tx: &UnboundedSender<EoNNodeMessage>) {
         _ = node_tx
             .send(EoNNodeMessage::SparkplugMessage(message))
-            .await;
     }
 
     fn on_device_message(&mut self, message: DeviceMessage) {
@@ -493,11 +492,11 @@ impl EoN {
         devices.handle_device_message(message);
     }
 
-    async fn handle_event(&mut self, event: Event, node_tx: &Sender<EoNNodeMessage>) {
+    async fn handle_event(&mut self, event: Event, node_tx: &UnboundedSender<EoNNodeMessage>) {
         match event {
-            Event::Online => self.on_online(node_tx).await,
+            Event::Online => self.on_online(node_tx),
             Event::Offline => self.on_offline(node_tx).await,
-            Event::Node(node_message) => self.on_node_message(node_message.message, node_tx).await,
+            Event::Node(node_message) => self.on_node_message(node_message.message, node_tx),
             Event::Device(device_message) => self.on_device_message(device_message),
             Event::State {
                 host_id: _,
@@ -511,7 +510,7 @@ impl EoN {
         }
     }
 
-    async fn poll_until_offline(&mut self, node_tx: &Sender<EoNNodeMessage>) -> bool {
+    async fn poll_until_offline(&mut self, node_tx: &UnboundedSender<EoNNodeMessage>) -> bool {
         while self.node.state.is_online() {
             if Event::Offline == self.eventloop.poll().await {
                 self.on_offline(node_tx).await;
@@ -525,9 +524,9 @@ impl EoN {
     ///
     /// Runs the Edge Node until [NodeHandle::cancel()] is called
     pub async fn run(&mut self) {
-        info!("Edge node running");
+        info!("Edge node running. Node = {}", self.node.state.edge_node_id);
 
-        let (node_tx, mut node_rx) = mpsc::channel(1000);
+        let (node_tx, mut node_rx) = mpsc::unbounded_channel();
 
         self.update_last_will(self.node.create_last_will());
 
@@ -556,9 +555,7 @@ impl EoN {
         if let Err(_) = timeout(Duration::from_secs(1), self.poll_until_offline(&node_tx)).await {
             self.on_offline(&node_tx).await;
         }
-
-        _ = node_tx.send(EoNNodeMessage::Stopped).await;
-
-        info!("Edge node stopped");
+        _ = node_tx.send(EoNNodeMessage::Stopped);
+        info!("Edge node stopped. Node = {}", self.node.state.edge_node_id);
     }
 }

@@ -13,8 +13,10 @@ async fn main() {
         .init();
 
     const NODE_COUNT: u32 = 5;
-    const DEVICE_COUNT: u32 = 100;
-    const PER_DEVICE_METRIC_COUNT: u32 = 10;
+    const DEVICE_COUNT: u32 = 15;
+    const PER_DEVICE_METRIC_COUNT: u32 = 25;
+
+    let mut node_handles = Vec::with_capacity(NODE_COUNT as usize);
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
@@ -57,9 +59,14 @@ async fn main() {
                 }
             });
         }
-
-        tokio::spawn(async move { eon.run().await });
+        let run_handle = tokio::spawn(async move { eon.run().await });
+        node_handles.push((handle.clone(), run_handle));
     }
 
     tokio::signal::ctrl_c().await.unwrap();
+
+    for (node_handle, run_handle) in node_handles {
+        node_handle.cancel().await;
+        run_handle.await.unwrap();
+    }
 }

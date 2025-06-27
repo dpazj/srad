@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use log::{debug, info, warn};
+use log::{info, warn};
 use srad_client::{DeviceMessage, DynClient, Message, MessageKind};
 use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
 use tokio::{
@@ -192,7 +192,6 @@ impl Device {
             return;
         }
 
-        debug!("Device {} birthing. Type: {:?}", self.info.name, birth_type);
         let payload = self.generate_birth_payload();
         if self
             .client
@@ -208,7 +207,8 @@ impl Device {
             .await
             .is_ok()
         {
-            self.birthed.store(true, Ordering::SeqCst)
+            self.birthed.store(true, Ordering::SeqCst);
+            info!("Device birthed. Node = {}, Device = {}, Type = {:?}", self.eon_state.edge_node_id, self.info.name, birth_type);
         }
 
         drop(guard)
@@ -236,8 +236,7 @@ impl Device {
                 .await;
         }
         self.birthed.store(false, Ordering::SeqCst);
-        debug!("Device {} dead", self.info.name);
-
+        info!("Device dead. Node = {}, Device = {}", self.eon_state.edge_node_id, self.info.name);
         drop(guard);
     }
 
@@ -249,7 +248,7 @@ impl Device {
                 Ok(metrics) => metrics,
                 Err(_) => {
                     warn!(
-                        "Got invalid CMD payload for device '{}' - ignoring",
+                        "Got invalid CMD payload for device - ignoring. Device = {}",
                         self.info.name
                     );
                     return;
@@ -376,7 +375,7 @@ impl DeviceMap {
     }
 
     pub(crate) fn birth_devices(&self, birth_type: BirthType) {
-        info!("Birthing Devices. Type: {:?}", birth_type);
+        info!("Birthing Devices. Type = {:?}", birth_type);
         for (tx, _) in self.devices.values() {
             _ = tx.send(ChannelMessage::Birth(birth_type));
         }
@@ -393,7 +392,7 @@ impl DeviceMap {
             match self.devices.get(&message.device_id) {
                 Some((tx, _)) => tx,
                 None => {
-                    warn!("Got message for unknown device '{}'", message.device_id);
+                    warn!("Got message for unknown device. Device = '{}'", message.device_id);
                     return;
                 }
             }
