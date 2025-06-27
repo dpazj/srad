@@ -173,6 +173,11 @@ impl Default for RebirthConfig {
     }
 }
 
+struct AppConfig {
+    rebirth_config: RebirthConfig,
+    resequence_messages: bool
+}
+
 pub struct Device {
     name: String,
     lifecycle_state: LifecycleState,
@@ -237,6 +242,7 @@ impl Device {
     pub fn name(&self) -> &str {
         &self.name
     }
+
 }
 
 pub struct Node {
@@ -246,7 +252,7 @@ pub struct Node {
     rebirth_rx: Receiver<RebirthReason>,
     rebirth_tx: Sender<RebirthReason>,
 
-    rebirth_config: Arc<RebirthConfig>,
+    config: Arc<AppConfig>,
 
     resequencer: Resequencer<ResequenceableEvent>,
     devices: HashMap<String, Device>,
@@ -286,7 +292,7 @@ impl Node {
     fn new(
         id: Arc<NodeIdentifier>,
         client: AppClient,
-        rebirth_config: Arc<RebirthConfig>,
+        config: Arc<AppConfig>,
     ) -> (Self, NodeHandle) {
         let (tx, rx) = mpsc::channel(1024);
         let (rebirth_tx, rebirth_rx) = mpsc::channel(1);
@@ -299,7 +305,7 @@ impl Node {
             rx,
             rebirth_rx,
             rebirth_tx,
-            rebirth_config,
+            config,
             devices: HashMap::new(),
             resequencer: Resequencer::new(),
             resequence_timeout_task: None,
@@ -314,12 +320,12 @@ impl Node {
     }
 
     fn eval_rebirth(&mut self, reason: &RebirthReason) -> bool {
-        if !self.rebirth_config.evaluate_rebirth_reason(reason) {
+        if !self.config.rebirth_config.evaluate_rebirth_reason(reason) {
             return false;
         }
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        if (now - self.last_rebirth) < self.rebirth_config.rebirth_cooldown {
+        if (now - self.last_rebirth) < self.config.rebirth_config.rebirth_cooldown {
             trace!("Skipping rebirth for Node = ({:?}), reason = ({:?}) as rebirth cooldown not expired", self.id, reason);
             return false;
         }
@@ -350,7 +356,7 @@ impl Node {
     }
 
     fn start_reorder_timeout(&mut self) {
-        let timeout = match self.rebirth_config.reorder_timeout {
+        let timeout = match self.config.rebirth_config.reorder_timeout {
             Some(duration) => duration,
             None => return,
         };
@@ -498,6 +504,11 @@ impl Node {
                 self.id
             );
             return Err(RebirthReason::RecordedStateStale);
+        }
+
+        if !self.config.resequence_messages {
+            self.process_in_sequence_message(message)?;
+            return Ok(())
         }
 
         let message = match self.resequencer.process(seq, message) {
@@ -651,6 +662,85 @@ impl AppCallbacks {
     }
 }
 
+pub struct ApplicationBuilder {
+    eventloop: AppEventLoop,
+    client: AppClient,
+    rebirth_config: Option<RebirthConfig>,
+    resequence: bool,
+    callbacks: AppCallbacks,
+}
+
+impl ApplicationBuilder {
+
+    pub fn new<
+        E: EventLoop + Send + 'static,
+        C: Client + Send + Sync + 'static,
+        S: Into<String>,
+    >(
+        app_id: S,
+        eventloop: E,
+        client: C,
+        subscription_config: SubscriptionConfig,
+    ) -> ApplicationBuilder {
+        let (eventloop, client) = AppEventLoop::new(app_id, subscription_config, eventloop, client);
+        ApplicationBuilder {
+            eventloop,
+            client,
+            rebirth_config: None,
+            resequence: true,
+            callbacks: AppCallbacks::new()
+        }
+    }
+
+    /// Register a callback to be notified when a new node is created.
+    ///
+    /// This is called when the application first discovers the existence of a node, not to be confused with receiving a NBIRTH message from the node.
+    ///
+    /// Typical use should just involve creating and registering custom [MetricStore] implementations and device added callbacks with the node.
+    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
+    pub fn on_node_created<F>(mut self, cb: F) -> Self
+    where
+        F: Fn(&mut Node) + Send + Sync + 'static,
+    {
+        self.callbacks.node_created = Some(Box::pin(cb));
+        self
+    }
+
+    /// Register a callback to be notified the Application is Online and has published it's state online message.
+    ///
+    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
+    pub fn on_online<F>(mut self, cb: F) -> Self
+    where
+        F: Fn() + Send + 'static,
+    {
+        self.callbacks.online = Some(Box::pin(cb));
+        self
+    }
+
+    /// Register a callback to be notified the Application is Offline i.e it has disconnected from the broker.
+    ///
+    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
+    pub fn on_offline<F>(mut self, cb: F) -> Self
+    where
+        F: Fn() + Send + 'static,
+    {
+        self.callbacks.offline = Some(Box::pin(cb));
+        self
+    }
+
+    pub fn resequence_messages(mut self, resequence: bool) -> Self {
+        self.resequence = resequence;
+        self
+    }
+
+    /// Provide the `Application` with a configuration for how it should handle various Rebirth conditions
+    pub fn with_rebirth_config(mut self, config: RebirthConfig) -> Self {
+        self.rebirth_config = Some(config);
+        self
+    }
+
+}
+
 /// The Application struct.
 ///
 /// An actor model is used where each node has a dedicated channel and tokio task for it's incoming messages and receiving from that channel.
@@ -660,13 +750,14 @@ pub struct Application {
     state: ApplicationState,
     eventloop: AppEventLoop,
     client: AppClient,
-    rebirth_config: Arc<RebirthConfig>,
+    config: Arc<AppConfig>,
     cbs: AppCallbacks,
 }
 
 impl Application {
+
     /// Create a new [Application] instance.
-    pub fn new<
+    fn new<
         E: EventLoop + Send + 'static,
         C: Client + Send + Sync + 'static,
         S: Into<String>,
@@ -683,52 +774,29 @@ impl Application {
             },
             eventloop,
             client: client.clone(),
-            rebirth_config: Arc::new(RebirthConfig::default()),
+            config: Arc::new(AppConfig {
+                rebirth_config: RebirthConfig::default(),
+                resequence_messages: false,
+            }),
             cbs: AppCallbacks::new(),
         };
         (app, client)
     }
 
-    /// Register a callback to be notified when a new node is created.
-    ///
-    /// This is called when the application first discovers the existence of a node, not to be confused with receiving a NBIRTH message from the node.
-    ///
-    /// Typical use should just involve creating and registering custom [MetricStore] implementations and device added callbacks with the node.
-    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
-    pub fn on_node_created<F>(mut self, cb: F) -> Self
-    where
-        F: Fn(&mut Node) + Send + Sync + 'static,
+    fn new_from_builder(builder: ApplicationBuilder) -> (Self, AppClient)
     {
-        self.cbs.node_created = Some(Box::pin(cb));
-        self
-    }
-
-    /// Register a callback to be notified the Application is Online and has published it's state online message.
-    ///
-    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
-    pub fn on_online<F>(mut self, cb: F) -> Self
-    where
-        F: Fn() + Send + 'static,
-    {
-        self.cbs.online = Some(Box::pin(cb));
-        self
-    }
-
-    /// Register a callback to be notified the Application is Offline i.e it has disconnected from the broker.
-    ///
-    /// *Note*: This callback is blocking and is called directly from the EventLoop. Blocking will prevent progression.
-    pub fn on_offline<F>(mut self, cb: F) -> Self
-    where
-        F: Fn() + Send + 'static,
-    {
-        self.cbs.offline = Some(Box::pin(cb));
-        self
-    }
-
-    /// Provide the `Application` with a configuration for how it should handle various Rebirth conditions
-    pub fn with_rebirth_config(mut self, config: RebirthConfig) -> Self {
-        self.rebirth_config = Arc::new(config);
-        self
+        let app = Self {
+            state: ApplicationState { nodes: HashMap::new() },
+            eventloop: builder.eventloop,
+            client: builder.client,
+            config: Arc::new(AppConfig { 
+                rebirth_config: builder.rebirth_config.unwrap_or(RebirthConfig::default()), 
+                resequence_messages: builder.resequence 
+            }),
+            cbs: builder.callbacks 
+        };
+        let client = app.client.clone();
+        (app, client)
     }
 
     fn create_node(&mut self, id: NodeIdentifier) -> NodeHandle {
@@ -736,7 +804,7 @@ impl Application {
         let id = Arc::new(id);
 
         let (mut node, handle) =
-            Node::new(id.clone(), self.client.clone(), self.rebirth_config.clone());
+            Node::new(id.clone(), self.client.clone(), self.config.clone());
         if let Some(cb) = &self.cbs.node_created {
             cb(&mut node)
         }
@@ -828,7 +896,7 @@ impl Application {
                     "Got invalid payload from Node = {:?}, Error = {:?}",
                     details.node_id, details.error
                 );
-                if self.rebirth_config.invalid_payload {
+                if self.config.rebirth_config.invalid_payload {
                     let node = self.get_or_create_node(details.node_id);
                     node.issue_rebirth(RebirthReason::InvalidPayload);
                 }
