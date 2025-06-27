@@ -13,7 +13,7 @@ async fn main() {
         .init();
 
     const NODE_COUNT: u32 = 5;
-    const DEVICE_COUNT: u32 = 10;
+    const DEVICE_COUNT: u32 = 100;
     const PER_DEVICE_METRIC_COUNT: u32 = 10;
 
     for i in 0..NODE_COUNT {

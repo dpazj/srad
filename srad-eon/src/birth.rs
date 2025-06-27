@@ -10,7 +10,7 @@ use srad_types::{
     MetaData, MetricId, MetricValue, PropertySet,
 };
 
-use crate::{error::Error, metric::MetricToken, device::DeviceId};
+use crate::{device::DeviceId, error::Error, metric::MetricToken};
 
 /// Details about a metric to be included in a birth message
 pub struct BirthMetricDetails<T> {

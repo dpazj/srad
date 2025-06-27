@@ -30,7 +30,6 @@ pub use metric_manager::manager::{
 pub use metric_manager::simple::SimpleMetricManager;
 pub use node::{EoN, NodeHandle};
 
-
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum BirthType {
     Birth,
