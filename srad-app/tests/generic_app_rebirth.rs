@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use srad_app::{
-    generic_app::{Application, RebirthConfig},
+    generic_app::{ApplicationBuilder, RebirthConfig},
     SubscriptionConfig,
 };
 use srad_client::{
@@ -23,30 +23,29 @@ mod utils;
 async fn reorder_rebirths() {
     let reorder_timeout = 100;
     let (eventloop, client, mut broker) = ChannelEventLoop::new();
-    let (application, _) = Application::new(
+    let (application, _) = ApplicationBuilder::new(
         "foo",
         eventloop,
         client,
         SubscriptionConfig::SingleGroup {
             group_id: "test".into(),
         },
-    );
+    )
+    .with_rebirth_config(RebirthConfig {
+        invalid_payload: true,
+        out_of_sync_bdseq: true,
+        unknown_node: true,
+        unknown_device: true,
+        unknown_metric: true,
+        reorder_timeout: Some(Duration::from_millis(reorder_timeout)),
+        reorder_failure: true,
+        recorded_state_stale: true,
+        rebirth_cooldown: Duration::from_secs(1),
+    })
+    .build();
 
     tokio::spawn(async move {
-        application
-            .with_rebirth_config(RebirthConfig {
-                invalid_payload: true,
-                out_of_sync_bdseq: true,
-                unknown_node: true,
-                unknown_device: true,
-                unknown_metric: true,
-                reorder_timeout: Some(Duration::from_millis(reorder_timeout)),
-                reorder_failure: true,
-                recorded_state_stale: true,
-                rebirth_cooldown: Duration::from_secs(1),
-            })
-            .run()
-            .await;
+        application.run().await;
     });
 
     broker.tx_event.send(srad_client::Event::Online).unwrap();

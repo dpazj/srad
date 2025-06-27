@@ -175,7 +175,8 @@ impl Default for RebirthConfig {
 
 struct AppConfig {
     rebirth_config: RebirthConfig,
-    resequence_messages: bool
+    resequence_messages: bool,
+    node_queue_size: usize,
 }
 
 pub struct Device {
@@ -242,7 +243,6 @@ impl Device {
     pub fn name(&self) -> &str {
         &self.name
     }
-
 }
 
 pub struct Node {
@@ -294,7 +294,7 @@ impl Node {
         client: AppClient,
         config: Arc<AppConfig>,
     ) -> (Self, NodeHandle) {
-        let (tx, rx) = mpsc::channel(1024);
+        let (tx, rx) = mpsc::channel(config.node_queue_size);
         let (rebirth_tx, rebirth_rx) = mpsc::channel(1);
 
         let handle = NodeHandle::new(tx, rebirth_tx.clone());
@@ -508,7 +508,7 @@ impl Node {
 
         if !self.config.resequence_messages {
             self.process_in_sequence_message(message)?;
-            return Ok(())
+            return Ok(());
         }
 
         let message = match self.resequencer.process(seq, message) {
@@ -662,16 +662,17 @@ impl AppCallbacks {
     }
 }
 
+/// A builder for creating and configuring a sparkplug Application.
 pub struct ApplicationBuilder {
     eventloop: AppEventLoop,
     client: AppClient,
     rebirth_config: Option<RebirthConfig>,
     resequence: bool,
     callbacks: AppCallbacks,
+    node_queue_size: usize,
 }
 
 impl ApplicationBuilder {
-
     pub fn new<
         E: EventLoop + Send + 'static,
         C: Client + Send + Sync + 'static,
@@ -688,7 +689,8 @@ impl ApplicationBuilder {
             client,
             rebirth_config: None,
             resequence: true,
-            callbacks: AppCallbacks::new()
+            callbacks: AppCallbacks::new(),
+            node_queue_size: 1024,
         }
     }
 
@@ -733,10 +735,24 @@ impl ApplicationBuilder {
         self
     }
 
+    pub fn with_node_queue_size(mut self, size: usize) -> Self {
+        self.node_queue_size = size;
+        self
+    }
+
     /// Provide the `Application` with a configuration for how it should handle various Rebirth conditions
     pub fn with_rebirth_config(mut self, config: RebirthConfig) -> Self {
         self.rebirth_config = Some(config);
         self
+    }
+
+    /// Builds the Application instance with the configured settings.
+    ///
+    /// Creates and returns a new Application instance and its associated AppClient handle.
+    /// This method will return an error if required configuration is missing
+    /// or if there are other issues with the configuration.
+    pub fn build(self) -> (Application, AppClient) {
+        Application::new_from_builder(self)
     }
 
 }
@@ -755,45 +771,19 @@ pub struct Application {
 }
 
 impl Application {
-
-    /// Create a new [Application] instance.
-    fn new<
-        E: EventLoop + Send + 'static,
-        C: Client + Send + Sync + 'static,
-        S: Into<String>,
-    >(
-        app_id: S,
-        eventloop: E,
-        client: C,
-        subscription_config: SubscriptionConfig,
-    ) -> (Self, AppClient) {
-        let (eventloop, client) = AppEventLoop::new(app_id, subscription_config, eventloop, client);
+    fn new_from_builder(builder: ApplicationBuilder) -> (Self, AppClient) {
         let app = Self {
             state: ApplicationState {
                 nodes: HashMap::new(),
             },
-            eventloop,
-            client: client.clone(),
-            config: Arc::new(AppConfig {
-                rebirth_config: RebirthConfig::default(),
-                resequence_messages: false,
-            }),
-            cbs: AppCallbacks::new(),
-        };
-        (app, client)
-    }
-
-    fn new_from_builder(builder: ApplicationBuilder) -> (Self, AppClient)
-    {
-        let app = Self {
-            state: ApplicationState { nodes: HashMap::new() },
             eventloop: builder.eventloop,
             client: builder.client,
-            config: Arc::new(AppConfig { 
-                rebirth_config: builder.rebirth_config.unwrap_or(RebirthConfig::default()), 
-                resequence_messages: builder.resequence 
+            config: Arc::new(AppConfig {
+                rebirth_config: builder.rebirth_config.unwrap_or(RebirthConfig::default()),
+                resequence_messages: builder.resequence,
+                node_queue_size: builder.node_queue_size,
             }),
-            cbs: builder.callbacks 
+            cbs: builder.callbacks,
         };
         let client = app.client.clone();
         (app, client)
@@ -803,8 +793,7 @@ impl Application {
         info!("Creating new Node = ({:?})", id);
         let id = Arc::new(id);
 
-        let (mut node, handle) =
-            Node::new(id.clone(), self.client.clone(), self.config.clone());
+        let (mut node, handle) = Node::new(id.clone(), self.client.clone(), self.config.clone());
         if let Some(cb) = &self.cbs.node_created {
             cb(&mut node)
         }
