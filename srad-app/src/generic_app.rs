@@ -778,7 +778,7 @@ impl Application {
             eventloop: builder.eventloop,
             client: builder.client,
             config: Arc::new(AppConfig {
-                rebirth_config: builder.rebirth_config.unwrap_or(RebirthConfig::default()),
+                rebirth_config: builder.rebirth_config.unwrap_or_default(),
                 resequence_messages: builder.resequence,
                 node_queue_size: builder.node_queue_size,
             }),
