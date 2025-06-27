@@ -34,14 +34,14 @@
 //! ## Application
 //!
 //! ```rust no_run
-//! use srad::app::{SubscriptionConfig, generic_app::Application};
+//! use srad::app::{SubscriptionConfig, generic_app::ApplicationBuilder};
 //! use srad::client_rumqtt;
 //!
 //! #[tokio::main]
 //! async fn main() {
 //!     let opts = client_rumqtt::MqttOptions::new("foo", "localhost", 1883);
 //!     let (eventloop, client) = client_rumqtt::EventLoop::new(opts, 0);
-//!     let (mut application, client) = Application::new("foo", eventloop, client, SubscriptionConfig::AllGroups);
+//!     let (mut application, client) = ApplicationBuilder::new("foo", eventloop, client, SubscriptionConfig::AllGroups).build();
 //!     application.run().await
 //! }
 //! ```

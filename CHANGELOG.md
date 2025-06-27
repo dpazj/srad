@@ -1,5 +1,13 @@
 # Changelog
 
+## [?]
+
+### App
+
+- **breaking change** Move generic application configuration to new `generic::ApplicationBuilder` struct
+- Add ability to configure node queue sizes
+- Add ability to disable application message reordering.
+
 ## [0.2.2]
 
 ### App
