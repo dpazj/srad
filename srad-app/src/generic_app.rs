@@ -760,7 +760,7 @@ impl ApplicationBuilder {
 ///
 /// An actor model is used where each node has a dedicated channel and tokio task for it's incoming messages and receiving from that channel.
 ///
-/// Internally uses an [AppEventLoop]. The corresponding [AppClient] returned from [Application::new()] can be used to interact with the Sparkplug namespace by publishing CMD messages.
+/// Internally uses an [AppEventLoop]. The corresponding [AppClient] returned from [ApplicationBuilder::build()] can be used to interact with the Sparkplug namespace by publishing CMD messages.
 pub struct Application {
     state: ApplicationState,
     eventloop: AppEventLoop,
