@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
         Arc, Mutex,
     },
     time::Duration,
@@ -34,6 +34,11 @@ use crate::{
     DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError,
     PublishMetric,
 };
+
+pub(crate) struct EoNConfig
+{
+    node_rebirth_request_cooldown: Duration
+}
 
 pub(crate) struct EoNState {
     bdseq: AtomicU8,
@@ -244,8 +249,9 @@ struct Node {
     client: Arc<DynClient>,
     devices: Mutex<DeviceMap>,
     state: Arc<EoNState>,
+    config: Arc<EoNConfig>,
     stop_tx: Sender<EoNShutdown>,
-
+    last_node_rebirth_request: AtomicU64,
     // The birth guard is to stop a user calling birth from the NodeHandle
     // while a death or birth is in progress due to an event from the Eventloop
     birth_guard: tokio::sync::Mutex<()>,
@@ -374,8 +380,15 @@ impl Node {
 
             self.metric_manager.on_ncmd(handle, message_metrics).await;
             if rebirth {
+                let now = timestamp(); 
+                let time_since_last = now - self.last_node_rebirth_request.load(Ordering::Relaxed);
+                if time_since_last < self.config.node_rebirth_request_cooldown.as_millis() as u64 {
+                    info!("Got Rebirth CMD but cooldown time not expired. Ignoring");
+                    return;
+                } 
                 info!("Got Rebirth CMD - Rebirthing Node");
-                self.birth(BirthType::Rebirth).await
+                self.birth(BirthType::Rebirth).await;
+                self.last_node_rebirth_request.store(now, Ordering::Relaxed);
             }
         }
     }
@@ -451,6 +464,10 @@ impl EoN {
             state,
             stop_tx,
             birth_guard: tokio::sync::Mutex::new(()),
+            config: Arc::new(
+                EoNConfig { node_rebirth_request_cooldown: builder.node_rebirth_request_cooldown }
+            ),
+            last_node_rebirth_request: AtomicU64::new(0)
         });
 
         let eon = Self {
