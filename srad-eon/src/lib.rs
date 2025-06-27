@@ -9,8 +9,8 @@
 //! The implementation requires the provision of [MetricManager] implementations to the node or when registering devices. This allows for
 //! defining metrics which belong to the node or device as well as the custom handling of CMD messages for those metrics.
 //!
-//! The node starts a tokio `task` for each incoming CMD message.
-//!
+//! The node starts a tokio `task` for itself node and each subsequent device. 
+//! These tasks are used to process incoming state changes and messages from sparkplug topics such as CMD messages
 
 mod birth;
 mod builder;
