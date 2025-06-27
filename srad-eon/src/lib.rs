@@ -31,7 +31,7 @@ pub use metric_manager::simple::SimpleMetricManager;
 pub use node::{EoN, NodeHandle};
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum BirthType {
     Birth,
     Rebirth,

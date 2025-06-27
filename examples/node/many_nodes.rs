@@ -40,7 +40,6 @@ async fn main() {
             }
             handle
                 .register_device(format!("device-{j}"), device_metrics.clone())
-                .await
                 .unwrap()
                 .enable()
                 .await;

@@ -30,7 +30,6 @@ async fn main() {
     let dev1_metrics = SimpleMetricManager::new();
     let device1 = handle
         .register_device("dev1", dev1_metrics.clone())
-        .await
         .unwrap();
     let dev1_counter = dev1_metrics
         .register_metric("Device Counter", 0_i8)
