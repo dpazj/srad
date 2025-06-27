@@ -754,7 +754,6 @@ impl ApplicationBuilder {
     pub fn build(self) -> (Application, AppClient) {
         Application::new_from_builder(self)
     }
-
 }
 
 /// The Application struct.
