@@ -1,33 +1,71 @@
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::{collections::HashMap, sync::{atomic::{AtomicBool, AtomicU8, Ordering}, Arc, Mutex}, time::Duration};
 
+use futures::{channel::mpsc::UnboundedSender, SinkExt};
 use log::{debug, error, info, warn};
-use srad_client::{DeviceMessage, DynClient, DynEventLoop, MessageKind};
-use srad_client::{Event, NodeMessage};
+use srad_client::{DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind, NodeMessage};
+use srad_types::{constants::{self, NODE_CONTROL_REBIRTH}, payload::{metric::Value, Payload}, topic::{DeviceMessage as DeviceMessageType, DeviceTopic, NodeMessage as NodeMessageType, NodeTopic, QoS, StateTopic, Topic, TopicFilter}, utils::timestamp, MetricValue};
+use tokio::{select, sync::{mpsc::{self, Sender}, oneshot}, task, time::timeout};
 
-use srad_types::constants::NODE_CONTROL_REBIRTH;
-use srad_types::payload::metric::Value;
-use srad_types::topic::{DeviceTopic, NodeTopic, QoS, StateTopic, Topic, TopicFilter};
-use srad_types::utils::timestamp;
-use srad_types::MetricValue;
-use srad_types::{
-    constants,
-    payload::Payload,
-    topic::{DeviceMessage as DeviceMessageType, NodeMessage as NodeMessageType},
-};
-use tokio::time::timeout;
+use crate::{birth::BirthObjectType, metric_manager::manager::{DynDeviceMetricManager, DynNodeMetricManager}, BirthInitializer, BirthMetricDetails, BirthType, EoNBuilder, MessageMetrics, MetricPublisher, PublishError, PublishMetric};
 
-use crate::birth::{BirthInitializer, BirthMetricDetails, BirthObjectType};
-use crate::builder::EoNBuilder;
-use crate::device::{DeviceHandle, DeviceMap};
-use crate::error::DeviceRegistrationError;
-use crate::metric::{MessageMetrics, MetricPublisher, PublishError, PublishMetric};
-use crate::metric_manager::manager::{DeviceMetricManager, DynNodeMetricManager};
-use crate::registry::Registry;
-use crate::BirthType;
 
-use tokio::{select, sync::mpsc, task};
+
+pub(crate) struct EoNState {
+    bdseq: AtomicU8,
+    seq: AtomicU8,
+    online: AtomicBool,
+    birthed: AtomicBool,
+    pub group_id: String,
+    pub edge_node_id: String,
+    pub ndata_topic: NodeTopic,
+}
+
+impl EoNState {
+
+    pub(crate) fn get_seq(&self) -> u64 {
+        self.seq.fetch_add(1, Ordering::Relaxed) as u64
+    }
+
+    pub(crate) fn is_online(&self) -> bool {
+        self.online.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn birthed(&self) -> bool {
+        self.birthed.load(Ordering::SeqCst)
+    }
+
+    fn birth_topic(&self) -> NodeTopic {
+        NodeTopic::new(&self.group_id, NodeMessageType::NBirth, &self.edge_node_id)
+    }
+
+    fn sub_topics(&self) -> Vec<TopicFilter> {
+        vec![
+            TopicFilter::new_with_qos(
+                Topic::NodeTopic(NodeTopic::new(
+                    &self.group_id,
+                    NodeMessageType::NCmd,
+                    &self.edge_node_id,
+                )),
+                QoS::AtLeastOnce,
+            ),
+            TopicFilter::new_with_qos(
+                Topic::DeviceTopic(DeviceTopic::new(
+                    &self.group_id,
+                    DeviceMessageType::DCmd,
+                    &self.edge_node_id,
+                    "+",
+                )),
+                QoS::AtLeastOnce,
+            ),
+            TopicFilter::new_with_qos(Topic::State(StateTopic::new()), QoS::AtLeastOnce),
+        ]
+    }
+}
+
+
+struct DeviceMap {
+    devices: Mutex<HashMap<Arc<String>, ()>>
+}
 
 #[derive(Debug)]
 struct EoNShutdown;
@@ -71,46 +109,46 @@ impl NodeHandle {
         self.node.birth(BirthType::Rebirth).await;
     }
 
-    /// Registers a new device with the node.
-    ///
-    /// Returns an error if:
-    ///   - A device with the same name is already registered
-    ///   - The device name is invalid
-    pub async fn register_device<S, M>(
-        &self,
-        name: S,
-        dev_impl: M,
-    ) -> Result<DeviceHandle, DeviceRegistrationError>
-    where
-        S: Into<String>,
-        M: DeviceMetricManager + Send + Sync + 'static,
-    {
-        let name = name.into();
-        if let Err(e) = srad_types::utils::validate_name(&name) {
-            return Err(DeviceRegistrationError::InvalidName(e));
-        }
-        let handle = self
-            .node
-            .devices
-            .add_device(
-                &self.node.state.group_id,
-                &self.node.state.edge_node_id,
-                name,
-                Arc::new(dev_impl),
-            )
-            .await?;
-        Ok(handle)
-    }
+    // /// Registers a new device with the node.
+    // ///
+    // /// Returns an error if:
+    // ///   - A device with the same name is already registered
+    // ///   - The device name is invalid
+    // pub async fn register_device<S, M>(
+    //     &self,
+    //     name: S,
+    //     dev_impl: M,
+    // ) -> Result<DeviceHandle, DeviceRegistrationError>
+    // where
+    //     S: Into<String>,
+    //     M: DeviceMetricManager + Send + Sync + 'static,
+    // {
+    //     let name = name.into();
+    //     if let Err(e) = srad_types::utils::validate_name(&name) {
+    //         return Err(DeviceRegistrationError::InvalidName(e));
+    //     }
+    //     let handle = self
+    //         .node
+    //         .devices
+    //         .add_device(
+    //             &self.node.state.group_id,
+    //             &self.node.state.edge_node_id,
+    //             name,
+    //             Arc::new(dev_impl),
+    //         )
+    //         .await?;
+    //     Ok(handle)
+    // }
 
-    /// Unregister a device using it's handle.
-    pub async fn unregister_device(&self, handle: DeviceHandle) {
-        self.unregister_device_named(&handle.device.info.name).await;
-    }
+    // /// Unregister a device using it's handle.
+    // pub async fn unregister_device(&self, handle: DeviceHandle) {
+    //     self.unregister_device_named(&handle.device.info.name).await;
+    // }
 
-    /// Unregister a device using it's name.
-    pub async fn unregister_device_named(&self, name: &String) {
-        self.node.devices.remove_device(name).await
-    }
+    // /// Unregister a device using it's name.
+    // pub async fn unregister_device_named(&self, name: &String) {
+    //     self.node.devices.remove_device(name).await
+    // }
 
     fn check_publish_state(&self) -> Result<(), PublishError> {
         if !self.node.state.is_online() {
@@ -184,79 +222,15 @@ impl MetricPublisher for NodeHandle {
     }
 }
 
-pub(crate) struct EoNState {
-    bdseq: AtomicU8,
-    seq: AtomicU8,
-    online: AtomicBool,
-    birthed: AtomicBool,
-    pub group_id: String,
-    pub edge_node_id: String,
-    pub ndata_topic: NodeTopic,
-}
-
-impl EoNState {
-    pub(crate) fn get_seq(&self) -> u64 {
-        self.seq.fetch_add(1, Ordering::Relaxed) as u64
-    }
-
-    pub(crate) fn is_online(&self) -> bool {
-        self.online.load(Ordering::SeqCst)
-    }
-
-    pub(crate) fn birthed(&self) -> bool {
-        self.birthed.load(Ordering::SeqCst)
-    }
-
-    fn birth_topic(&self) -> NodeTopic {
-        NodeTopic::new(&self.group_id, NodeMessageType::NBirth, &self.edge_node_id)
-    }
-
-    fn sub_topics(&self) -> Vec<TopicFilter> {
-        vec![
-            TopicFilter::new_with_qos(
-                Topic::NodeTopic(NodeTopic::new(
-                    &self.group_id,
-                    NodeMessageType::NCmd,
-                    &self.edge_node_id,
-                )),
-                QoS::AtLeastOnce,
-            ),
-            TopicFilter::new_with_qos(
-                Topic::DeviceTopic(DeviceTopic::new(
-                    &self.group_id,
-                    DeviceMessageType::DCmd,
-                    &self.edge_node_id,
-                    "+",
-                )),
-                QoS::AtLeastOnce,
-            ),
-            TopicFilter::new_with_qos(Topic::State(StateTopic::new()), QoS::AtLeastOnce),
-        ]
-    }
-}
-
-pub struct Node {
-    state: Arc<EoNState>,
+struct Node {
     metric_manager: Box<DynNodeMetricManager>,
-    devices: DeviceMap,
     client: Arc<DynClient>,
-    stop_tx: mpsc::Sender<EoNShutdown>,
+    //devices: Arc<DeviceMap>
+    state: Arc<EoNState>,
+    stop_tx: Sender<EoNShutdown>
 }
 
 impl Node {
-    fn generate_death_payload(&self) -> Payload {
-        let mut metric = srad_types::payload::Metric::new();
-        metric
-            .set_name(constants::BDSEQ.to_string())
-            .set_value(MetricValue::from(self.state.bdseq.load(Ordering::SeqCst) as i64).into());
-        Payload {
-            seq: None,
-            metrics: vec![metric],
-            uuid: None,
-            timestamp: None,
-            body: None,
-        }
-    }
 
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
@@ -304,105 +278,34 @@ impl Node {
     async fn birth(&self, birth_type: BirthType) {
         info!("Birthing Node. Type: {:?}", birth_type);
         self.node_birth().await;
-        self.devices.birth_devices(birth_type).await;
-    }
-}
-
-/// Structure that represents a Sparkplug Edge Node instance.
-///
-/// See [EoNBuilder] on how to create an [EoN] instance.
-pub struct EoN {
-    node: Arc<Node>,
-    eventloop: Box<DynEventLoop>,
-    stop_rx: mpsc::Receiver<EoNShutdown>,
-}
-
-impl EoN {
-    pub(crate) fn new_from_builder(builder: EoNBuilder) -> Result<(Self, NodeHandle), String> {
-        let group_id = builder
-            .group_id
-            .ok_or("group id must be provided".to_string())?;
-        let node_id = builder
-            .node_id
-            .ok_or("node id must be provided".to_string())?;
-        srad_types::utils::validate_name(&group_id)?;
-        srad_types::utils::validate_name(&node_id)?;
-
-        let metric_manager = builder.metric_manager;
-        let (eventloop, client) = builder.eventloop_client;
-
-        let (stop_tx, stop_rx) = mpsc::channel(1);
-
-        let state = Arc::new(EoNState {
-            seq: AtomicU8::new(0),
-            bdseq: AtomicU8::new(0),
-            online: AtomicBool::new(false),
-            birthed: AtomicBool::new(false),
-            ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
-            group_id,
-            edge_node_id: node_id,
-        });
-
-        let registry = Arc::new(Mutex::new(Registry::new()));
-
-        let node = Arc::new(Node {
-            metric_manager,
-            client: client.clone(),
-            devices: DeviceMap::new(state.clone(), registry.clone(), client),
-            state,
-            stop_tx,
-        });
-
-        let mut eon = Self {
-            node,
-            eventloop,
-            stop_rx,
-        };
-        let handle = NodeHandle {
-            node: eon.node.clone(),
-        };
-        eon.node.metric_manager.init(&handle);
-        eon.update_last_will();
-        Ok((eon, handle))
+        //self.devices.birth_devices(birth_type).await;
+        todo!()
     }
 
-    fn update_last_will(&mut self) {
-        self.eventloop
-            .set_last_will(srad_client::LastWill::new_node(
-                &self.node.state.group_id,
-                &self.node.state.edge_node_id,
-                self.node.generate_death_payload(),
-            ));
-    }
-
-    fn on_online(&self) {
-        if self.node.state.online.swap(true, Ordering::SeqCst) {
+    async fn on_online(&self) {
+        if self.state.online.swap(true, Ordering::SeqCst) {
             return;
         }
         info!("Edge node online");
-        let sub_topics = self.node.state.sub_topics();
-        let node = self.node.clone();
+        let sub_topics = self.state.sub_topics();
 
-        tokio::spawn(async move {
-            if node.client.subscribe_many(sub_topics).await.is_ok() {
-                node.birth(BirthType::Birth).await
-            };
-        });
+        if self.client.subscribe_many(sub_topics).await.is_ok() {
+            self.birth(BirthType::Birth).await
+        };
     }
 
-    async fn on_offline(&mut self) {
-        if !self.node.state.online.swap(false, Ordering::SeqCst) {
-            return;
-        }
+    async fn on_offline(&self, will_sender: oneshot::Sender<LastWill>) {
+        if !self.state.online.swap(false, Ordering::SeqCst) { return }
         info!("Edge node offline");
-        self.node.devices.on_offline().await;
-        self.node.state.bdseq.fetch_add(1, Ordering::SeqCst);
-        self.update_last_will();
+        //self.node.devices.on_offline().await;
+        self.state.bdseq.fetch_add(1, Ordering::SeqCst);
+        let new_lastwill = self.create_last_will();
+        _ = will_sender.send(new_lastwill);
     }
 
-    fn on_node_message(&self, message: NodeMessage) {
-        let payload = message.message.payload;
-        let message_kind = message.message.kind;
+    async fn on_sparkplug_message(&self, message: Message, handle: NodeHandle) {
+        let payload = message.payload;
+        let message_kind = message.kind;
 
         if message_kind == MessageKind::Cmd {
             let mut rebirth = false;
@@ -438,32 +341,152 @@ impl EoN {
                 }
             };
 
-            let node = self.node.clone();
-            task::spawn(async move {
-                node.metric_manager
-                    .on_ncmd(NodeHandle { node: node.clone() }, message_metrics)
-                    .await;
-                if rebirth {
-                    info!("Got Rebirth CMD - Rebirthing Node");
-                    node.birth(BirthType::Rebirth).await
-                }
-            });
+            self.metric_manager.on_ncmd(handle, message_metrics).await;
+            if rebirth {
+                info!("Got Rebirth CMD - Rebirthing Node");
+                self.birth(BirthType::Rebirth).await
+            }
+        }
+       
+    }
+
+    async fn process_eon_node_message(&self, message: EoNNodeMessage)
+    {
+        match message {
+            EoNNodeMessage::Online => self.on_online().await,
+            EoNNodeMessage::Offline(will_sender) => self.on_offline(will_sender).await,
+            EoNNodeMessage::SparkplugMessage(msg) => {
+
+
+
+            },
+            EoNNodeMessage::Stopped => todo!(),
         }
     }
 
-    fn on_device_message(&self, message: DeviceMessage) {
-        let node = self.node.clone();
-        task::spawn(async move {
-            node.devices.handle_device_message(message).await;
-        });
+    fn generate_death_payload(&self) -> Payload {
+        let mut metric = srad_types::payload::Metric::new();
+        metric
+            .set_name(constants::BDSEQ.to_string())
+            .set_value(MetricValue::from(self.state.bdseq.load(Ordering::SeqCst) as i64).into());
+        Payload {
+            seq: None,
+            metrics: vec![metric],
+            uuid: None,
+            timestamp: None,
+            body: None,
+        }
     }
 
-    async fn handle_event(&mut self, event: Event) {
+    fn create_last_will(&self) -> LastWill {
+        LastWill::new_node(
+            &self.state.group_id,
+            &self.state.edge_node_id,
+            self.generate_death_payload(),
+        )
+    }
+
+}
+
+enum EoNNodeMessage {
+    Stopped,
+    Online,
+    SparkplugMessage(Message),
+    Offline(oneshot::Sender<LastWill>)
+}
+
+
+/// Structure that represents a Sparkplug Edge Node instance.
+///
+/// See [EoNBuilder] on how to create an [EoN] instance.
+pub struct EoN {
+    eventloop: Box<DynEventLoop>,
+    node: Arc<Node>,
+    stop_rx: mpsc::Receiver<EoNShutdown>,
+}
+
+impl EoN {
+
+    pub(crate) fn new_from_builder(builder: EoNBuilder) -> Result<(Self, NodeHandle), String> {
+
+        let group_id = builder
+            .group_id
+            .ok_or("group id must be provided".to_string())?;
+        let node_id = builder
+            .node_id
+            .ok_or("node id must be provided".to_string())?;
+        srad_types::utils::validate_name(&group_id)?;
+        srad_types::utils::validate_name(&node_id)?;
+
+        let metric_manager = builder.metric_manager;
+        let (eventloop, client) = builder.eventloop_client;
+        let (stop_tx, stop_rx) = mpsc::channel(1);
+
+        let state = Arc::new(EoNState {
+            seq: AtomicU8::new(0),
+            bdseq: AtomicU8::new(0),
+            online: AtomicBool::new(false),
+            birthed: AtomicBool::new(false),
+            ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
+            group_id,
+            edge_node_id: node_id,
+        });
+
+        let node = Arc::new(Node {
+            metric_manager,
+            client: client.clone(),
+            //devices: DeviceMap::new(state.clone(), registry.clone(), client),
+            state,
+            stop_tx,
+        });
+
+        let eon = Self {
+            node,
+            eventloop,
+            stop_rx,
+        };
+        let handle = NodeHandle {
+            node: eon.node.clone(),
+        };
+        eon.node.metric_manager.init(&handle);
+
+        Ok((eon, handle))
+    }
+
+    fn update_last_will(&mut self, lastwill: LastWill) {
+        self.eventloop.set_last_will(lastwill);
+    }
+
+    async fn on_online(&self, node_tx: &Sender<EoNNodeMessage>) {
+        _ = node_tx.send(EoNNodeMessage::Online).await;
+    }
+
+    async fn on_offline(&mut self, node_tx: &Sender<EoNNodeMessage>) {
+        let (lastwill_tx, lastwill_rx) = oneshot::channel();
+        _ = node_tx.send(EoNNodeMessage::Offline(lastwill_tx)).await;
+        if let Ok(will) = lastwill_rx.await {
+            self.update_last_will(will)
+        }
+    }
+
+    async fn on_node_message(&self, message: Message, node_tx: &Sender<EoNNodeMessage>) {
+       _ = node_tx.send(EoNNodeMessage::SparkplugMessage(message)).await;
+    }
+
+    async fn on_device_message(&self, message: DeviceMessage) {
+        todo!()
+        // let node = self.node.clone();
+        // task::spawn(async move {
+        //     node.devices.handle_device_message(message).await;
+        // });
+    }
+
+    async fn handle_event(&mut self, event: Event, node_tx: &Sender<EoNNodeMessage>) {
         match event {
-            Event::Online => self.on_online(),
-            Event::Offline => self.on_offline().await,
-            Event::Node(node_message) => self.on_node_message(node_message),
-            Event::Device(device_message) => self.on_device_message(device_message),
+            Event::Online => self.on_online(node_tx).await,
+            Event::Offline => self.on_offline(node_tx).await,
+            Event::Node(node_message) => self.on_node_message(node_message.message, node_tx).await,
+            Event::Device(device_message) => self.on_device_message(device_message).await,
             Event::State {
                 host_id: _,
                 payload: _,
@@ -476,33 +499,56 @@ impl EoN {
         }
     }
 
-    async fn poll_until_offline(&mut self) -> bool {
+    async fn poll_until_offline(&mut self, node_tx: &Sender<EoNNodeMessage>) -> bool {
         while self.node.state.is_online() {
             if Event::Offline == self.eventloop.poll().await {
-                self.on_offline().await
+                self.on_offline(node_tx).await;
+                break;
             }
         }
         true
     }
 
-    async fn poll_until_offline_with_timeout(&mut self) {
-        _ = timeout(Duration::from_secs(1), self.poll_until_offline()).await;
-    }
 
     /// Run the Edge Node
     ///
     /// Runs the Edge Node until [NodeHandle::cancel()] is called
-    pub async fn run(&mut self) {
+    pub async fn run(mut self) {
         info!("Edge node running");
-        self.update_last_will();
+
+        let (node_tx, mut node_rx) = mpsc::channel(1000);
+
+        let node = self.node.clone();
+        task::spawn(
+            async move {
+                while let Some(msg) = node_rx.recv().await {
+                    match msg {
+                        EoNNodeMessage::Online => node.on_online().await,
+                        EoNNodeMessage::Offline(sender) => node.on_offline(sender).await,
+                        EoNNodeMessage::SparkplugMessage(message) => {
+                            let handle = NodeHandle { node: node.clone() };
+                            node.on_sparkplug_message(message, handle).await
+                        },
+                        EoNNodeMessage::Stopped => break,
+                    }
+                }
+            }
+        );
+
         loop {
             select! {
-              event = self.eventloop.poll() => self.handle_event(event).await,
+              event = self.eventloop.poll() => self.handle_event(event, &node_tx).await,
               Some(_) = self.stop_rx.recv() => break,
             }
         }
-        self.poll_until_offline_with_timeout().await;
-        self.on_offline().await;
+
+        if let Err(_) = timeout(Duration::from_secs(1), self.poll_until_offline(&node_tx)).await {
+            self.on_offline(&node_tx).await;
+        }
+
+        _ = node_tx.send(EoNNodeMessage::Stopped).await;
+
         info!("Edge node stopped");
     }
+
 }

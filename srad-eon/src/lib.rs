@@ -19,7 +19,6 @@ mod error;
 mod metric;
 mod metric_manager;
 mod node;
-mod registry;
 
 pub use birth::{BirthInitializer, BirthMetricDetails};
 pub use builder::EoNBuilder;
@@ -30,6 +29,7 @@ pub use metric_manager::manager::{
 };
 pub use metric_manager::simple::SimpleMetricManager;
 pub use node::{EoN, NodeHandle};
+
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum BirthType {
