@@ -552,9 +552,10 @@ impl EoN {
             }
         }
 
-        if let Err(_) = timeout(Duration::from_secs(1), self.poll_until_offline(&node_tx)).await {
+        if timeout(Duration::from_secs(1), self.poll_until_offline(&node_tx)).await.is_err() {
             self.on_offline(&node_tx).await;
         }
+
         _ = node_tx.send(EoNNodeMessage::Stopped);
         info!("Edge node stopped. Node = {}", self.node.state.edge_node_id);
     }
