@@ -49,6 +49,12 @@ impl EoNBuilder {
         self
     }
 
+    /// Set the cooldown for the time to respond to CMD rebirth requests 
+    pub fn with_rebirth_cmd_cooldown(mut self, cooldown: Duration) -> Self {
+        self.node_rebirth_request_cooldown = cooldown;
+        self
+    }
+
     /// Sets a custom metric manager for the EoN instance.
     ///
     /// Replaces the default no-op metric manager with the provided implementation.

@@ -171,6 +171,7 @@ async fn rebirth() {
     let (mut eventloop, handle) = EoNBuilder::new(channel_eventloop, client)
         .with_group_id(group_id)
         .with_node_id(node_id)
+        .with_rebirth_cmd_cooldown(Duration::from_millis(0)) 
         .build()
         .unwrap();
 

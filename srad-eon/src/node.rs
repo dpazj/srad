@@ -303,9 +303,6 @@ impl Node {
 
     async fn birth(&self, birth_type: BirthType) {
         let guard = self.birth_guard.lock().await;
-        if birth_type == BirthType::Rebirth && !self.state.birthed.load(Ordering::SeqCst) {
-            return;
-        }
         info!("Birthing Node. Node = {}, Type = {:?}", self.state.edge_node_id, birth_type);
         self.node_birth().await;
         self.devices.lock().unwrap().birth_devices(birth_type);
@@ -549,6 +546,8 @@ impl EoN {
 
         let node = self.node.clone();
         task::spawn(async move {
+
+
             while let Some(msg) = node_rx.recv().await {
                 match msg {
                     EoNNodeMessage::Online => node.on_online().await,

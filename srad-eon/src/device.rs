@@ -180,6 +180,7 @@ impl Device {
     }
 
     async fn birth(&self, birth_type: &BirthType) {
+
         let guard = self.birth_guard.lock().await;
 
         if !self.enabled.load(Ordering::SeqCst) {
