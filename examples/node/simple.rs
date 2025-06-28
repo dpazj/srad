@@ -20,7 +20,7 @@ async fn main() {
     let node_metrics = SimpleMetricManager::new();
     let node_counter = node_metrics.register_metric("Node Counter", 0_u64).unwrap();
 
-    let (mut eon, handle) = EoNBuilder::new(eventloop, client)
+    let (eon, handle) = EoNBuilder::new(eventloop, client)
         .with_group_id("foo")
         .with_node_id("bar")
         .with_metric_manager(node_metrics.clone())
@@ -30,7 +30,6 @@ async fn main() {
     let dev1_metrics = SimpleMetricManager::new();
     let device1 = handle
         .register_device("dev1", dev1_metrics.clone())
-        .await
         .unwrap();
     let dev1_counter = dev1_metrics
         .register_metric("Device Counter", 0_i8)
@@ -47,7 +46,7 @@ async fn main() {
         )
         .unwrap();
 
-    device1.enable().await;
+    device1.enable();
 
     let node_manager = node_metrics.clone();
     let dev_manager = dev1_metrics.clone();
