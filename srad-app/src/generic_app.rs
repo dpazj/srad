@@ -173,6 +173,12 @@ impl Default for RebirthConfig {
     }
 }
 
+struct AppConfig {
+    rebirth_config: RebirthConfig,
+    resequence_messages: bool,
+    node_queue_size: usize,
+}
+
 pub struct Device {
     name: String,
     lifecycle_state: LifecycleState,
@@ -246,7 +252,7 @@ pub struct Node {
     rebirth_rx: Receiver<RebirthReason>,
     rebirth_tx: Sender<RebirthReason>,
 
-    rebirth_config: Arc<RebirthConfig>,
+    config: Arc<AppConfig>,
 
     resequencer: Resequencer<ResequenceableEvent>,
     devices: HashMap<String, Device>,
@@ -286,9 +292,9 @@ impl Node {
     fn new(
         id: Arc<NodeIdentifier>,
         client: AppClient,
-        rebirth_config: Arc<RebirthConfig>,
+        config: Arc<AppConfig>,
     ) -> (Self, NodeHandle) {
-        let (tx, rx) = mpsc::channel(1024);
+        let (tx, rx) = mpsc::channel(config.node_queue_size);
         let (rebirth_tx, rebirth_rx) = mpsc::channel(1);
 
         let handle = NodeHandle::new(tx, rebirth_tx.clone());
@@ -299,7 +305,7 @@ impl Node {
             rx,
             rebirth_rx,
             rebirth_tx,
-            rebirth_config,
+            config,
             devices: HashMap::new(),
             resequencer: Resequencer::new(),
             resequence_timeout_task: None,
@@ -314,12 +320,12 @@ impl Node {
     }
 
     fn eval_rebirth(&mut self, reason: &RebirthReason) -> bool {
-        if !self.rebirth_config.evaluate_rebirth_reason(reason) {
+        if !self.config.rebirth_config.evaluate_rebirth_reason(reason) {
             return false;
         }
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        if (now - self.last_rebirth) < self.rebirth_config.rebirth_cooldown {
+        if (now - self.last_rebirth) < self.config.rebirth_config.rebirth_cooldown {
             trace!("Skipping rebirth for Node = ({:?}), reason = ({:?}) as rebirth cooldown not expired", self.id, reason);
             return false;
         }
@@ -350,7 +356,7 @@ impl Node {
     }
 
     fn start_reorder_timeout(&mut self) {
-        let timeout = match self.rebirth_config.reorder_timeout {
+        let timeout = match self.config.rebirth_config.reorder_timeout {
             Some(duration) => duration,
             None => return,
         };
@@ -498,6 +504,11 @@ impl Node {
                 self.id
             );
             return Err(RebirthReason::RecordedStateStale);
+        }
+
+        if !self.config.resequence_messages {
+            self.process_in_sequence_message(message)?;
+            return Ok(());
         }
 
         let message = match self.resequencer.process(seq, message) {
@@ -651,21 +662,17 @@ impl AppCallbacks {
     }
 }
 
-/// The Application struct.
-///
-/// An actor model is used where each node has a dedicated channel and tokio task for it's incoming messages and receiving from that channel.
-///
-/// Internally uses an [AppEventLoop]. The corresponding [AppClient] returned from [Application::new()] can be used to interact with the Sparkplug namespace by publishing CMD messages.
-pub struct Application {
-    state: ApplicationState,
+/// A builder for creating and configuring a sparkplug Application.
+pub struct ApplicationBuilder {
     eventloop: AppEventLoop,
     client: AppClient,
-    rebirth_config: Arc<RebirthConfig>,
-    cbs: AppCallbacks,
+    rebirth_config: Option<RebirthConfig>,
+    resequence: bool,
+    callbacks: AppCallbacks,
+    node_queue_size: usize,
 }
 
-impl Application {
-    /// Create a new [Application] instance.
+impl ApplicationBuilder {
     pub fn new<
         E: EventLoop + Send + 'static,
         C: Client + Send + Sync + 'static,
@@ -675,18 +682,16 @@ impl Application {
         eventloop: E,
         client: C,
         subscription_config: SubscriptionConfig,
-    ) -> (Self, AppClient) {
+    ) -> ApplicationBuilder {
         let (eventloop, client) = AppEventLoop::new(app_id, subscription_config, eventloop, client);
-        let app = Self {
-            state: ApplicationState {
-                nodes: HashMap::new(),
-            },
+        ApplicationBuilder {
             eventloop,
-            client: client.clone(),
-            rebirth_config: Arc::new(RebirthConfig::default()),
-            cbs: AppCallbacks::new(),
-        };
-        (app, client)
+            client,
+            rebirth_config: None,
+            resequence: true,
+            callbacks: AppCallbacks::new(),
+            node_queue_size: 1024,
+        }
     }
 
     /// Register a callback to be notified when a new node is created.
@@ -699,7 +704,7 @@ impl Application {
     where
         F: Fn(&mut Node) + Send + Sync + 'static,
     {
-        self.cbs.node_created = Some(Box::pin(cb));
+        self.callbacks.node_created = Some(Box::pin(cb));
         self
     }
 
@@ -710,7 +715,7 @@ impl Application {
     where
         F: Fn() + Send + 'static,
     {
-        self.cbs.online = Some(Box::pin(cb));
+        self.callbacks.online = Some(Box::pin(cb));
         self
     }
 
@@ -721,22 +726,73 @@ impl Application {
     where
         F: Fn() + Send + 'static,
     {
-        self.cbs.offline = Some(Box::pin(cb));
+        self.callbacks.offline = Some(Box::pin(cb));
+        self
+    }
+
+    pub fn resequence_messages(mut self, resequence: bool) -> Self {
+        self.resequence = resequence;
+        self
+    }
+
+    pub fn with_node_queue_size(mut self, size: usize) -> Self {
+        self.node_queue_size = size;
         self
     }
 
     /// Provide the `Application` with a configuration for how it should handle various Rebirth conditions
     pub fn with_rebirth_config(mut self, config: RebirthConfig) -> Self {
-        self.rebirth_config = Arc::new(config);
+        self.rebirth_config = Some(config);
         self
+    }
+
+    /// Builds the Application instance with the configured settings.
+    ///
+    /// Creates and returns a new Application instance and its associated AppClient handle.
+    /// This method will return an error if required configuration is missing
+    /// or if there are other issues with the configuration.
+    pub fn build(self) -> (Application, AppClient) {
+        Application::new_from_builder(self)
+    }
+}
+
+/// The Application struct.
+///
+/// An actor model is used where each node has a dedicated channel and tokio task for it's incoming messages and receiving from that channel.
+///
+/// Internally uses an [AppEventLoop]. The corresponding [AppClient] returned from [ApplicationBuilder::build()] can be used to interact with the Sparkplug namespace by publishing CMD messages.
+pub struct Application {
+    state: ApplicationState,
+    eventloop: AppEventLoop,
+    client: AppClient,
+    config: Arc<AppConfig>,
+    cbs: AppCallbacks,
+}
+
+impl Application {
+    fn new_from_builder(builder: ApplicationBuilder) -> (Self, AppClient) {
+        let app = Self {
+            state: ApplicationState {
+                nodes: HashMap::new(),
+            },
+            eventloop: builder.eventloop,
+            client: builder.client,
+            config: Arc::new(AppConfig {
+                rebirth_config: builder.rebirth_config.unwrap_or_default(),
+                resequence_messages: builder.resequence,
+                node_queue_size: builder.node_queue_size,
+            }),
+            cbs: builder.callbacks,
+        };
+        let client = app.client.clone();
+        (app, client)
     }
 
     fn create_node(&mut self, id: NodeIdentifier) -> NodeHandle {
         info!("Creating new Node = ({:?})", id);
         let id = Arc::new(id);
 
-        let (mut node, handle) =
-            Node::new(id.clone(), self.client.clone(), self.rebirth_config.clone());
+        let (mut node, handle) = Node::new(id.clone(), self.client.clone(), self.config.clone());
         if let Some(cb) = &self.cbs.node_created {
             cb(&mut node)
         }
@@ -828,7 +884,7 @@ impl Application {
                     "Got invalid payload from Node = {:?}, Error = {:?}",
                     details.node_id, details.error
                 );
-                if self.rebirth_config.invalid_payload {
+                if self.config.rebirth_config.invalid_payload {
                     let node = self.get_or_create_node(details.node_id);
                     node.issue_rebirth(RebirthReason::InvalidPayload);
                 }

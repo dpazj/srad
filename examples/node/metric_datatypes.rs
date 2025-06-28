@@ -246,7 +246,7 @@ async fn main() {
 
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
-    let (mut eon, handle) = EoNBuilder::new(eventloop, client)
+    let (eon, handle) = EoNBuilder::new(eventloop, client)
         .with_group_id("foo")
         .with_node_id("bar")
         .with_metric_manager(DatatypesManager::new())
