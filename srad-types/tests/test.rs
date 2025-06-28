@@ -1,5 +1,17 @@
-use srad_types::{Template, TemplateInstance, TemplateMetadata};
+use srad_types::{Template, TemplateMetadata};
 
+
+#[derive(Default, Clone, Template)]
+struct NestedTest {
+    one: u32,
+    two: u64
+}
+
+impl TemplateMetadata for NestedTest {
+    fn template_name() -> &'static str {
+        "nested_test"
+    }
+}
 
 #[derive(Template)]
 struct Test {
@@ -7,6 +19,9 @@ struct Test {
     x: i32,
     y: i32,
     z: Option<i32>,
+    #[template(rename="A")]
+    renamed: i32,
+    nested: NestedTest,
     #[template(skip)]
     ignore: i32
 }
@@ -19,14 +34,18 @@ impl TemplateMetadata for Test {
 
 #[test]
 pub fn test(){
-    let a = Test { x: 1, y: 1, z: Some(69), ignore: 1234};
+    let a = Test { x: 1, y: 1, z: Some(69), renamed: 23, ignore: 1234, nested: Default::default() };
+    let b = Test { x: 2, y: 1, z: Some(70), renamed: 0, ignore: 1234, nested: NestedTest { one: 1, two: 0 }};
+
     let x = Test::template_definition();
-
-    srad_types::TemplateParameter::new_template_parameter::<i32>("test".into(), 12);
-
     println!("{x:#?}");
+
     let y = a.template_instance();
     println!("{y:#?}");
+
+    //let template_instance_diff = a.template_instance_from_difference(&b);
+    //println!("{template_instance_diff:#?}");
+
     panic!("A")
 }
 
