@@ -20,10 +20,7 @@ use srad_types::{
 };
 use tokio::{
     select,
-    sync::{
-        mpsc,
-        oneshot,
-    },
+    sync::{mpsc, oneshot},
     time::timeout,
 };
 
@@ -34,9 +31,8 @@ use crate::{
     PublishMetric,
 };
 
-pub(crate) struct EoNConfig
-{
-    node_rebirth_request_cooldown: Duration
+pub(crate) struct EoNConfig {
+    node_rebirth_request_cooldown: Duration,
 }
 
 pub(crate) struct EoNState {
@@ -51,7 +47,6 @@ pub(crate) struct EoNState {
 }
 
 impl EoNState {
-
     pub(crate) fn get_seq(&self) -> u64 {
         self.seq.fetch_add(1, Ordering::Relaxed) as u64
     }
@@ -127,7 +122,7 @@ pub struct NodeHandle {
     client: Arc<DynClient>,
     devices: Arc<Mutex<DeviceMap>>,
     stop_tx: mpsc::Sender<EoNShutdown>,
-    rebirth_tx: mpsc::Sender<()>
+    rebirth_tx: mpsc::Sender<()>,
 }
 
 impl NodeHandle {
@@ -135,7 +130,9 @@ impl NodeHandle {
     ///
     /// This will cancel [EoN::run()]
     pub async fn cancel(&self) {
-        if !self.state.running.load(Ordering::SeqCst) {return }
+        if !self.state.running.load(Ordering::SeqCst) {
+            return;
+        }
         info!("Edge node stopping. Node = {}", self.state.edge_node_id);
         let topic = NodeTopic::new(
             &self.state.group_id,
@@ -143,11 +140,7 @@ impl NodeHandle {
             &self.state.edge_node_id,
         );
         let payload = self.state.generate_death_payload();
-        match self
-            .client
-            .try_publish_node_message(topic, payload)
-            .await
-        {
+        match self.client.try_publish_node_message(topic, payload).await {
             Ok(_) => (),
             Err(_) => debug!("Unable to publish node death certificate on exit"),
         };
@@ -157,7 +150,7 @@ impl NodeHandle {
 
     /// Manually trigger a rebirth for the node
     pub fn rebirth(&self) {
-        //try send, if the channel (size 1) is full then a rebirth will be executed anyways 
+        //try send, if the channel (size 1) is full then a rebirth will be executed anyways
         _ = self.rebirth_tx.try_send(());
     }
 
@@ -227,7 +220,6 @@ impl NodeHandle {
 }
 
 impl MetricPublisher for NodeHandle {
-
     async fn try_publish_metrics_unsorted(
         &self,
         metrics: Vec<PublishMetric>,
@@ -269,7 +261,6 @@ impl MetricPublisher for NodeHandle {
             Err(_) => Err(PublishError::Offline),
         }
     }
-
 }
 
 struct Node {
@@ -281,7 +272,6 @@ struct Node {
     stop_tx: mpsc::Sender<EoNShutdown>,
     last_node_rebirth_request: Duration,
 
-
     rebirth_request_tx: mpsc::Sender<()>,
 
     node_message_rx: mpsc::UnboundedReceiver<Message>,
@@ -290,7 +280,6 @@ struct Node {
 }
 
 impl Node {
-
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
         let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node);
@@ -341,10 +330,15 @@ impl Node {
     }
 
     async fn rebirth(&self) {
-        if !self.state.birthed.load(Ordering::SeqCst) { return }
+        if !self.state.birthed.load(Ordering::SeqCst) {
+            return;
+        }
         info!("Re-Birthing Node. Node = {}", self.state.edge_node_id);
         self.node_birth().await;
-        self.devices.lock().unwrap().birth_devices(BirthType::Rebirth);
+        self.devices
+            .lock()
+            .unwrap()
+            .birth_devices(BirthType::Rebirth);
     }
 
     fn death(&self) {
@@ -420,7 +414,7 @@ impl Node {
                 if time_since_last < self.config.node_rebirth_request_cooldown {
                     info!("Got Rebirth CMD but cooldown time not expired. Ignoring");
                     return;
-                } 
+                }
                 info!("Got Rebirth CMD - Rebirthing Node");
                 self.rebirth().await;
                 self.last_node_rebirth_request = now;
@@ -429,18 +423,16 @@ impl Node {
     }
 
     fn create_node_handle(&self) -> NodeHandle {
-        NodeHandle { 
-            state: self.state.clone(), 
-            client: self.client.clone(), 
-            devices: self.devices.clone(), 
-            stop_tx: self.stop_tx.clone(), 
-            rebirth_tx: self.rebirth_request_tx.clone() 
+        NodeHandle {
+            state: self.state.clone(),
+            client: self.client.clone(),
+            devices: self.devices.clone(),
+            stop_tx: self.stop_tx.clone(),
+            rebirth_tx: self.rebirth_request_tx.clone(),
         }
     }
 
-    async fn run(
-        mut self, 
-    ) {
+    async fn run(mut self) {
         loop {
             select! {
                 biased;
@@ -456,7 +448,6 @@ impl Node {
             }
         }
     }
-
 }
 
 enum ClientStateMessage {
@@ -474,11 +465,10 @@ pub struct EoN {
     node_message_tx: mpsc::UnboundedSender<Message>,
     client_state_tx: mpsc::Sender<ClientStateMessage>,
     state: Arc<EoNState>,
-    devices: Arc<Mutex<DeviceMap>>
+    devices: Arc<Mutex<DeviceMap>>,
 }
 
 impl EoN {
-
     pub(crate) fn new_from_builder(builder: EoNBuilder) -> Result<(Self, NodeHandle), String> {
         let group_id = builder
             .group_id
@@ -516,14 +506,14 @@ impl EoN {
             state: state.clone(),
             devices: devices.clone(),
             stop_tx,
-            config: Arc::new(
-                EoNConfig { node_rebirth_request_cooldown: builder.node_rebirth_request_cooldown }
-            ),
+            config: Arc::new(EoNConfig {
+                node_rebirth_request_cooldown: builder.node_rebirth_request_cooldown,
+            }),
             last_node_rebirth_request: Duration::new(0, 0),
             node_message_rx,
             rebirth_request_rx,
             rebirth_request_tx,
-            client_state_rx
+            client_state_rx,
         };
 
         let eon = Self {
@@ -532,14 +522,14 @@ impl EoN {
             node_message_tx,
             client_state_tx,
             state,
-            devices
+            devices,
         };
 
         let handle = node.create_node_handle();
 
         node.metric_manager.init(&handle);
 
-        tokio::spawn(async move {node.run().await});
+        tokio::spawn(async move { node.run().await });
 
         Ok((eon, handle))
     }
@@ -554,15 +544,17 @@ impl EoN {
 
     async fn on_offline(&mut self) {
         let (lastwill_tx, lastwill_rx) = oneshot::channel();
-        _ = self.client_state_tx.send(ClientStateMessage::Offline(lastwill_tx)).await;
+        _ = self
+            .client_state_tx
+            .send(ClientStateMessage::Offline(lastwill_tx))
+            .await;
         if let Ok(will) = lastwill_rx.await {
             self.update_last_will(will)
         }
     }
 
     fn on_node_message(&mut self, message: Message) {
-        _ = self.node_message_tx 
-            .send(message)
+        _ = self.node_message_tx.send(message)
     }
 
     fn on_device_message(&mut self, message: DeviceMessage) {
@@ -602,7 +594,7 @@ impl EoN {
     /// Runs the Edge Node until [NodeHandle::cancel()] is called
     pub async fn run(mut self) {
         info!("Edge node running. Node = {}", self.state.edge_node_id);
-        self.state.running.store(true, Ordering::SeqCst); 
+        self.state.running.store(true, Ordering::SeqCst);
 
         self.update_last_will(self.state.create_last_will());
 
@@ -613,12 +605,15 @@ impl EoN {
             }
         }
 
-        if timeout(Duration::from_secs(1), self.poll_until_offline()).await.is_err() {
+        if timeout(Duration::from_secs(1), self.poll_until_offline())
+            .await
+            .is_err()
+        {
             self.on_offline().await;
         }
 
         _ = self.client_state_tx.send(ClientStateMessage::Stopped).await;
         info!("Edge node stopped. Node = {}", self.state.edge_node_id);
-        self.state.running.store(false, Ordering::SeqCst); 
+        self.state.running.store(false, Ordering::SeqCst);
     }
 }

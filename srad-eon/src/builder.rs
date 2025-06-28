@@ -13,7 +13,7 @@ pub struct EoNBuilder {
     pub(crate) node_id: Option<String>,
     pub(crate) eventloop_client: (Box<DynEventLoop>, Arc<DynClient>),
     pub(crate) metric_manager: Box<DynNodeMetricManager>,
-    pub(crate) node_rebirth_request_cooldown: Duration
+    pub(crate) node_rebirth_request_cooldown: Duration,
 }
 
 impl EoNBuilder {
@@ -29,7 +29,7 @@ impl EoNBuilder {
             node_id: None,
             eventloop_client: (Box::new(eventloop), Arc::new(client)),
             metric_manager: Box::new(NoMetricManager::new()),
-            node_rebirth_request_cooldown: Duration::from_secs(5)
+            node_rebirth_request_cooldown: Duration::from_secs(5),
         }
     }
 
@@ -49,7 +49,7 @@ impl EoNBuilder {
         self
     }
 
-    /// Set the cooldown for the time to respond to CMD rebirth requests 
+    /// Set the cooldown for the time to respond to CMD rebirth requests
     pub fn with_rebirth_cmd_cooldown(mut self, cooldown: Duration) -> Self {
         self.node_rebirth_request_cooldown = cooldown;
         self

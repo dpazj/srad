@@ -11,10 +11,9 @@ use log::{info, warn};
 use srad_client::{Client, DeviceMessage, DynClient, Message, MessageKind};
 use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
 use tokio::{
-    select, sync::{
-        mpsc,
-        Mutex,
-    }, task
+    select,
+    sync::{mpsc, Mutex},
+    task,
 };
 
 use crate::{
@@ -31,7 +30,7 @@ pub struct DeviceHandle {
     node_state: Arc<EoNState>,
     pub(crate) state: Arc<DeviceState>,
     client: Arc<DynClient>,
-    handle_tx: mpsc::UnboundedSender<DeviceHandleRequest>
+    handle_tx: mpsc::UnboundedSender<DeviceHandleRequest>,
 }
 
 impl DeviceHandle {
@@ -134,9 +133,9 @@ pub(crate) struct DeviceState {
 }
 
 enum DeviceHandleRequest {
-    Enable, 
+    Enable,
     Disable,
-    Rebirth
+    Rebirth,
 }
 
 pub struct Device {
@@ -144,12 +143,11 @@ pub struct Device {
     eon_state: Arc<EoNState>,
     dev_impl: Box<DynDeviceMetricManager>,
     client: Arc<DynClient>,
-    enabled: bool, 
+    enabled: bool,
     handle_request_tx: mpsc::UnboundedSender<DeviceHandleRequest>,
     device_message_rx: mpsc::UnboundedReceiver<Message>,
     node_state_rx: mpsc::UnboundedReceiver<NodeStateMessage>,
     handle_request_rx: mpsc::UnboundedReceiver<DeviceHandleRequest>,
-
 }
 
 impl Device {
@@ -206,9 +204,11 @@ impl Device {
             .is_ok()
         {
             self.state.birthed.store(true, Ordering::SeqCst);
-            info!("Device birthed. Node = {}, Device = {}, Type = {:?}", self.eon_state.edge_node_id, self.state.name, birth_type);
+            info!(
+                "Device birthed. Node = {}, Device = {}, Type = {:?}",
+                self.eon_state.edge_node_id, self.state.name, birth_type
+            );
         }
-
     }
 
     async fn death(&self, publish: bool) {
@@ -231,7 +231,10 @@ impl Device {
                 .await;
         }
         self.state.birthed.store(false, Ordering::SeqCst);
-        info!("Device dead. Node = {}, Device = {}", self.eon_state.edge_node_id, self.state.name);
+        info!(
+            "Device dead. Node = {}, Device = {}",
+            self.eon_state.edge_node_id, self.state.name
+        );
     }
 
     async fn handle_sparkplug_message(&self, message: Message, handle: DeviceHandle) {
@@ -295,7 +298,6 @@ impl Device {
                 Some(message) = self.device_message_rx.recv() => self.handle_sparkplug_message(message, self.create_handle()).await,
             }
         }
-
     }
 }
 
@@ -309,13 +311,13 @@ enum ChannelMessage {
 enum NodeStateMessage {
     Birth(BirthType),
     Death,
-    Removed
+    Removed,
 }
 
 struct DeviceMapEntry {
-    id: DeviceId, 
+    id: DeviceId,
     device_message_tx: mpsc::UnboundedSender<Message>,
-    node_state_tx: mpsc::UnboundedSender<NodeStateMessage>
+    node_state_tx: mpsc::UnboundedSender<NodeStateMessage>,
 }
 
 pub struct DeviceMap {
@@ -372,11 +374,11 @@ impl DeviceMap {
         let device_map_entry = DeviceMapEntry {
             id,
             device_message_tx,
-            node_state_tx
+            node_state_tx,
         };
 
         let device = Device {
-            state: Arc::new(DeviceState{
+            state: Arc::new(DeviceState {
                 id,
                 name: name.clone(),
                 ddata_topic: DeviceTopic::new(
@@ -397,7 +399,7 @@ impl DeviceMap {
             handle_request_rx,
         };
 
-        let handle = device.create_handle(); 
+        let handle = device.create_handle();
         device.dev_impl.init(&handle);
 
         task::spawn(async move { device.run().await });
@@ -421,7 +423,9 @@ impl DeviceMap {
     pub(crate) fn birth_devices(&self, birth_type: BirthType) {
         info!("Birthing Devices. Type = {:?}", birth_type);
         for entry in self.devices.values() {
-            _ = entry.node_state_tx.send(NodeStateMessage::Birth(birth_type));
+            _ = entry
+                .node_state_tx
+                .send(NodeStateMessage::Birth(birth_type));
         }
     }
 
@@ -436,7 +440,10 @@ impl DeviceMap {
             match self.devices.get(&message.device_id) {
                 Some(entry) => entry,
                 None => {
-                    warn!("Got message for unknown device. Device = '{}'", message.device_id);
+                    warn!(
+                        "Got message for unknown device. Device = '{}'",
+                        message.device_id
+                    );
                     return;
                 }
             }
