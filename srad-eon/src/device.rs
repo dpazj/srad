@@ -8,14 +8,13 @@ use std::{
 };
 
 use log::{info, warn};
-use srad_client::{DeviceMessage, DynClient, Message, MessageKind};
+use srad_client::{Client, DeviceMessage, DynClient, Message, MessageKind};
 use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
 use tokio::{
-    sync::{
-        mpsc::{self, UnboundedSender},
+    select, sync::{
+        mpsc,
         Mutex,
-    },
-    task,
+    }, task
 };
 
 use crate::{
@@ -29,41 +28,39 @@ use crate::{
 
 #[derive(Clone)]
 pub struct DeviceHandle {
-    pub(crate) device: Arc<Device>,
+    node_state: Arc<EoNState>,
+    pub(crate) state: Arc<DeviceState>,
+    client: Arc<DynClient>,
+    handle_tx: mpsc::UnboundedSender<DeviceHandleRequest>
 }
 
 impl DeviceHandle {
     /// Enabled the device
     ///
     /// Will attempt to birth the device. If the node is not online, the device will be birthed when it is next online.
-    pub async fn enable(&self) {
-        self.device.enabled.store(true, Ordering::SeqCst);
-        self.device.birth(&BirthType::Birth).await;
+    pub fn enable(&self) {
+        _ = self.handle_tx.send(DeviceHandleRequest::Enable);
     }
 
     /// Rebirth the device
     ///
     /// Manually trigger a rebirth for the device.
-    pub async fn rebirth(&self) {
-        self.device.enabled.store(true, Ordering::SeqCst);
-        self.device.birth(&BirthType::Rebirth).await;
+    pub fn rebirth(&self) {
+        _ = self.handle_tx.send(DeviceHandleRequest::Rebirth);
     }
 
     /// Disable the device
     ///
     /// Will produce a death message for the device. The node will no longer attempt to birth the device when it comes online.
-    pub async fn disable(&self) {
-        if !self.device.enabled.swap(false, Ordering::SeqCst) {
-            return;
-        }
-        self.device.death(true).await
+    pub fn disable(&self) {
+        _ = self.handle_tx.send(DeviceHandleRequest::Disable);
     }
 
     fn check_publish_state(&self) -> Result<(), PublishError> {
-        if !self.device.eon_state.is_online() {
+        if !self.node_state.is_online() {
             return Err(PublishError::Offline);
         }
-        if !self.device.birthed.load(Ordering::Relaxed) {
+        if !self.state.birthed.load(Ordering::Relaxed) {
             return Err(PublishError::UnBirthed);
         }
         Ok(())
@@ -78,7 +75,7 @@ impl DeviceHandle {
         Payload {
             timestamp: Some(timestamp),
             metrics: payload_metrics,
-            seq: Some(self.device.eon_state.get_seq()),
+            seq: Some(self.node_state.get_seq()),
             uuid: None,
             body: None,
         }
@@ -95,10 +92,9 @@ impl MetricPublisher for DeviceHandle {
         }
         self.check_publish_state()?;
         match self
-            .device
             .client
             .try_publish_device_message(
-                self.device.info.ddata_topic.clone(),
+                self.state.ddata_topic.clone(),
                 self.publish_metrics_to_payload(metrics),
             )
             .await
@@ -117,10 +113,9 @@ impl MetricPublisher for DeviceHandle {
         }
         self.check_publish_state()?;
         match self
-            .device
             .client
             .publish_device_message(
-                self.device.info.ddata_topic.clone(),
+                self.state.ddata_topic.clone(),
                 self.publish_metrics_to_payload(metrics),
             )
             .await
@@ -131,30 +126,35 @@ impl MetricPublisher for DeviceHandle {
     }
 }
 
-pub(crate) struct DeviceInfo {
+pub(crate) struct DeviceState {
+    birthed: AtomicBool,
     id: DeviceId,
     pub(crate) name: Arc<String>,
     ddata_topic: DeviceTopic,
 }
 
+enum DeviceHandleRequest {
+    Enable, 
+    Disable,
+    Rebirth
+}
+
 pub struct Device {
-    pub(crate) info: DeviceInfo,
-    birthed: AtomicBool,
-    enabled: AtomicBool,
+    state: Arc<DeviceState>,
     eon_state: Arc<EoNState>,
     dev_impl: Box<DynDeviceMetricManager>,
     client: Arc<DynClient>,
+    enabled: bool, 
+    handle_request_tx: mpsc::UnboundedSender<DeviceHandleRequest>,
+    device_message_rx: mpsc::UnboundedReceiver<Message>,
+    node_state_rx: mpsc::UnboundedReceiver<NodeStateMessage>,
+    handle_request_rx: mpsc::UnboundedReceiver<DeviceHandleRequest>,
 
-    // Because we allow the user to directly call birth and death messages
-    // through enable/disable/rebirth we need to protect against scenarios
-    // where the Node is performing a birth/death sequence and the user does
-    // the same or opposite action which could cause state inconsistency issues.
-    birth_guard: Mutex<()>,
 }
 
 impl Device {
     fn generate_birth_payload(&self) -> Payload {
-        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Device(self.info.id));
+        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Device(self.state.id));
         self.dev_impl.initialise_birth(&mut birth_initializer);
         let timestamp = timestamp();
         let metrics = birth_initializer.finish();
@@ -180,19 +180,16 @@ impl Device {
     }
 
     async fn birth(&self, birth_type: &BirthType) {
-
-        let guard = self.birth_guard.lock().await;
-
-        if !self.enabled.load(Ordering::SeqCst) {
+        if !self.enabled {
             return;
         }
         if !self.eon_state.birthed() {
             return;
         }
-        if *birth_type == BirthType::Birth && self.birthed.load(Ordering::SeqCst) {
+        if *birth_type == BirthType::Birth && self.state.birthed.load(Ordering::SeqCst) {
             return;
         }
-
+        self.state.birthed.store(false, Ordering::SeqCst);
         let payload = self.generate_birth_payload();
         if self
             .client
@@ -201,24 +198,21 @@ impl Device {
                     &self.eon_state.group_id,
                     srad_types::topic::DeviceMessage::DBirth,
                     &self.eon_state.edge_node_id,
-                    &self.info.name,
+                    &self.state.name,
                 ),
                 payload,
             )
             .await
             .is_ok()
         {
-            self.birthed.store(true, Ordering::SeqCst);
-            info!("Device birthed. Node = {}, Device = {}, Type = {:?}", self.eon_state.edge_node_id, self.info.name, birth_type);
+            self.state.birthed.store(true, Ordering::SeqCst);
+            info!("Device birthed. Node = {}, Device = {}, Type = {:?}", self.eon_state.edge_node_id, self.state.name, birth_type);
         }
 
-        drop(guard)
     }
 
     async fn death(&self, publish: bool) {
-        let guard = self.birth_guard.lock().await;
-
-        if !self.birthed.load(Ordering::SeqCst) {
+        if !self.state.birthed.load(Ordering::SeqCst) {
             return;
         }
         if publish {
@@ -230,15 +224,14 @@ impl Device {
                         &self.eon_state.group_id,
                         srad_types::topic::DeviceMessage::DDeath,
                         &self.eon_state.edge_node_id,
-                        &self.info.name,
+                        &self.state.name,
                     ),
                     payload,
                 )
                 .await;
         }
-        self.birthed.store(false, Ordering::SeqCst);
-        info!("Device dead. Node = {}, Device = {}", self.eon_state.edge_node_id, self.info.name);
-        drop(guard);
+        self.state.birthed.store(false, Ordering::SeqCst);
+        info!("Device dead. Node = {}, Device = {}", self.eon_state.edge_node_id, self.state.name);
     }
 
     async fn handle_sparkplug_message(&self, message: Message, handle: DeviceHandle) {
@@ -250,13 +243,59 @@ impl Device {
                 Err(_) => {
                     warn!(
                         "Got invalid CMD payload for device - ignoring. Device = {}",
-                        self.info.name
+                        self.state.name
                     );
                     return;
                 }
             };
             self.dev_impl.on_dcmd(handle, message_metrics).await
         }
+    }
+
+    fn create_handle(&self) -> DeviceHandle {
+        DeviceHandle {
+            node_state: self.eon_state.clone(),
+            state: self.state.clone(),
+            client: self.client.clone(),
+            handle_tx: self.handle_request_tx.clone(),
+        }
+    }
+
+    async fn enable(&mut self) {
+        self.enabled = true;
+        self.birth(&BirthType::Birth).await
+    }
+
+    async fn disable(&mut self) {
+        self.enabled = false;
+        self.death(true).await
+    }
+
+    async fn run(mut self) {
+        loop {
+            select! {
+                biased;
+                Some(state_update) = self.node_state_rx.recv() => {
+                    match state_update {
+                        NodeStateMessage::Birth(birth_type) => self.birth(&birth_type).await,
+                        NodeStateMessage::Death => self.death(false).await,
+                        NodeStateMessage::Removed => {
+                            self.death(true).await;
+                            break;
+                        },
+                    }
+                },
+                Some(request) = self.handle_request_rx.recv() => {
+                    match request {
+                        DeviceHandleRequest::Enable => self.enable().await,
+                        DeviceHandleRequest::Disable => self.disable().await,
+                        DeviceHandleRequest::Rebirth => self.birth(&BirthType::Rebirth).await,
+                    }
+                },
+                Some(message) = self.device_message_rx.recv() => self.handle_sparkplug_message(message, self.create_handle()).await,
+            }
+        }
+
     }
 }
 
@@ -267,9 +306,21 @@ enum ChannelMessage {
     SparkplugMessage(Message),
 }
 
+enum NodeStateMessage {
+    Birth(BirthType),
+    Death,
+    Removed
+}
+
+struct DeviceMapEntry {
+    id: DeviceId, 
+    device_message_tx: mpsc::UnboundedSender<Message>,
+    node_state_tx: mpsc::UnboundedSender<NodeStateMessage>
+}
+
 pub struct DeviceMap {
     device_ids: HashSet<DeviceId>,
-    devices: HashMap<Arc<String>, (UnboundedSender<ChannelMessage>, DeviceId)>,
+    devices: HashMap<Arc<String>, DeviceMapEntry>,
 }
 
 const OBJECT_ID_NODE: u32 = 0;
@@ -314,8 +365,18 @@ impl DeviceMap {
         let name = Arc::new(name);
         let id = self.generate_device_id(&name);
 
-        let device = Arc::new(Device {
-            info: DeviceInfo {
+        let (device_message_tx, device_message_rx) = mpsc::unbounded_channel();
+        let (handle_request_tx, handle_request_rx) = mpsc::unbounded_channel();
+        let (node_state_tx, node_state_rx) = mpsc::unbounded_channel();
+
+        let device_map_entry = DeviceMapEntry {
+            id,
+            device_message_tx,
+            node_state_tx
+        };
+
+        let device = Device {
+            state: Arc::new(DeviceState{
                 id,
                 name: name.clone(),
                 ddata_topic: DeviceTopic::new(
@@ -324,80 +385,62 @@ impl DeviceMap {
                     node_id,
                     &name,
                 ),
-            },
-            birthed: AtomicBool::new(false),
-            enabled: AtomicBool::new(false),
+                birthed: AtomicBool::new(false),
+            }),
+            enabled: false,
             eon_state,
             dev_impl,
             client,
-            birth_guard: Mutex::new(()),
-        });
-        let handle = DeviceHandle {
-            device: device.clone(),
+            handle_request_tx,
+            device_message_rx,
+            node_state_rx,
+            handle_request_rx,
         };
+
+        let handle = device.create_handle(); 
         device.dev_impl.init(&handle);
 
-        let (device_tx, mut device_rx) = mpsc::unbounded_channel();
-        _ = device_tx.send(ChannelMessage::Birth(BirthType::Birth));
-        task::spawn(async move {
-            while let Some(msg) = device_rx.recv().await {
-                match msg {
-                    ChannelMessage::Birth(birth_type) => device.birth(&birth_type).await,
-                    ChannelMessage::Death => device.death(false).await,
-                    ChannelMessage::SparkplugMessage(message) => {
-                        let handle = DeviceHandle {
-                            device: device.clone(),
-                        };
-                        device.handle_sparkplug_message(message, handle).await
-                    }
-                    ChannelMessage::Removed => {
-                        device.death(true).await;
-                        break;
-                    }
-                }
-            }
-        });
-
-        self.devices.insert(name, (device_tx, id));
+        task::spawn(async move { device.run().await });
+        self.devices.insert(name, device_map_entry);
         Ok(handle)
     }
 
     pub(crate) fn remove_device(&mut self, device: &String) {
-        let tx = {
-            let (tx, id) = match self.devices.remove(device) {
+        let entry = {
+            let entry = match self.devices.remove(device) {
                 Some(entry) => entry,
                 None => return,
             };
 
-            self.remove_device_id(id);
-            tx
+            self.remove_device_id(entry.id);
+            entry
         };
-        _ = tx.send(ChannelMessage::Removed);
+        _ = entry.node_state_tx.send(NodeStateMessage::Removed);
     }
 
     pub(crate) fn birth_devices(&self, birth_type: BirthType) {
         info!("Birthing Devices. Type = {:?}", birth_type);
-        for (tx, _) in self.devices.values() {
-            _ = tx.send(ChannelMessage::Birth(birth_type));
+        for entry in self.devices.values() {
+            _ = entry.node_state_tx.send(NodeStateMessage::Birth(birth_type));
         }
     }
 
     pub(crate) fn on_death(&self) {
-        for (tx, _) in self.devices.values() {
-            _ = tx.send(ChannelMessage::Death);
+        for entry in self.devices.values() {
+            _ = entry.node_state_tx.send(NodeStateMessage::Death);
         }
     }
 
     pub(crate) fn handle_device_message(&self, message: DeviceMessage) {
-        let tx = {
+        let entry = {
             match self.devices.get(&message.device_id) {
-                Some((tx, _)) => tx,
+                Some(entry) => entry,
                 None => {
                     warn!("Got message for unknown device. Device = '{}'", message.device_id);
                     return;
                 }
             }
         };
-        _ = tx.send(ChannelMessage::SparkplugMessage(message.message));
+        _ = entry.device_message_tx.send(message.message);
     }
 }

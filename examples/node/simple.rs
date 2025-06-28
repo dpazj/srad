@@ -46,7 +46,7 @@ async fn main() {
         )
         .unwrap();
 
-    device1.enable().await;
+    device1.enable();
 
     let node_manager = node_metrics.clone();
     let dev_manager = dev1_metrics.clone();

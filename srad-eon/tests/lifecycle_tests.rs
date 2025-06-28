@@ -66,8 +66,7 @@ async fn device_session() {
     handle
         .register_device(device1_name, NoMetricManager::new())
         .unwrap()
-        .enable()
-        .await;
+        .enable();
 
     test_node_online(&mut broker, group_id, node_id, 0).await;
 
@@ -112,10 +111,10 @@ async fn device_session() {
     let dev = handle
         .register_device(device2_name, NoMetricManager::new())
         .unwrap();
-    dev.enable().await;
+    dev.enable();
     verify_device_birth(&mut broker, group_id, node_id, device2_name, 2).await;
 
-    dev.disable().await;
+    dev.disable();
     let device_death = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
         .await
         .unwrap()
@@ -203,14 +202,12 @@ async fn rebirth() {
     handle
         .register_device(device1_name, NoMetricManager::new())
         .unwrap()
-        .enable()
-        .await;
+        .enable();
     verify_device_birth(&mut broker, group_id, node_id, device1_name, 1).await;
     handle
         .register_device(device2_name, NoMetricManager::new())
         .unwrap()
-        .enable()
-        .await;
+        .enable();
     verify_device_birth(&mut broker, group_id, node_id, device2_name, 2).await;
 
     broker

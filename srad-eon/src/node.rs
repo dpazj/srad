@@ -1,9 +1,9 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
     },
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use log::{debug, error, info, warn};
@@ -21,10 +21,9 @@ use srad_types::{
 use tokio::{
     select,
     sync::{
-        mpsc::{self, Sender, UnboundedSender},
+        mpsc,
         oneshot,
     },
-    task,
     time::timeout,
 };
 
@@ -44,6 +43,7 @@ pub(crate) struct EoNState {
     bdseq: AtomicU8,
     seq: AtomicU8,
     online: AtomicBool,
+    running: AtomicBool,
     birthed: AtomicBool,
     pub group_id: String,
     pub edge_node_id: String,
@@ -51,6 +51,7 @@ pub(crate) struct EoNState {
 }
 
 impl EoNState {
+
     pub(crate) fn get_seq(&self) -> u64 {
         self.seq.fetch_add(1, Ordering::Relaxed) as u64
     }
@@ -65,6 +66,28 @@ impl EoNState {
 
     fn birth_topic(&self) -> NodeTopic {
         NodeTopic::new(&self.group_id, NodeMessageType::NBirth, &self.edge_node_id)
+    }
+
+    fn generate_death_payload(&self) -> Payload {
+        let mut metric = srad_types::payload::Metric::new();
+        metric
+            .set_name(constants::BDSEQ.to_string())
+            .set_value(MetricValue::from(self.bdseq.load(Ordering::SeqCst) as i64).into());
+        Payload {
+            seq: None,
+            metrics: vec![metric],
+            uuid: None,
+            timestamp: None,
+            body: None,
+        }
+    }
+
+    fn create_last_will(&self) -> LastWill {
+        LastWill::new_node(
+            &self.group_id,
+            &self.edge_node_id,
+            self.generate_death_payload(),
+        )
     }
 
     fn sub_topics(&self) -> Vec<TopicFilter> {
@@ -100,7 +123,11 @@ struct EoNShutdown;
 /// including device management, node lifecycle operations, and metric publishing.
 #[derive(Clone)]
 pub struct NodeHandle {
-    node: Arc<Node>,
+    state: Arc<EoNState>,
+    client: Arc<DynClient>,
+    devices: Arc<Mutex<DeviceMap>>,
+    stop_tx: mpsc::Sender<EoNShutdown>,
+    rebirth_tx: mpsc::Sender<()>
 }
 
 impl NodeHandle {
@@ -108,15 +135,15 @@ impl NodeHandle {
     ///
     /// This will cancel [EoN::run()]
     pub async fn cancel(&self) {
-        info!("Edge node stopping. Node = {}", self.node.state.edge_node_id);
+        if !self.state.running.load(Ordering::SeqCst) {return }
+        info!("Edge node stopping. Node = {}", self.state.edge_node_id);
         let topic = NodeTopic::new(
-            &self.node.state.group_id,
+            &self.state.group_id,
             NodeMessageType::NDeath,
-            &self.node.state.edge_node_id,
+            &self.state.edge_node_id,
         );
-        let payload = self.node.generate_death_payload();
+        let payload = self.state.generate_death_payload();
         match self
-            .node
             .client
             .try_publish_node_message(topic, payload)
             .await
@@ -124,13 +151,14 @@ impl NodeHandle {
             Ok(_) => (),
             Err(_) => debug!("Unable to publish node death certificate on exit"),
         };
-        _ = self.node.stop_tx.send(EoNShutdown).await;
-        _ = self.node.client.disconnect().await;
+        _ = self.stop_tx.send(EoNShutdown).await;
+        _ = self.client.disconnect().await;
     }
 
     /// Manually trigger a rebirth for the node
-    pub async fn rebirth(&self) {
-        self.node.birth(BirthType::Rebirth).await;
+    pub fn rebirth(&self) {
+        //try send, if the channel (size 1) is full then a rebirth will be executed anyways 
+        _ = self.rebirth_tx.try_send(());
     }
 
     /// Registers a new device with the node.
@@ -151,32 +179,32 @@ impl NodeHandle {
         if let Err(e) = srad_types::utils::validate_name(&name) {
             return Err(DeviceRegistrationError::InvalidName(e));
         }
-        let handle = self.node.devices.lock().unwrap().add_device(
-            &self.node.state.group_id,
-            &self.node.state.edge_node_id,
+        let handle = self.devices.lock().unwrap().add_device(
+            &self.state.group_id,
+            &self.state.edge_node_id,
             name,
             Box::new(dev_impl),
-            self.node.state.clone(),
-            self.node.client.clone(),
+            self.state.clone(),
+            self.client.clone(),
         )?;
         Ok(handle)
     }
 
     /// Unregister a device using it's handle.
     pub async fn unregister_device(&self, handle: DeviceHandle) {
-        self.unregister_device_named(&handle.device.info.name).await;
+        self.unregister_device_named(&handle.state.name).await;
     }
 
     /// Unregister a device using it's name.
     pub async fn unregister_device_named(&self, name: &String) {
-        self.node.devices.lock().unwrap().remove_device(name)
+        self.devices.lock().unwrap().remove_device(name)
     }
 
     fn check_publish_state(&self) -> Result<(), PublishError> {
-        if !self.node.state.is_online() {
+        if !self.state.is_online() {
             return Err(PublishError::Offline);
         }
-        if !self.node.state.birthed() {
+        if !self.state.birthed() {
             return Err(PublishError::UnBirthed);
         }
         Ok(())
@@ -191,7 +219,7 @@ impl NodeHandle {
         Payload {
             timestamp: Some(timestamp),
             metrics: payload_metrics,
-            seq: Some(self.node.state.get_seq()),
+            seq: Some(self.state.get_seq()),
             uuid: None,
             body: None,
         }
@@ -199,6 +227,7 @@ impl NodeHandle {
 }
 
 impl MetricPublisher for NodeHandle {
+
     async fn try_publish_metrics_unsorted(
         &self,
         metrics: Vec<PublishMetric>,
@@ -208,10 +237,9 @@ impl MetricPublisher for NodeHandle {
         }
         self.check_publish_state()?;
         match self
-            .node
             .client
             .try_publish_node_message(
-                self.node.state.ndata_topic.clone(),
+                self.state.ndata_topic.clone(),
                 self.publish_metrics_to_payload(metrics),
             )
             .await
@@ -230,10 +258,9 @@ impl MetricPublisher for NodeHandle {
         }
         self.check_publish_state()?;
         match self
-            .node
             .client
             .publish_node_message(
-                self.node.state.ndata_topic.clone(),
+                self.state.ndata_topic.clone(),
                 self.publish_metrics_to_payload(metrics),
             )
             .await
@@ -242,22 +269,28 @@ impl MetricPublisher for NodeHandle {
             Err(_) => Err(PublishError::Offline),
         }
     }
+
 }
 
 struct Node {
     metric_manager: Box<DynNodeMetricManager>,
     client: Arc<DynClient>,
-    devices: Mutex<DeviceMap>,
+    devices: Arc<Mutex<DeviceMap>>,
     state: Arc<EoNState>,
     config: Arc<EoNConfig>,
-    stop_tx: Sender<EoNShutdown>,
-    last_node_rebirth_request: AtomicU64,
-    // The birth guard is to stop a user calling birth from the NodeHandle
-    // while a death or birth is in progress due to an event from the Eventloop
-    birth_guard: tokio::sync::Mutex<()>,
+    stop_tx: mpsc::Sender<EoNShutdown>,
+    last_node_rebirth_request: Duration,
+
+
+    rebirth_request_tx: mpsc::Sender<()>,
+
+    node_message_rx: mpsc::UnboundedReceiver<Message>,
+    client_state_rx: mpsc::Receiver<ClientStateMessage>,
+    rebirth_request_rx: mpsc::Receiver<()>,
 }
 
 impl Node {
+
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
         let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node);
@@ -301,15 +334,20 @@ impl Node {
         }
     }
 
-    async fn birth(&self, birth_type: BirthType) {
-        let guard = self.birth_guard.lock().await;
-        info!("Birthing Node. Node = {}, Type = {:?}", self.state.edge_node_id, birth_type);
+    async fn birth(&self) {
+        info!("Birthing Node. Node = {}", self.state.edge_node_id);
         self.node_birth().await;
-        self.devices.lock().unwrap().birth_devices(birth_type);
-        drop(guard)
+        self.devices.lock().unwrap().birth_devices(BirthType::Birth);
     }
 
-    async fn death(&self) {
+    async fn rebirth(&self) {
+        if !self.state.birthed.load(Ordering::SeqCst) { return }
+        info!("Re-Birthing Node. Node = {}", self.state.edge_node_id);
+        self.node_birth().await;
+        self.devices.lock().unwrap().birth_devices(BirthType::Rebirth);
+    }
+
+    fn death(&self) {
         self.state.birthed.store(false, Ordering::SeqCst);
         self.state.bdseq.fetch_add(1, Ordering::SeqCst);
         self.devices.lock().unwrap().on_death();
@@ -323,21 +361,21 @@ impl Node {
         let sub_topics = self.state.sub_topics();
 
         if self.client.subscribe_many(sub_topics).await.is_ok() {
-            self.birth(BirthType::Birth).await
+            self.birth().await
         };
     }
 
-    async fn on_offline(&self, will_sender: oneshot::Sender<LastWill>) {
+    fn on_offline(&self, will_sender: oneshot::Sender<LastWill>) {
         if !self.state.online.swap(false, Ordering::SeqCst) {
             return;
         }
         info!("Edge node offline. Node = {}", self.state.edge_node_id);
-        self.death().await;
-        let new_lastwill = self.create_last_will();
+        self.death();
+        let new_lastwill = self.state.create_last_will();
         _ = will_sender.send(new_lastwill);
     }
 
-    async fn on_sparkplug_message(&self, message: Message, handle: NodeHandle) {
+    async fn on_sparkplug_message(&mut self, message: Message, handle: NodeHandle) {
         let payload = message.payload;
         let message_kind = message.kind;
 
@@ -377,46 +415,53 @@ impl Node {
 
             self.metric_manager.on_ncmd(handle, message_metrics).await;
             if rebirth {
-                let now = timestamp(); 
-                let time_since_last = now - self.last_node_rebirth_request.load(Ordering::Relaxed);
-                if time_since_last < self.config.node_rebirth_request_cooldown.as_millis() as u64 {
+                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                let time_since_last = now - self.last_node_rebirth_request;
+                if time_since_last < self.config.node_rebirth_request_cooldown {
                     info!("Got Rebirth CMD but cooldown time not expired. Ignoring");
                     return;
                 } 
                 info!("Got Rebirth CMD - Rebirthing Node");
-                self.birth(BirthType::Rebirth).await;
-                self.last_node_rebirth_request.store(now, Ordering::Relaxed);
+                self.rebirth().await;
+                self.last_node_rebirth_request = now;
             }
         }
     }
 
-    fn generate_death_payload(&self) -> Payload {
-        let mut metric = srad_types::payload::Metric::new();
-        metric
-            .set_name(constants::BDSEQ.to_string())
-            .set_value(MetricValue::from(self.state.bdseq.load(Ordering::SeqCst) as i64).into());
-        Payload {
-            seq: None,
-            metrics: vec![metric],
-            uuid: None,
-            timestamp: None,
-            body: None,
+    fn create_node_handle(&self) -> NodeHandle {
+        NodeHandle { 
+            state: self.state.clone(), 
+            client: self.client.clone(), 
+            devices: self.devices.clone(), 
+            stop_tx: self.stop_tx.clone(), 
+            rebirth_tx: self.rebirth_request_tx.clone() 
         }
     }
 
-    fn create_last_will(&self) -> LastWill {
-        LastWill::new_node(
-            &self.state.group_id,
-            &self.state.edge_node_id,
-            self.generate_death_payload(),
-        )
+    async fn run(
+        mut self, 
+    ) {
+        loop {
+            select! {
+                biased;
+                Some(state_update) = self.client_state_rx.recv() => {
+                    match state_update {
+                        ClientStateMessage::Online => self.on_online().await,
+                        ClientStateMessage::Offline(sender) => self.on_offline(sender),
+                        ClientStateMessage::Stopped => break
+                    }
+                },
+                Some(_) = self.rebirth_request_rx.recv() => self.rebirth().await,
+                Some(message) = self.node_message_rx.recv() => self.on_sparkplug_message(message, self.create_node_handle()).await,
+            }
+        }
     }
+
 }
 
-enum EoNNodeMessage {
+enum ClientStateMessage {
     Stopped,
     Online,
-    SparkplugMessage(Message),
     Offline(oneshot::Sender<LastWill>),
 }
 
@@ -425,11 +470,15 @@ enum EoNNodeMessage {
 /// See [EoNBuilder] on how to create an [EoN] instance.
 pub struct EoN {
     eventloop: Box<DynEventLoop>,
-    node: Arc<Node>,
     stop_rx: mpsc::Receiver<EoNShutdown>,
+    node_message_tx: mpsc::UnboundedSender<Message>,
+    client_state_tx: mpsc::Sender<ClientStateMessage>,
+    state: Arc<EoNState>,
+    devices: Arc<Mutex<DeviceMap>>
 }
 
 impl EoN {
+
     pub(crate) fn new_from_builder(builder: EoNBuilder) -> Result<(Self, NodeHandle), String> {
         let group_id = builder
             .group_id
@@ -447,6 +496,7 @@ impl EoN {
         let state = Arc::new(EoNState {
             seq: AtomicU8::new(0),
             bdseq: AtomicU8::new(0),
+            running: AtomicBool::new(false),
             online: AtomicBool::new(false),
             birthed: AtomicBool::new(false),
             ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
@@ -454,28 +504,42 @@ impl EoN {
             edge_node_id: node_id,
         });
 
-        let node = Arc::new(Node {
+        let devices = Arc::new(Mutex::new(DeviceMap::new()));
+
+        let (node_message_tx, node_message_rx) = mpsc::unbounded_channel();
+        let (rebirth_request_tx, rebirth_request_rx) = mpsc::channel(1);
+        let (client_state_tx, client_state_rx) = mpsc::channel(1);
+
+        let node = Node {
             metric_manager,
             client: client.clone(),
-            devices: Mutex::new(DeviceMap::new()),
-            state,
+            state: state.clone(),
+            devices: devices.clone(),
             stop_tx,
-            birth_guard: tokio::sync::Mutex::new(()),
             config: Arc::new(
                 EoNConfig { node_rebirth_request_cooldown: builder.node_rebirth_request_cooldown }
             ),
-            last_node_rebirth_request: AtomicU64::new(0)
-        });
+            last_node_rebirth_request: Duration::new(0, 0),
+            node_message_rx,
+            rebirth_request_rx,
+            rebirth_request_tx,
+            client_state_rx
+        };
 
         let eon = Self {
-            node,
             eventloop,
             stop_rx,
+            node_message_tx,
+            client_state_tx,
+            state,
+            devices
         };
-        let handle = NodeHandle {
-            node: eon.node.clone(),
-        };
-        eon.node.metric_manager.init(&handle);
+
+        let handle = node.create_node_handle();
+
+        node.metric_manager.init(&handle);
+
+        tokio::spawn(async move {node.run().await});
 
         Ok((eon, handle))
     }
@@ -484,33 +548,32 @@ impl EoN {
         self.eventloop.set_last_will(lastwill);
     }
 
-    fn on_online(&mut self, node_tx: &UnboundedSender<EoNNodeMessage>) {
-        _ = node_tx.send(EoNNodeMessage::Online);
+    async fn on_online(&mut self) {
+        _ = self.client_state_tx.send(ClientStateMessage::Online).await;
     }
 
-    async fn on_offline(&mut self, node_tx: &UnboundedSender<EoNNodeMessage>) {
+    async fn on_offline(&mut self) {
         let (lastwill_tx, lastwill_rx) = oneshot::channel();
-        _ = node_tx.send(EoNNodeMessage::Offline(lastwill_tx));
+        _ = self.client_state_tx.send(ClientStateMessage::Offline(lastwill_tx)).await;
         if let Ok(will) = lastwill_rx.await {
             self.update_last_will(will)
         }
     }
 
-    fn on_node_message(&mut self, message: Message, node_tx: &UnboundedSender<EoNNodeMessage>) {
-        _ = node_tx
-            .send(EoNNodeMessage::SparkplugMessage(message))
+    fn on_node_message(&mut self, message: Message) {
+        _ = self.node_message_tx 
+            .send(message)
     }
 
     fn on_device_message(&mut self, message: DeviceMessage) {
-        let devices = self.node.devices.lock().unwrap();
-        devices.handle_device_message(message);
+        self.devices.lock().unwrap().handle_device_message(message);
     }
 
-    async fn handle_event(&mut self, event: Event, node_tx: &UnboundedSender<EoNNodeMessage>) {
+    async fn handle_event(&mut self, event: Event) {
         match event {
-            Event::Online => self.on_online(node_tx),
-            Event::Offline => self.on_offline(node_tx).await,
-            Event::Node(node_message) => self.on_node_message(node_message.message, node_tx),
+            Event::Online => self.on_online().await,
+            Event::Offline => self.on_offline().await,
+            Event::Node(node_message) => self.on_node_message(node_message.message),
             Event::Device(device_message) => self.on_device_message(device_message),
             Event::State {
                 host_id: _,
@@ -524,10 +587,10 @@ impl EoN {
         }
     }
 
-    async fn poll_until_offline(&mut self, node_tx: &UnboundedSender<EoNNodeMessage>) -> bool {
-        while self.node.state.is_online() {
+    async fn poll_until_offline(&mut self) -> bool {
+        while self.state.is_online() {
             if Event::Offline == self.eventloop.poll().await {
-                self.on_offline(node_tx).await;
+                self.on_offline().await;
                 break;
             }
         }
@@ -537,42 +600,25 @@ impl EoN {
     /// Run the Edge Node
     ///
     /// Runs the Edge Node until [NodeHandle::cancel()] is called
-    pub async fn run(&mut self) {
-        info!("Edge node running. Node = {}", self.node.state.edge_node_id);
+    pub async fn run(mut self) {
+        info!("Edge node running. Node = {}", self.state.edge_node_id);
+        self.state.running.store(true, Ordering::SeqCst); 
 
-        let (node_tx, mut node_rx) = mpsc::unbounded_channel();
-
-        self.update_last_will(self.node.create_last_will());
-
-        let node = self.node.clone();
-        task::spawn(async move {
-
-
-            while let Some(msg) = node_rx.recv().await {
-                match msg {
-                    EoNNodeMessage::Online => node.on_online().await,
-                    EoNNodeMessage::Offline(sender) => node.on_offline(sender).await,
-                    EoNNodeMessage::SparkplugMessage(message) => {
-                        let handle = NodeHandle { node: node.clone() };
-                        node.on_sparkplug_message(message, handle).await
-                    }
-                    EoNNodeMessage::Stopped => break,
-                }
-            }
-        });
+        self.update_last_will(self.state.create_last_will());
 
         loop {
             select! {
-              event = self.eventloop.poll() => self.handle_event(event, &node_tx).await,
+              event = self.eventloop.poll() => self.handle_event(event).await,
               Some(_) = self.stop_rx.recv() => break,
             }
         }
 
-        if timeout(Duration::from_secs(1), self.poll_until_offline(&node_tx)).await.is_err() {
-            self.on_offline(&node_tx).await;
+        if timeout(Duration::from_secs(1), self.poll_until_offline()).await.is_err() {
+            self.on_offline().await;
         }
 
-        _ = node_tx.send(EoNNodeMessage::Stopped);
-        info!("Edge node stopped. Node = {}", self.node.state.edge_node_id);
+        _ = self.client_state_tx.send(ClientStateMessage::Stopped).await;
+        info!("Edge node stopped. Node = {}", self.state.edge_node_id);
+        self.state.running.store(false, Ordering::SeqCst); 
     }
 }

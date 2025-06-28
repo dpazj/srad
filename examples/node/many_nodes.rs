@@ -43,8 +43,7 @@ async fn main() {
             handle
                 .register_device(format!("device-{j}"), device_metrics.clone())
                 .unwrap()
-                .enable()
-                .await;
+                .enable();
 
             tokio::spawn({
                 async move {
