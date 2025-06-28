@@ -14,9 +14,11 @@ use srad_types::{
 };
 use tokio::time::timeout;
 use utils::tester::{
-    create_test_ndeath_payload, test_ddeath_payload, test_graceful_shutdown, test_node_online,
+    create_test_ndeath_payload, test_graceful_shutdown, test_node_online,
     verify_dbirth_payload, verify_device_birth, verify_nbirth_payload,
 };
+
+use crate::utils::tester::{verify_device_death, verify_node_birth};
 
 #[tokio::test]
 async fn node_session() {
@@ -62,6 +64,7 @@ async fn device_session() {
         .unwrap();
 
     tokio::spawn(async move { eventloop.run().await });
+
     /* Add device and enable before node is online */
     handle
         .register_device(device1_name, NoMetricManager::new())
@@ -69,43 +72,19 @@ async fn device_session() {
         .enable();
 
     test_node_online(&mut broker, group_id, node_id, 0).await;
+    verify_device_birth(&mut broker, group_id, node_id, device1_name, 1).await;
 
-    let device_birth = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
-        .await
-        .unwrap()
-        .unwrap();
-
-    let (topic, payload) = match device_birth {
-        OutboundMessage::DeviceMessage { topic, payload } => (topic, payload),
-        _ => panic!(),
-    };
-    assert_eq!(
-        topic,
-        DeviceTopic::new(group_id, DeviceMessage::DBirth, node_id, device1_name)
-    );
-    verify_dbirth_payload(payload, 1);
-
+    /* Test node offline and then online */
     broker.tx_event.send(srad_client::Event::Offline).unwrap();
-
     let last_will = broker.last_will();
     last_will.unwrap();
-
     test_node_online(&mut broker, group_id, node_id, 1).await;
+    verify_device_birth(&mut broker, group_id, node_id, device1_name, 1).await;
 
-    let device_birth = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
-        .await
-        .unwrap()
-        .unwrap();
-
-    let (topic, payload) = match device_birth {
-        OutboundMessage::DeviceMessage { topic, payload } => (topic, payload),
-        _ => panic!(),
-    };
-    assert_eq!(
-        topic,
-        DeviceTopic::new(group_id, DeviceMessage::DBirth, node_id, device1_name)
-    );
-    verify_dbirth_payload(payload, 1);
+    /* Node rebirth */
+    handle.rebirth();
+    verify_node_birth(&mut broker, group_id, node_id, 1).await;
+    verify_device_birth(&mut broker, group_id, node_id, device1_name, 1).await;
 
     /* Add device while node is online */
     let dev = handle
@@ -114,25 +93,21 @@ async fn device_session() {
     dev.enable();
     verify_device_birth(&mut broker, group_id, node_id, device2_name, 2).await;
 
+    /* Disable device */
     dev.disable();
-    let device_death = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let (topic, payload) = match device_death {
-        OutboundMessage::DeviceMessage { topic, payload } => (topic, payload),
-        _ => panic!(),
-    };
-    assert_eq!(
-        topic,
-        DeviceTopic::new(
-            group_id,
-            srad_types::topic::DeviceMessage::DDeath,
-            node_id,
-            device2_name
-        )
-    );
-    test_ddeath_payload(payload, 3);
+    verify_device_death(&mut broker, group_id, node_id, device2_name, 3).await;
+
+    /* Enable device */
+    dev.enable();
+    verify_device_birth(&mut broker, group_id, node_id, device2_name, 4).await;
+
+    /* Manual device rebirth */
+    dev.rebirth();
+    verify_device_birth(&mut broker, group_id, node_id, device2_name, 5).await;
+
+    /* Remove device */
+    handle.unregister_device(dev).await;
+    verify_device_death(&mut broker, group_id, node_id, device2_name, 6).await;
 
     test_graceful_shutdown(&mut broker, &handle, group_id, node_id, 1).await;
 }

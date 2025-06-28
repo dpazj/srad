@@ -83,6 +83,31 @@ pub fn verify_dbirth_payload(payload: Payload, expected_seq: u64) {
     assert_ne!(payload.timestamp, None);
 }
 
+
+pub async fn verify_node_birth(
+    broker: &mut ChannelBroker,
+    group_id: &str,
+    node_id: &str,
+    expected_bdseq: i64,
+)
+{
+    let birth = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
+        .await
+        .unwrap()
+        .unwrap();
+
+    let (topic, payload) = match birth {
+        OutboundMessage::NodeMessage { topic, payload } => (topic, payload),
+        _ => panic!(),
+    };
+
+    assert_eq!(
+        topic,
+        NodeTopic::new(group_id, NodeMessage::NBirth, node_id)
+    );
+    verify_nbirth_payload(payload, expected_bdseq);
+}
+
 pub async fn test_node_online(
     broker: &mut ChannelBroker,
     group_id: &str,
@@ -124,21 +149,7 @@ pub async fn test_node_online(
         )
     }
 
-    let birth = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
-        .await
-        .unwrap()
-        .unwrap();
-
-    let (topic, payload) = match birth {
-        OutboundMessage::NodeMessage { topic, payload } => (topic, payload),
-        _ => panic!(),
-    };
-
-    assert_eq!(
-        topic,
-        NodeTopic::new(group_id, NodeMessage::NBirth, node_id)
-    );
-    verify_nbirth_payload(payload, expected_bdseq);
+    verify_node_birth(broker, group_id, node_id, expected_bdseq).await; 
 }
 
 pub async fn verify_device_birth(
@@ -163,6 +174,35 @@ pub async fn verify_device_birth(
     );
     verify_dbirth_payload(payload, expected_seq);
 }
+
+pub async fn verify_device_death(
+    broker: &mut ChannelBroker,
+    group_id: &str,
+    node_id: &str,
+    device_name: &str,
+    expected_seq: u64,
+) 
+{
+    let device_death = timeout(Duration::from_secs(1), broker.rx_outbound.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let (topic, payload) = match device_death {
+        OutboundMessage::DeviceMessage { topic, payload } => (topic, payload),
+        _ => panic!(),
+    };
+    assert_eq!(
+        topic,
+        DeviceTopic::new(
+            group_id,
+            srad_types::topic::DeviceMessage::DDeath,
+            node_id,
+            device_name 
+        )
+    );
+    test_ddeath_payload(payload, expected_seq);
+}
+
 
 // Test graceful shutdown using handle.cancel()
 pub async fn test_graceful_shutdown(
