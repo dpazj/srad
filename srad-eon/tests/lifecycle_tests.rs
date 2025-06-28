@@ -14,8 +14,8 @@ use srad_types::{
 };
 use tokio::time::timeout;
 use utils::tester::{
-    create_test_ndeath_payload, test_graceful_shutdown, test_node_online,
-    verify_dbirth_payload, verify_device_birth, verify_nbirth_payload,
+    create_test_ndeath_payload, test_graceful_shutdown, test_node_online, verify_dbirth_payload,
+    verify_device_birth, verify_nbirth_payload,
 };
 
 use crate::utils::tester::{verify_device_death, verify_node_birth};

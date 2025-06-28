@@ -10,11 +10,7 @@ use std::{
 use log::{info, warn};
 use srad_client::{DeviceMessage, DynClient, Message, MessageKind};
 use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
-use tokio::{
-    select,
-    sync::mpsc,
-    task,
-};
+use tokio::{select, sync::mpsc, task};
 
 use crate::{
     birth::{BirthInitializer, BirthObjectType},
