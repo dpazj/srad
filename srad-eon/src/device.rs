@@ -59,6 +59,9 @@ impl DeviceHandle {
         if !self.node_state.is_online() {
             return Err(PublishError::Offline);
         }
+        if !self.node_state.birthed() {
+            return Err(PublishError::UnBirthed);
+        }
         if !self.state.birthed.load(Ordering::Relaxed) {
             return Err(PublishError::UnBirthed);
         }
