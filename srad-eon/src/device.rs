@@ -8,11 +8,11 @@ use std::{
 };
 
 use log::{info, warn};
-use srad_client::{Client, DeviceMessage, DynClient, Message, MessageKind};
+use srad_client::{DeviceMessage, DynClient, Message, MessageKind};
 use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
 use tokio::{
     select,
-    sync::{mpsc, Mutex},
+    sync::mpsc,
     task,
 };
 
@@ -299,13 +299,6 @@ impl Device {
             }
         }
     }
-}
-
-enum ChannelMessage {
-    Birth(BirthType),
-    Death,
-    Removed,
-    SparkplugMessage(Message),
 }
 
 enum NodeStateMessage {
