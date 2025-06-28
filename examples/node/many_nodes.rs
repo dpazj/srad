@@ -20,12 +20,12 @@ async fn main() {
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
-        let opts = rumqtt::MqttOptions::new(node_name, "localhost", 1883);
+        let opts = rumqtt::MqttOptions::new(node_name.clone(), "localhost", 1883);
         let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
         let (eon, handle) = EoNBuilder::new(eventloop, client)
-            .with_group_id("iotech")
-            .with_node_id(format!("node-{i}"))
+            .with_group_id("foo")
+            .with_node_id(node_name)
             .with_metric_manager(NoMetricManager::new())
             .build()
             .unwrap();
