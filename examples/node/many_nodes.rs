@@ -23,7 +23,7 @@ async fn main() {
         let opts = rumqtt::MqttOptions::new(node_name, "localhost", 1883);
         let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
-        let (mut eon, handle) = EoNBuilder::new(eventloop, client)
+        let (eon, handle) = EoNBuilder::new(eventloop, client)
             .with_group_id("iotech")
             .with_node_id(format!("node-{i}"))
             .with_metric_manager(NoMetricManager::new())

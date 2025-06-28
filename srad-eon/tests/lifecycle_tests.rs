@@ -24,7 +24,7 @@ async fn node_session() {
     let node_id = "bar";
 
     let (channel_eventloop, client, mut broker) = ChannelEventLoop::new();
-    let (mut eventloop, node) = EoNBuilder::new(channel_eventloop, client)
+    let (eventloop, node) = EoNBuilder::new(channel_eventloop, client)
         .with_group_id(group_id)
         .with_node_id(node_id)
         .build()
@@ -55,7 +55,7 @@ async fn device_session() {
     let device2_name = "device2";
 
     let (channel_eventloop, client, mut broker) = ChannelEventLoop::new();
-    let (mut eventloop, handle) = EoNBuilder::new(channel_eventloop, client)
+    let (eventloop, handle) = EoNBuilder::new(channel_eventloop, client)
         .with_group_id(group_id)
         .with_node_id(node_id)
         .build()
@@ -167,7 +167,7 @@ async fn rebirth() {
     let device2_name = "dev2";
 
     let (channel_eventloop, client, mut broker) = ChannelEventLoop::new();
-    let (mut eventloop, handle) = EoNBuilder::new(channel_eventloop, client)
+    let (eventloop, handle) = EoNBuilder::new(channel_eventloop, client)
         .with_group_id(group_id)
         .with_node_id(node_id)
         .with_rebirth_cmd_cooldown(Duration::from_millis(0))
