@@ -222,7 +222,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             fn to_template_metric_value(self) -> Option<::srad_types::MetricValue> {
                 Some(::srad_types::Template::template_instance(&self).into())
             }
-            fn try_from_template_metric_value(value: Option<::srad_types::MetricValue>) -> Result<Self, ()> where Self: Sized { 
+            fn try_from_template_metric_value(value: Option<::srad_types::MetricValue>) -> Result<Self, ()> where Self: Sized {
                 match value {
                     Some(value) => {
                         Self::try_from(
@@ -248,7 +248,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
         impl ::srad_types::Template for #type_name {
 
-            fn template_definition() -> ::srad_types::TemplateDefinition 
+            fn template_definition() -> ::srad_types::TemplateDefinition
             {
                 let parameters = vec![
                     #(#definition_parameters),*
@@ -263,7 +263,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             }
 
-            fn template_instance(&self) -> ::srad_types::TemplateInstance 
+            fn template_instance(&self) -> ::srad_types::TemplateInstance
             {
                 let parameters = vec![
                    #(#instance_parameters),*
@@ -271,14 +271,14 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 let metrics = vec![
                    #(#instance_metrics),*
                 ];
-                ::srad_types::TemplateInstance{
+                ::srad_types::TemplateInstance {
                     template_ref: Self::template_name().to_owned(),
                     version: Self::template_version().map(|version| version.to_owned()),
                     metrics,
                     parameters
                 }
             }
-    
+
             // fn template_instance_from_difference(&self, other: &Self) -> Option<::srad_types::TemplateInstance>
             // {
             //     let mut parameters = Vec::new();
