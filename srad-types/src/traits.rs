@@ -1,6 +1,6 @@
 use crate::{
     metadata::MetaData,
-    payload::{self, DataType},
+    payload::DataType,
     value,
 };
 

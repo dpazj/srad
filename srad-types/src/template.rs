@@ -104,7 +104,7 @@ where
 //A trait to support recursive partial templates
 pub trait TemplateMetricValuePartial {
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>>;
-    //fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()>;
+    fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()>; 
 }
 
 macro_rules! impl_template_metric_value_partial {
@@ -117,6 +117,10 @@ macro_rules! impl_template_metric_value_partial {
                         return None
                     }
                     Some(Some(self.clone().into()))
+                }
+                fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()> {
+                    *self = <$ty>::try_from_template_metric_value(other)?;
+                    Ok(())
                 }
             }
         )*
@@ -131,6 +135,10 @@ macro_rules! impl_template_metric_value_partial {
                     }
                     Some(Some(self.clone().into()))
                 }
+                fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()> {
+                    *self = <$ty>::try_from_template_metric_value(other)?;
+                    Ok(())
+                }
             }
         )*
     };
@@ -141,13 +149,23 @@ impl_template_metric_value_partial!(bool, i8, i16, i32, i64, u8, u16, u32, u64, 
 
 impl<T> TemplateMetricValuePartial for Option<T>
 where
-    T: TemplateMetricValuePartial + Into<MetricValue> + PartialEq + Clone,
+    T: TemplateMetricValuePartial + TemplateMetricValue + Into<MetricValue> + PartialEq + Clone,
 {
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>> {
         if self == other {
             return None;
         }
         return Some(self.clone().map(|x| x.into()));
+    }
+
+    fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()> {
+        *self = match other {
+            Some(value) => {
+                Some(T::try_from_template_metric_value(Some(value))?)
+            },
+            None => None,
+        };
+        Ok(())
     }
 }
 
@@ -177,7 +195,6 @@ impl TemplateMetric {
         name: String,
         value: T,
     ) -> Self {
-        let test = Some(1u32);
         Self::new_template_metric_raw(
             name,
             T::default_datatype(),
@@ -323,21 +340,15 @@ pub trait TemplateMetadata {
     fn template_version() -> Option<&'static str> {
         None
     }
-    fn template_name() -> &'static str;
+    fn template_definition_metric_name() -> &'static str;
 }
 
 pub trait Template: TemplateMetadata {
     fn template_definition() -> TemplateDefinition;
     fn template_instance(&self) -> TemplateInstance;
 
-    //fn try_from_template_instance(instance: TemplateInstance) -> Result<Self, ()> where Self: Sized;
-
-    // // for each field provided in instance run field.update_from_metric()
-    // fn update_from_instance(&self, instance: TemplateInstance) -> Result<(), ()>;
-}
-
-pub trait PartialTemplate: Template {
     fn template_instance_from_difference(&self, other: &Self) -> Option<TemplateInstance>;
+    fn update_from_instance(&mut self, instance: TemplateInstance) -> Result<(), ()>;
 }
 
 impl<T> HasDataType for T

@@ -7,7 +7,7 @@ struct NestedTest {
 }
 
 impl TemplateMetadata for NestedTest {
-    fn template_name() -> &'static str {
+    fn template_definition_metric_name() -> &'static str {
         "nested_test"
     }
 }
@@ -26,14 +26,14 @@ struct Test {
 }
 
 impl TemplateMetadata for Test {
-    fn template_name() -> &'static str {
+    fn template_definition_metric_name() -> &'static str {
         "test"
     }
 }
 
 #[test]
 pub fn test() {
-    let a = Test {
+    let mut a = Test {
         x: 1,
         y: 1,
         z: Some(69),
@@ -61,8 +61,10 @@ pub fn test() {
 
     assert!(a_from_instance == a);
 
-    //let template_instance_diff = a.template_instance_from_difference(&b);
-    //println!("{template_instance_diff:#?}");
+    let template_instance_diff = a.template_instance_from_difference(&b);
+    println!("{template_instance_diff:#?}");
+
+    a.update_from_instance(template_instance_diff.unwrap()).unwrap();
 
     panic!("A")
 }

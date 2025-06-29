@@ -93,13 +93,16 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     let mut instance_metrics = Vec::new();
     let mut instance_parameters = Vec::new();
 
-    // let mut from_difference_metrics = Vec::new();
-    // let mut from_difference_parameters= Vec::new();
+    let mut from_difference_metrics = Vec::new();
+    let mut from_difference_parameters= Vec::new();
 
     let mut from_instance_defines = Vec::new();
     let mut from_instance_metric_match = Vec::new();
     let mut from_instance_parameter_match = Vec::new();
     let mut from_instance_init_struct = Vec::new();
+
+    let mut update_from_instance_metric_match = Vec::new();
+    let mut update_from_instance_parameter_match = Vec::new();
 
     for field in fields.named {
         let attrs = parse_builder_attributes(&field.attrs)?;
@@ -161,19 +164,31 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             );
 
-            // from_difference_parameters.push(
-            //     quote! {
-            //         if self.#field_ident != other.#field_ident {
-            //             parameters.push(
-            //                 ::srad_types::TemplateParameter::new_template_parameter(
-            //                     #name.to_string(),
-            //                     self.#field_ident.clone()
-            //                 )
-            //             )
-            //         }
-            //     }
-            // );
+            from_difference_parameters.push(
+                quote! {
+                    if self.#field_ident != other.#field_ident {
+                        parameters.push(
+                            ::srad_types::TemplateParameter::new_template_parameter(
+                                #name.to_string(),
+                                self.#field_ident.clone()
+                            )
+                        )
+                    }
+                }
+            );
+
+            update_from_instance_parameter_match.push(
+                quote! {
+                    #name => {
+                        self.#field_ident = ::srad_types::TemplateParameterValue::try_from_template_parameter_value(
+                            parameter.value.map(::srad_types::ParameterValue::from)
+                        )?
+                    },
+                }
+            );
+
         } else {
+
             definition_metrics.push(quote! {
                 ::srad_types::TemplateMetric::new_template_metric::<#ty>(
                     #name.to_string(),
@@ -198,19 +213,30 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             );
 
-            // from_difference_metrics.push(
-            //     quote! {
-            //         if let Some(value) = ::srad_types::TemplateMetricValuePartial::metric_value_if_ne(&self.#field_ident, &other.#field_ident) {
-            //             metrics.push(
-            //                 ::srad_types::TemplateMetric::new_template_metric_raw(
-            //                     #name.to_string(),
-            //                     <#ty as ::srad_types::traits::HasDataType>::default_datatype(),
-            //                     value
-            //                 )
-            //             )
-            //         }
-            //     }
-            // );
+            from_difference_metrics.push(
+                quote! {
+                    if let Some(value) = ::srad_types::TemplateMetricValuePartial::metric_value_if_ne(&self.#field_ident, &other.#field_ident) {
+                        metrics.push(
+                            ::srad_types::TemplateMetric::new_template_metric_raw(
+                                #name.to_string(),
+                                <#ty as ::srad_types::traits::HasDataType>::default_datatype(),
+                                value
+                            )
+                        )
+                    }
+                }
+            );
+
+            update_from_instance_metric_match.push(
+                quote! {
+                    #name => {
+                        ::srad_types::TemplateMetricValuePartial::try_update_from_metric_value(
+                            &mut self.#field_ident, 
+                            metric.value.map(::srad_types::MetricValue::from)
+                        )?
+                    },
+                }
+            );
         }
     }
 
@@ -236,15 +262,22 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             }
         }
 
-        // impl ::srad_types::TemplateMetricValuePartial for #type_name {
-        //     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<::srad_types::MetricValue>> {
-        //         if let Some(difference_instance) = ::srad_types::Template::template_instance_from_difference(self, other)
-        //         {
-        //             return Some(Some(difference_instance.into()))
-        //         }
-        //         return None
-        //     }
-        // }
+        impl ::srad_types::TemplateMetricValuePartial for #type_name {
+            fn metric_value_if_ne(&self, other: &Self) -> Option<Option<::srad_types::MetricValue>> {
+                if let Some(difference_instance) = ::srad_types::Template::template_instance_from_difference(self, other)
+                {
+                    return Some(Some(difference_instance.into()))
+                }
+                return None
+            }
+            fn try_update_from_metric_value(&mut self, value: Option<::srad_types::MetricValue>) -> Result<(), ()> {
+                let instance = match value {
+                    Some(val) => ::srad_types::TemplateInstance::try_from(val)?,
+                    None => return Ok(()) 
+                };
+                ::srad_types::Template::update_from_instance(self, instance)
+            }
+        }
 
         impl ::srad_types::Template for #type_name {
 
@@ -272,32 +305,62 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                    #(#instance_metrics),*
                 ];
                 ::srad_types::TemplateInstance {
-                    template_ref: Self::template_name().to_owned(),
+                    template_ref: Self::template_definition_metric_name().to_owned(),
                     version: Self::template_version().map(|version| version.to_owned()),
                     metrics,
                     parameters
                 }
             }
 
-            // fn template_instance_from_difference(&self, other: &Self) -> Option<::srad_types::TemplateInstance>
-            // {
-            //     let mut parameters = Vec::new();
-            //     let mut metrics = Vec::new();
+            fn template_instance_from_difference(&self, other: &Self) -> Option<::srad_types::TemplateInstance>
+            {
+                let mut parameters = Vec::new();
+                let mut metrics = Vec::new();
 
-            //     #(#from_difference_metrics)*
-            //     #(#from_difference_parameters)*
+                #(#from_difference_metrics)*
+                #(#from_difference_parameters)*
 
-            //     if parameters.is_empty() && metrics.is_empty() { 
-            //         return None
-            //     }
+                if parameters.is_empty() && metrics.is_empty() { 
+                    return None
+                }
 
-            //     Some(::srad_types::TemplateInstance{
-            //         name: Self::template_name().to_owned(),
-            //         version: Self::template_version().map(|version| version.to_owned()),
-            //         metrics,
-            //         parameters
-            //     })
-            // }
+                Some(::srad_types::TemplateInstance{
+                    template_ref: Self::template_definition_metric_name().to_owned(),
+                    version: Self::template_version().map(|version| version.to_owned()),
+                    metrics,
+                    parameters
+                })
+            }
+
+
+            fn update_from_instance(&mut self, instance: ::srad_types::TemplateInstance) -> Result<(), ()> {
+
+                if instance.template_ref != Self::template_definition_metric_name() {
+                    return Err(())
+                }
+
+                if instance.version.as_deref() != Self::template_version() {
+                    return Err(())
+                }
+
+                for parameter in instance.parameters {
+                    let name = parameter.name.ok_or(())?;
+                    match name.as_str() {
+                        #(#update_from_instance_parameter_match)*
+                        _ => return Err(())
+                    }
+                }
+
+                for metric in instance.metrics {
+                    let name = metric.name.ok_or(())?;
+                    match name.as_str() {
+                        #(#update_from_instance_metric_match)*
+                        _ => return Err(())
+                    }
+                }
+
+                Ok(())
+            }
 
         }
 
@@ -306,6 +369,10 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             type Error = ();
 
             fn try_from(value: ::srad_types::TemplateInstance) -> Result<Self, Self::Error> {
+
+                if value.template_ref != Self::template_definition_metric_name() {
+                    return Err(())
+                }
 
                 if value.version.as_deref() != Self::template_version() {
                     return Err(())
