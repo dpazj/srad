@@ -266,6 +266,7 @@ pub struct Node {
     birth_timestamp: u64,
     bdseq: u8,
     last_rebirth: Duration,
+    stale_timestamp: u64,
 }
 
 impl Node {
@@ -313,6 +314,7 @@ impl Node {
             store: None,
             device_created_cb: None,
             birth_timestamp: 0,
+            stale_timestamp: 0,
             bdseq: 0,
             last_rebirth: Duration::new(0, 0),
         };
@@ -407,6 +409,7 @@ impl Node {
         self.resequencer.reset();
         self.cancel_reorder_timeout();
         self.lifecycle_state = LifecycleState::Stale;
+        self.stale_timestamp = timestamp;
         if let Some(store) = &mut self.store {
             store.set_stale()
         };
@@ -493,8 +496,11 @@ impl Node {
         timestamp: u64,
         message: ResequenceableEvent,
     ) -> Result<(), RebirthReason> {
-        if timestamp < self.birth_timestamp {
-            debug!("Ignoring message for Node = ({:?}) as it's timestamp is before the current birth timestamp", self.id);
+        if timestamp < self.birth_timestamp || timestamp < self.stale_timestamp {
+            debug!(
+                "Ignoring message for Node = ({:?}) as it's timestamp indicates its an old message",
+                self.id
+            );
             return Ok(());
         }
 
