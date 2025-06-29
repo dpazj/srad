@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use quote::{quote, ToTokens};
-use syn::{parse_macro_input, Attribute, Data, DataEnum, DataUnion, DeriveInput, Error, Type, TypePath};
+use syn::{parse_macro_input, Attribute, Data, DataEnum, DataUnion, DeriveInput, Error};
 use proc_macro2;
 
 /// TODO 
@@ -88,6 +88,8 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
     let mut from_instance_defines = Vec::new();
     let mut from_instance_metric_match = Vec::new();
+    let mut from_instance_parameter_match = Vec::new();
+    let mut from_instance_init_struct= Vec::new();
 
     for field in fields.named {
         let attrs = parse_builder_attributes(&field.attrs)?;
@@ -116,6 +118,12 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             }
         );
 
+        from_instance_init_struct.push(
+            quote! {
+                #field_ident,
+            }
+        );
+
         if attrs.skip { continue }
 
         if attrs.parameter {
@@ -134,6 +142,16 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                         #name.to_string(), 
                         self.#field_ident.clone()
                     )
+                }
+            );
+
+            from_instance_parameter_match.push(
+                quote! {
+                    #name => {
+                        #field_ident = ::srad_types::TemplateParameterValue::try_from_template_parameter_value(
+                            parameter.value.map(::srad_types::ParameterValue::from)
+                        )?
+                    },
                 }
             );
 
@@ -170,6 +188,17 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             );
 
+            from_instance_metric_match.push(
+                quote! {
+                    #name => {
+                        #field_ident = ::srad_types::TemplateMetricValue::try_from_template_metric_value(
+                            metric.value.map(::srad_types::MetricValue::from)
+                        )?
+                    },
+                }
+            );
+
+
             // from_difference_metrics.push(
             //     quote! {
             //         if let Some(value) = ::srad_types::TemplateMetricValuePartial::metric_value_if_ne(&self.#field_ident, &other.#field_ident) {
@@ -183,16 +212,6 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             //         }
             //     }
             // );
-            from_instance_metric_match.push(
-                quote! {
-                    #name => {
-
-                        
-                        #field_ident
-                    }
-                }
-            );
-
         }
 
     }
@@ -204,6 +223,18 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
         impl ::srad_types::TemplateMetricValue for #type_name {
             fn to_template_metric_value(self) -> Option<::srad_types::MetricValue> {
                 Some(::srad_types::Template::template_instance(&self).into())
+            }
+            fn try_from_template_metric_value(value: Option<::srad_types::MetricValue>) -> Result<Self, ()> where Self: Sized { 
+                match value {
+                    Some(value) => {
+                        Self::try_from(
+                            ::srad_types::TemplateInstance::try_from(value)
+                            .map_err(|_|())?
+                        )
+                        .map_err(|_|())
+                    },
+                    None => Err(()),
+                }
             }
         }
 
@@ -228,7 +259,6 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     #(#definition_metrics),*
                 ];
                 ::srad_types::TemplateDefinition {
-                    name: Self::template_name().to_owned(),
                     version: Self::template_version().map(|version| version.to_owned()),
                     metrics,
                     parameters
@@ -244,7 +274,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                    #(#instance_metrics),*
                 ];
                 ::srad_types::TemplateInstance{
-                    name: Self::template_name().to_owned(),
+                    template_ref: Self::template_name().to_owned(),
                     version: Self::template_version().map(|version| version.to_owned()),
                     metrics,
                     parameters
@@ -279,27 +309,31 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
             fn try_from(value: ::srad_types::TemplateInstance) -> Result<Self, Self::Error> {
 
-                if value.name != Self::template_name() { 
-                    return Err(())
-                }
-
-                if value.version != Self::template_name() {
+                if value.version.as_deref() != Self::template_version() {
                     return Err(())
                 }
 
                 #(#from_instance_defines)*
 
-                for metric in value.metrics {
-                    let name = metric.name.ok_or(())?;
-                    let datatype = metric.datatype.ok_or(())?;
-                    match name {
-                        #(#from_instance_metric_match)*,
+                for parameter in value.parameters {
+                    let name = parameter.name.ok_or(())?;
+                    match name.as_str() {
+                        #(#from_instance_parameter_match)*
                         _ => return Err(())
                     }
-
                 }
 
+                for metric in value.metrics {
+                    let name = metric.name.ok_or(())?;
+                    match name.as_str() {
+                        #(#from_instance_metric_match)*
+                        _ => return Err(())
+                    }
+                }
 
+                Ok(Self {
+                    #(#from_instance_init_struct)*
+                })
             }
 
         }

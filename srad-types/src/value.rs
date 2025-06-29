@@ -11,7 +11,7 @@ use thiserror::Error;
 macro_rules! impl_wrapper_type_for_proto_value_type {
     ($new_type:ident, $wrapped_type:ty) => {
         #[derive(Debug, Clone)]
-        pub struct $new_type($wrapped_type);
+        pub struct $new_type(pub $wrapped_type);
 
         impl $new_type {
             pub fn new(inner: $wrapped_type) -> Self {

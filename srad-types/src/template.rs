@@ -47,6 +47,7 @@ where
 
 pub trait TemplateParameterValue {
     fn to_template_parameter_value(self) -> Option<ParameterValue>;
+    fn try_from_template_parameter_value(value: Option<ParameterValue>) -> Result<Self, ()> where Self: Sized;
 }
 
 impl<T> TemplateParameterValue for T
@@ -56,6 +57,15 @@ where
     fn to_template_parameter_value(self) -> Option<ParameterValue> {
         Some(T::into(self))
     }
+    
+    fn try_from_template_parameter_value(value: Option<ParameterValue>) -> Result<Self, ()> where Self: Sized {
+        match value {
+            Some(value) => {
+                Self::try_from(value).map_err(|_| ())
+            },
+            None => Err(()),
+        }
+    }
 }
 
 impl<T> TemplateParameterValue for Option<T>
@@ -64,6 +74,16 @@ where
 {
     fn to_template_parameter_value(self) -> Option<ParameterValue> {
         self.map(T::into)
+    }
+    
+    fn try_from_template_parameter_value(value: Option<ParameterValue>) -> Result<Self, ()> where Self: Sized {
+       match value {
+            Some(value) => {
+                let value = value.try_into().map_err(|_|())?;
+                Ok(Some(value))
+            },
+            None => Ok(None),
+        } 
     }
 }
 
@@ -160,11 +180,20 @@ impl TemplateParameter {
 
 #[derive(Debug)]
 pub struct TemplateDefinition {
-    pub name: String,
     pub version: Option<String>,
     pub metrics: Vec<TemplateMetric>,
     pub parameters: Vec<TemplateParameter>
 }
+
+impl HasDataType for TemplateDefinition
+{
+    fn supported_datatypes() -> &'static [DataType] {
+        static SUPPORTED_TYPES: [DataType;1] = [DataType::Template];
+        &SUPPORTED_TYPES
+    }
+}
+
+impl traits::MetricValue for TemplateDefinition { }
 
 impl From<TemplateDefinition> for payload::Template {
     fn from(value: TemplateDefinition) -> Self {
@@ -184,13 +213,48 @@ impl From<TemplateDefinition> for MetricValue {
     }
 }
 
+impl TryFrom<MetricValue> for TemplateDefinition{
+    type Error = ();
+
+    fn try_from(value: MetricValue) -> Result<Self, Self::Error> {
+
+        if let metric::Value::TemplateValue(template)  = value.0 {
+            // [tck-id-payloads-template-definition-ref] A Template Definition MUST omit the template_ref field
+            if template.template_ref.is_some() { return Err(()) }
+            // [tck-id-payloads-template-definition-is-definition] A Template Definition MUST have is_definition set to true.
+            if template.is_definition.unwrap_or(false) { return Err(()) }
+            Ok(TemplateDefinition {
+                version: template.version,
+                metrics: template.metrics,
+                parameters: template.parameters,
+            })
+        } 
+        else 
+        {
+            return Err(())
+        }
+    }
+
+}
+
 #[derive(Debug)]
 pub struct TemplateInstance {
-    pub name: String,
+    //name of the metric that represents the template definition
+    pub template_ref: String,
     pub version: Option<String>,
     pub metrics: Vec<TemplateMetric>,
     pub parameters: Vec<TemplateParameter>
 }
+
+impl HasDataType for TemplateInstance
+{
+    fn supported_datatypes() -> &'static [DataType] {
+        static SUPPORTED_TYPES: [DataType;1] = [DataType::Template];
+        &SUPPORTED_TYPES
+    }
+}
+
+impl traits::MetricValue for TemplateInstance { }
 
 impl From<TemplateInstance> for payload::Template {
     fn from(value: TemplateInstance) -> Self {
@@ -198,7 +262,7 @@ impl From<TemplateInstance> for payload::Template {
             version: value.version, 
             metrics: value.metrics, 
             parameters: value.parameters, 
-            template_ref: Some(value.name), 
+            template_ref: Some(value.template_ref), 
             is_definition: Some(false)
         }
     }
@@ -207,6 +271,29 @@ impl From<TemplateInstance> for payload::Template {
 impl From<TemplateInstance> for MetricValue {
     fn from(value: TemplateInstance) -> Self {
         MetricValue::new(metric::Value::TemplateValue(value.into()))
+    }
+}
+
+impl TryFrom<MetricValue> for TemplateInstance {
+    type Error = ();
+
+    fn try_from(value: MetricValue) -> Result<Self, Self::Error> {
+
+        if let metric::Value::TemplateValue(template)  = value.0 {
+            //[tck-id-payloads-template-instance-is-definition] A Template Instance MUST have is_definition set to false.
+            if template.is_definition.unwrap_or(true) { return Err(()) }
+            let template_ref= template.template_ref.ok_or(())?;
+            Ok(TemplateInstance {
+                template_ref,
+                version: template.version,
+                metrics: template.metrics,
+                parameters: template.parameters,
+            })
+        } 
+        else 
+        {
+            return Err(())
+        }
     }
 }
 
