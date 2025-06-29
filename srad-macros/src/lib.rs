@@ -1,16 +1,8 @@
 use std::collections::HashSet;
 
+use proc_macro2;
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, Attribute, Data, DataEnum, DataUnion, DeriveInput, Error};
-use proc_macro2;
-
-/// TODO 
-/// - attributes 
-///     - default
-///     - rename 
-///     - is parameter
-///     - metric type override 
-///   
 
 #[derive(Default)]
 struct TemplateFieldAttributes {
@@ -22,22 +14,21 @@ struct TemplateFieldAttributes {
 
 fn parse_builder_attributes(attrs: &[Attribute]) -> syn::Result<TemplateFieldAttributes> {
     let mut field_attrs = TemplateFieldAttributes::default();
-    
+
     for attr in attrs {
         if !attr.path().is_ident("template") {
             continue;
         }
 
         attr.parse_nested_meta(|meta| {
-
             if meta.path.is_ident("skip") {
                 field_attrs.skip = true;
-                return Ok(())
+                return Ok(());
             }
 
             if meta.path.is_ident("parameter") {
                 field_attrs.parameter = true;
-                return Ok(())
+                return Ok(());
             }
 
             if meta.path.is_ident("default") {
@@ -51,34 +42,53 @@ fn parse_builder_attributes(attrs: &[Attribute]) -> syn::Result<TemplateFieldAtt
                 let value = meta.value()?;
                 let lit_string: syn::LitStr = value.parse()?;
                 field_attrs.rename = Some(lit_string.value());
-                return Ok(())
+                return Ok(());
             }
 
             Err(meta.error("Unrecognised template attribute"))
         })?;
     }
-    
+
     Ok(field_attrs)
 }
 
 fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
-
     let data_struct = match input.data {
         Data::Struct(variant_data) => variant_data,
-        Data::Enum(DataEnum{ enum_token, .. }) => return Err(Error::new_spanned(enum_token, "Template can not be derived for an Enum")),
-        Data::Union(DataUnion { union_token, ..}) => return Err(Error::new_spanned(union_token, "Template can not be derived for a Union")),
+        Data::Enum(DataEnum { enum_token, .. }) => {
+            return Err(Error::new_spanned(
+                enum_token,
+                "Template can not be derived for an Enum",
+            ))
+        }
+        Data::Union(DataUnion { union_token, .. }) => {
+            return Err(Error::new_spanned(
+                union_token,
+                "Template can not be derived for a Union",
+            ))
+        }
     };
 
     let fields = match data_struct.fields {
         syn::Fields::Named(fields_named) => fields_named,
-        syn::Fields::Unnamed(fields_unnamed) => return Err(Error::new_spanned(fields_unnamed, "Template can not be derived for a tuple struct with Unnamed Fields")),
-        syn::Fields::Unit => return Err(Error::new_spanned(&data_struct.fields, "Template does not support unit structs")),
+        syn::Fields::Unnamed(fields_unnamed) => {
+            return Err(Error::new_spanned(
+                fields_unnamed,
+                "Template can not be derived for a tuple struct with Unnamed Fields",
+            ))
+        }
+        syn::Fields::Unit => {
+            return Err(Error::new_spanned(
+                &data_struct.fields,
+                "Template does not support unit structs",
+            ))
+        }
     };
 
     let mut unique_names = HashSet::with_capacity(fields.named.len());
 
     let mut definition_metrics = Vec::new();
-    let mut definition_parameters= Vec::new();
+    let mut definition_parameters = Vec::new();
 
     let mut instance_metrics = Vec::new();
     let mut instance_parameters = Vec::new();
@@ -89,7 +99,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     let mut from_instance_defines = Vec::new();
     let mut from_instance_metric_match = Vec::new();
     let mut from_instance_parameter_match = Vec::new();
-    let mut from_instance_init_struct= Vec::new();
+    let mut from_instance_init_struct = Vec::new();
 
     for field in fields.named {
         let attrs = parse_builder_attributes(&field.attrs)?;
@@ -97,13 +107,15 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
         let ty = field.ty.clone();
         let name = if let Some(rename) = attrs.rename {
             rename
-        }
-        else {
+        } else {
             field.ident.as_ref().unwrap().to_string()
         };
 
         if !unique_names.insert(name.clone()) {
-            return Err(Error::new_spanned(field.ident, format!("Duplicate name provided - {name}")))
+            return Err(Error::new_spanned(
+                field.ident,
+                format!("Duplicate name provided - {name}"),
+            ));
         }
 
         let default = if let Some(default) = attrs.default {
@@ -112,38 +124,32 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             quote! { <#ty as Default>::default() }
         };
 
-        from_instance_defines.push(
-            quote! {
-                let mut #field_ident = #default;
-            }
-        );
+        from_instance_defines.push(quote! {
+            let mut #field_ident = #default;
+        });
 
-        from_instance_init_struct.push(
-            quote! {
-                #field_ident,
-            }
-        );
+        from_instance_init_struct.push(quote! {
+            #field_ident,
+        });
 
-        if attrs.skip { continue }
+        if attrs.skip {
+            continue;
+        }
 
         if attrs.parameter {
-            definition_parameters.push(
-                quote! {
-                    ::srad_types::TemplateParameter::new_template_parameter::<#ty>(
-                        #name.to_string(), 
-                        #default 
-                    )
-                }
-            );
+            definition_parameters.push(quote! {
+                ::srad_types::TemplateParameter::new_template_parameter::<#ty>(
+                    #name.to_string(),
+                    #default
+                )
+            });
 
-            instance_parameters.push(
-                quote! {
-                    ::srad_types::TemplateParameter::new_template_parameter(
-                        #name.to_string(), 
-                        self.#field_ident.clone()
-                    )
-                }
-            );
+            instance_parameters.push(quote! {
+                ::srad_types::TemplateParameter::new_template_parameter(
+                    #name.to_string(),
+                    self.#field_ident.clone()
+                )
+            });
 
             from_instance_parameter_match.push(
                 quote! {
@@ -160,33 +166,27 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             //         if self.#field_ident != other.#field_ident {
             //             parameters.push(
             //                 ::srad_types::TemplateParameter::new_template_parameter(
-            //                     #name.to_string(), 
+            //                     #name.to_string(),
             //                     self.#field_ident.clone()
             //                 )
             //             )
-            //         } 
+            //         }
             //     }
             // );
+        } else {
+            definition_metrics.push(quote! {
+                ::srad_types::TemplateMetric::new_template_metric::<#ty>(
+                    #name.to_string(),
+                    #default
+                )
+            });
 
-        }
-        else {
-            definition_metrics.push(
-                quote! {
-                    ::srad_types::TemplateMetric::new_template_metric::<#ty>(
-                        #name.to_string(), 
-                        #default
-                    )
-                }
-            );
-
-            instance_metrics.push(
-                quote! {
-                    ::srad_types::TemplateMetric::new_template_metric(
-                        #name.to_string(), 
-                        self.#field_ident.clone()
-                    )
-                }
-            );
+            instance_metrics.push(quote! {
+                ::srad_types::TemplateMetric::new_template_metric(
+                    #name.to_string(),
+                    self.#field_ident.clone()
+                )
+            });
 
             from_instance_metric_match.push(
                 quote! {
@@ -198,13 +198,12 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             );
 
-
             // from_difference_metrics.push(
             //     quote! {
             //         if let Some(value) = ::srad_types::TemplateMetricValuePartial::metric_value_if_ne(&self.#field_ident, &other.#field_ident) {
             //             metrics.push(
             //                 ::srad_types::TemplateMetric::new_template_metric_raw(
-            //                     #name.to_string(), 
+            //                     #name.to_string(),
             //                     <#ty as ::srad_types::traits::HasDataType>::default_datatype(),
             //                     value
             //                 )
@@ -213,7 +212,6 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             //     }
             // );
         }
-
     }
 
     let type_name = &input.ident;
@@ -343,7 +341,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 }
 
 #[proc_macro_derive(Template, attributes(template))]
-pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream{
+pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match try_template(input) {
         Ok(tokens) => tokens,

@@ -21,8 +21,8 @@ mod value;
 pub use metadata::*;
 pub use property_set::*;
 pub use quality::*;
-pub use value::*;
 pub use template::*;
+pub use value::*;
 
 pub use srad_macros::Template;
 

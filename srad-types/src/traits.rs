@@ -1,4 +1,8 @@
-use crate::{metadata::MetaData, payload::{self, DataType}, value};
+use crate::{
+    metadata::MetaData,
+    payload::{self, DataType},
+    value,
+};
 
 /// Trait used to query the Sparkplug datatype(s) that an implementing type supports
 pub trait HasDataType {
@@ -15,8 +19,10 @@ pub trait HasDataType {
     }
 }
 
-impl<T> HasDataType for Option<T> where T: HasDataType {
-
+impl<T> HasDataType for Option<T>
+where
+    T: HasDataType,
+{
     fn supported_datatypes() -> &'static [DataType] {
         T::supported_datatypes()
     }
@@ -24,7 +30,6 @@ impl<T> HasDataType for Option<T> where T: HasDataType {
     fn default_datatype() -> DataType {
         T::default_datatype()
     }
-
 }
 
 /// Trait used to represent that a type can represent a [value::MetricValue]
@@ -57,4 +62,3 @@ pub trait ParameterValue:
     TryFrom<value::ParameterValue> + Into<value::ParameterValue> + HasDataType
 {
 }
-
