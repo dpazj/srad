@@ -1,6 +1,6 @@
 use srad::{
     client_rumqtt as rumqtt,
-    eon::{EoNBuilder, NoMetricManager, SimpleMetricManager},
+    eon::{EoNBuilder, NoMetricManager, SimpleMetricBuilder, SimpleMetricManager},
 };
 use std::time::Duration;
 
@@ -36,7 +36,7 @@ async fn main() {
             for k in 0..PER_DEVICE_METRIC_COUNT {
                 metrics.push(
                     device_metrics
-                        .register_metric(format!("metric-{k}"), 0_u64)
+                        .register_metric(SimpleMetricBuilder::new(format!("metric-{k}"), 0_u64))
                         .unwrap(),
                 );
             }
