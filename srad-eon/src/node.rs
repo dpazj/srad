@@ -28,35 +28,66 @@ use crate::{
     birth::BirthObjectType, device::DeviceMap, error::DeviceRegistrationError,
     metric_manager::manager::DynNodeMetricManager, BirthInitializer, BirthMetricDetails, BirthType,
     DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError,
-    PublishMetric,
+    PublishMetric, StateError,
 };
 
 pub(crate) struct EoNConfig {
     node_rebirth_request_cooldown: Duration,
 }
 
+struct EoNStateInner {
+    seq: u8,
+    online: bool,
+    birthed: bool
+}
+
 pub(crate) struct EoNState {
-    bdseq: AtomicU8,
-    seq: AtomicU8,
-    online: AtomicBool,
     running: AtomicBool,
-    birthed: AtomicBool,
+    bdseq: AtomicU8,
+    inner: Mutex<EoNStateInner>,
     pub group_id: String,
     pub edge_node_id: String,
     pub ndata_topic: NodeTopic,
 }
 
 impl EoNState {
-    pub(crate) fn get_seq(&self) -> u64 {
-        self.seq.fetch_add(1, Ordering::Relaxed) as u64
+
+    pub(crate) fn get_next_seq(&self) -> Result<u64, StateError> {
+        let mut state = self.inner.lock().unwrap();
+        if !state.online { return Err(StateError::Offline) }
+        if !state.birthed { return Err(StateError::UnBirthed) }
+        state.seq = state.seq.wrapping_add(1);
+        Ok(state.seq as u64)
     }
 
-    pub(crate) fn is_online(&self) -> bool {
-        self.online.load(Ordering::SeqCst)
+    fn online_swap(&self, online: bool) -> bool {
+        let mut state = self.inner.lock().unwrap();
+        let old_online_state = state.online; 
+        state.online = online;
+        old_online_state
     }
 
-    pub(crate) fn birthed(&self) -> bool {
-        self.birthed.load(Ordering::SeqCst)
+    fn is_online(&self) -> bool {
+        self.inner.lock().unwrap().online
+    }
+
+    fn set_dead(&self) {
+        let mut state = self.inner.lock().unwrap();
+        state.birthed = false;
+    }
+
+    fn birthed(&self) -> bool {
+        self.inner.lock().unwrap().birthed
+    } 
+
+    fn start_birth(&self) {
+        let mut state = self.inner.lock().unwrap();
+        state.birthed = false;
+        state.seq = 0;
+    } 
+
+    fn birth_completed(&self) {
+        self.inner.lock().unwrap().birthed = true
     }
 
     fn birth_topic(&self) -> NodeTopic {
@@ -193,17 +224,7 @@ impl NodeHandle {
         self.devices.lock().unwrap().remove_device(name)
     }
 
-    fn check_publish_state(&self) -> Result<(), PublishError> {
-        if !self.state.is_online() {
-            return Err(PublishError::Offline);
-        }
-        if !self.state.birthed() {
-            return Err(PublishError::UnBirthed);
-        }
-        Ok(())
-    }
-
-    fn publish_metrics_to_payload(&self, metrics: Vec<PublishMetric>) -> Payload {
+    fn publish_metrics_to_payload(&self, seq: u64, metrics: Vec<PublishMetric>) -> Payload {
         let timestamp = timestamp();
         let mut payload_metrics = Vec::with_capacity(metrics.len());
         for x in metrics.into_iter() {
@@ -212,7 +233,7 @@ impl NodeHandle {
         Payload {
             timestamp: Some(timestamp),
             metrics: payload_metrics,
-            seq: Some(self.state.get_seq()),
+            seq: Some(seq),
             uuid: None,
             body: None,
         }
@@ -227,17 +248,16 @@ impl MetricPublisher for NodeHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        self.check_publish_state()?;
         match self
             .client
             .try_publish_node_message(
                 self.state.ndata_topic.clone(),
-                self.publish_metrics_to_payload(metrics),
+                self.publish_metrics_to_payload(self.state.get_next_seq()?, metrics),
             )
             .await
         {
             Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::Offline),
+            Err(_) => Err(PublishError::State(StateError::Offline)),
         }
     }
 
@@ -248,17 +268,16 @@ impl MetricPublisher for NodeHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        self.check_publish_state()?;
         match self
             .client
             .publish_node_message(
                 self.state.ndata_topic.clone(),
-                self.publish_metrics_to_payload(metrics),
+                self.publish_metrics_to_payload(self.state.get_next_seq()?, metrics),
             )
             .await
         {
             Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::Offline),
+            Err(_) => Err(PublishError::State(StateError::Offline)),
         }
     }
 }
@@ -310,15 +329,13 @@ impl Node {
 
     async fn node_birth(&self) {
         /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
-        self.state.birthed.store(false, Ordering::SeqCst);
-        self.state.seq.store(0, Ordering::SeqCst);
+        self.state.start_birth();
         let bdseq = self.state.bdseq.load(Ordering::SeqCst) as i64;
 
         let payload = self.generate_birth_payload(bdseq, 0);
         let topic = self.state.birth_topic();
-        self.state.seq.store(1, Ordering::SeqCst);
         match self.client.publish_node_message(topic, payload).await {
-            Ok(_) => self.state.birthed.store(true, Ordering::SeqCst),
+            Ok(_) => self.state.birth_completed(),
             Err(_) => error!("Publishing birth message failed"),
         }
     }
@@ -330,7 +347,7 @@ impl Node {
     }
 
     async fn rebirth(&self) {
-        if !self.state.birthed.load(Ordering::SeqCst) {
+        if !self.state.birthed() {
             return;
         }
         info!("Re-Birthing Node. Node = {}", self.state.edge_node_id);
@@ -342,15 +359,16 @@ impl Node {
     }
 
     fn death(&self) {
-        self.state.birthed.store(false, Ordering::SeqCst);
+        self.state.set_dead();
         self.state.bdseq.fetch_add(1, Ordering::SeqCst);
         self.devices.lock().unwrap().on_death();
     }
 
     async fn on_online(&self) {
-        if self.state.online.swap(true, Ordering::SeqCst) {
+        if self.state.online_swap(true) {
             return;
         }
+
         info!("Edge node online. Node = {}", self.state.edge_node_id);
         let sub_topics = self.state.sub_topics();
 
@@ -360,9 +378,10 @@ impl Node {
     }
 
     fn on_offline(&self, will_sender: oneshot::Sender<LastWill>) {
-        if !self.state.online.swap(false, Ordering::SeqCst) {
+        if !self.state.online_swap(false) {
             return;
         }
+
         info!("Edge node offline. Node = {}", self.state.edge_node_id);
         self.death();
         let new_lastwill = self.state.create_last_will();
@@ -484,11 +503,9 @@ impl EoN {
         let (stop_tx, stop_rx) = mpsc::channel(1);
 
         let state = Arc::new(EoNState {
-            seq: AtomicU8::new(0),
-            bdseq: AtomicU8::new(0),
             running: AtomicBool::new(false),
-            online: AtomicBool::new(false),
-            birthed: AtomicBool::new(false),
+            bdseq: AtomicU8::new(0),
+            inner: Mutex::new(EoNStateInner { seq: 0, online: false, birthed: false }),
             ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
             group_id,
             edge_node_id: node_id,

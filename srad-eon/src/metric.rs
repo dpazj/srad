@@ -10,15 +10,22 @@ use srad_types::{traits, MetricId, MetricValue};
 
 use thiserror::Error;
 
+use crate::StateError;
+
 #[derive(Debug, Error)]
 pub enum PublishError {
-    #[error("Connection state is Offline")]
-    Offline,
     #[error("No metrics provided.")]
     NoMetrics,
-    #[error("The node or device is not birthed.")]
-    UnBirthed,
+    #[error("State Error: {0}.")]
+    State(StateError)
 }
+
+impl From<StateError> for PublishError {
+    fn from(value: StateError) -> Self {
+        PublishError::State(value)
+    }
+}
+
 
 /// A trait for publishing metrics to the network.
 ///
