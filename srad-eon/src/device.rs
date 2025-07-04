@@ -218,8 +218,14 @@ impl Device {
 
         self.state.birthed.store(false, Ordering::SeqCst);
 
-        if publish {
+        info!(
+            "Device dead. Node = {}, Device = {}",
+            self.eon_state.edge_node_id, self.state.name
+        );
 
+        if publish {
+            //getting the sequence can only fail if the node is no longer birthed/offline
+            //in this case we cant/shouldn't publish
             let seq = match self.eon_state.get_next_seq() {
                 Ok(seq) => seq,
                 Err(_) => return,
@@ -239,10 +245,7 @@ impl Device {
                 )
                 .await;
         }
-        info!(
-            "Device dead. Node = {}, Device = {}",
-            self.eon_state.edge_node_id, self.state.name
-        );
+
     }
 
     async fn handle_sparkplug_message(&self, message: Message, handle: DeviceHandle) {
