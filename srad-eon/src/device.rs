@@ -285,15 +285,16 @@ impl Device {
         loop {
             select! {
                 biased;
-                Some(state_update) = self.node_state_rx.recv() => {
-                    match state_update {
-                        NodeStateMessage::Birth(birth_type) => self.birth(&birth_type).await,
-                        NodeStateMessage::Death => self.death(false).await,
-                        NodeStateMessage::Removed => {
-                            self.death(true).await;
-                            break;
-                        },
-                    }
+                maybe_state_update = self.node_state_rx.recv() => match maybe_state_update {
+                    Some(state_update) => match state_update {
+                            NodeStateMessage::Birth(birth_type) => self.birth(&birth_type).await,
+                            NodeStateMessage::Death => self.death(false).await,
+                            NodeStateMessage::Removed => {
+                                self.death(true).await;
+                                break;
+                            },
+                    },
+                    None => break, //Node has dropped tx
                 },
                 Some(request) = self.handle_request_rx.recv() => {
                     match request {
@@ -302,7 +303,11 @@ impl Device {
                         DeviceHandleRequest::Rebirth => self.birth(&BirthType::Rebirth).await,
                     }
                 },
-                Some(message) = self.device_message_rx.recv() => self.handle_sparkplug_message(message, self.create_handle()).await,
+                maybe_message = self.device_message_rx.recv() => match maybe_message {
+                    Some(message) => self.handle_sparkplug_message(message, self.create_handle()).await,
+                    None => break,
+                }
+
             }
         }
     }
@@ -422,7 +427,7 @@ impl DeviceMap {
     }
 
     pub(crate) fn birth_devices(&self, birth_type: BirthType) {
-        info!("Birthing Devices. Type = {:?}", birth_type);
+        info!("Birthing Devices. Type = {birth_type:?}");
         for entry in self.devices.values() {
             _ = entry
                 .node_state_tx

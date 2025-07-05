@@ -795,7 +795,7 @@ impl Application {
     }
 
     fn create_node(&mut self, id: NodeIdentifier) -> NodeHandle {
-        info!("Creating new Node = ({:?})", id);
+        info!("Creating new Node = ({id:?})");
         let id = Arc::new(id);
 
         let (mut node, handle) = Node::new(id.clone(), self.client.clone(), self.config.clone());

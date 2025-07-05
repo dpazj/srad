@@ -458,15 +458,19 @@ impl Node {
         loop {
             select! {
                 biased;
-                Some(state_update) = self.client_state_rx.recv() => {
-                    match state_update {
+                maybe_state_update = self.client_state_rx.recv() => match maybe_state_update {
+                    Some (state_update) => match state_update {
                         ClientStateMessage::Online => self.on_online().await,
                         ClientStateMessage::Offline(sender) => self.on_offline(sender),
                         ClientStateMessage::Stopped => break
-                    }
+                    },
+                    None => break, //EoN has been dropped
                 },
                 Some(_) = self.rebirth_request_rx.recv() => self.rebirth().await,
-                Some(message) = self.node_message_rx.recv() => self.on_sparkplug_message(message, self.create_node_handle()).await,
+                maybe_message = self.node_message_rx.recv() => match maybe_message {
+                    Some(message) => self.on_sparkplug_message(message, self.create_node_handle()).await,
+                    None => break, //EoN has been dropped
+                },
             }
         }
     }
