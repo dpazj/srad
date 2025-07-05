@@ -299,7 +299,7 @@ impl Device {
                     Some(message) => self.handle_sparkplug_message(message, self.create_handle()).await,
                     None => break,
                 }
-                
+
             }
         }
     }
