@@ -67,10 +67,10 @@ impl From<StatePayload> for Vec<u8> {
     fn from(value: StatePayload) -> Self {
         match value {
             StatePayload::Online { timestamp } => {
-                format!("{{\"online\" : true, \"timestamp\" : {}}}", timestamp).into()
+                format!("{{\"online\" : true, \"timestamp\" : {timestamp}}}").into()
             }
             StatePayload::Offline { timestamp } => {
-                format!("{{\"online\" : false, \"timestamp\" : {}}}", timestamp).into()
+                format!("{{\"online\" : false, \"timestamp\" : {timestamp}}}").into()
             }
         }
     }
