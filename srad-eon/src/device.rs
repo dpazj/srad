@@ -418,7 +418,7 @@ impl DeviceMap {
     }
 
     pub(crate) fn birth_devices(&self, birth_type: BirthType) {
-        info!("Birthing Devices. Type = {:?}", birth_type);
+        info!("Birthing Devices. Type = {birth_type:?}");
         for entry in self.devices.values() {
             _ = entry
                 .node_state_tx
