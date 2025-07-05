@@ -38,7 +38,7 @@ pub(crate) struct EoNConfig {
 struct EoNStateInner {
     seq: u8,
     online: bool,
-    birthed: bool
+    birthed: bool,
 }
 
 pub(crate) struct EoNState {
@@ -51,18 +51,21 @@ pub(crate) struct EoNState {
 }
 
 impl EoNState {
-
     pub(crate) fn get_next_seq(&self) -> Result<u64, StateError> {
         let mut state = self.inner.lock().unwrap();
-        if !state.online { return Err(StateError::Offline) }
-        if !state.birthed { return Err(StateError::UnBirthed) }
+        if !state.online {
+            return Err(StateError::Offline);
+        }
+        if !state.birthed {
+            return Err(StateError::UnBirthed);
+        }
         state.seq = state.seq.wrapping_add(1);
         Ok(state.seq as u64)
     }
 
     fn online_swap(&self, online: bool) -> bool {
         let mut state = self.inner.lock().unwrap();
-        let old_online_state = state.online; 
+        let old_online_state = state.online;
         state.online = online;
         old_online_state
     }
@@ -78,13 +81,13 @@ impl EoNState {
 
     fn birthed(&self) -> bool {
         self.inner.lock().unwrap().birthed
-    } 
+    }
 
     fn start_birth(&self) {
         let mut state = self.inner.lock().unwrap();
         state.birthed = false;
         state.seq = 0;
-    } 
+    }
 
     fn birth_completed(&self) {
         self.inner.lock().unwrap().birthed = true
@@ -505,7 +508,11 @@ impl EoN {
         let state = Arc::new(EoNState {
             running: AtomicBool::new(false),
             bdseq: AtomicU8::new(0),
-            inner: Mutex::new(EoNStateInner { seq: 0, online: false, birthed: false }),
+            inner: Mutex::new(EoNStateInner {
+                seq: 0,
+                online: false,
+                birthed: false,
+            }),
             ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
             group_id,
             edge_node_id: node_id,

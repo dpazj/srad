@@ -37,7 +37,6 @@ pub(crate) enum BirthType {
     Rebirth,
 }
 
-
 #[derive(Debug, Error)]
 pub enum StateError {
     #[error("Connection state is Offline")]

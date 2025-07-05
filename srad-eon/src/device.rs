@@ -143,7 +143,6 @@ pub struct Device {
 }
 
 impl Device {
-
     fn generate_birth_payload(&self, seq: u64) -> Payload {
         let mut birth_initializer = BirthInitializer::new(BirthObjectType::Device(self.state.id));
         self.dev_impl.initialise_birth(&mut birth_initializer);
@@ -179,11 +178,9 @@ impl Device {
             return;
         }
 
-        let seq =  match self.eon_state.get_next_seq() {
+        let seq = match self.eon_state.get_next_seq() {
             Ok(seq) => seq,
-            Err(_) => {
-                return
-            },
+            Err(_) => return,
         };
 
         self.state.birthed.store(false, Ordering::SeqCst);
@@ -245,7 +242,6 @@ impl Device {
                 )
                 .await;
         }
-
     }
 
     async fn handle_sparkplug_message(&self, message: Message, handle: DeviceHandle) {

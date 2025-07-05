@@ -17,7 +17,7 @@ pub enum PublishError {
     #[error("No metrics provided.")]
     NoMetrics,
     #[error("State Error: {0}.")]
-    State(StateError)
+    State(StateError),
 }
 
 impl From<StateError> for PublishError {
@@ -25,7 +25,6 @@ impl From<StateError> for PublishError {
         PublishError::State(value)
     }
 }
-
 
 /// A trait for publishing metrics to the network.
 ///
