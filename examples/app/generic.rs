@@ -58,7 +58,11 @@ impl MetricStore for MetricStoreImpl {
                 "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
                 self.node, self.device, id, value
             );
-            if self.metric_types.insert(id, birth_details.datatype).is_some() {
+            if self
+                .metric_types
+                .insert(id, birth_details.datatype)
+                .is_some()
+            {
                 return Err(StateUpdateError::InvalidValue);
             }
         }
