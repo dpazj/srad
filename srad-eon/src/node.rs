@@ -24,10 +24,7 @@ use tokio::{
 };
 
 use crate::{
-    birth::BirthObjectType, device::DeviceMap, error::DeviceRegistrationError,
-    metric_manager::manager::DynNodeMetricManager, BirthInitializer, BirthMetricDetails, BirthType,
-    DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError,
-    PublishMetric, StateError,
+    birth::BirthObjectType, builder, device::DeviceMap, error::DeviceRegistrationError, metric_manager::manager::DynNodeMetricManager, BirthInitializer, BirthMetricDetails, BirthType, DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError, PublishMetric, StateError
 };
 
 pub(crate) struct EoNConfig {
@@ -284,6 +281,7 @@ impl MetricPublisher for NodeHandle {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TemplateRegistry {
     templates: HashMap<String, TemplateDefinition>
 }
@@ -328,6 +326,8 @@ struct Node {
     stop_tx: mpsc::Sender<EoNShutdown>,
     last_node_rebirth_request: Duration,
 
+    template_registry: Arc<TemplateRegistry>,
+
     rebirth_request_tx: mpsc::Sender<()>,
 
     node_message_rx: mpsc::UnboundedReceiver<Message>,
@@ -336,9 +336,10 @@ struct Node {
 }
 
 impl Node {
+
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
-        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node);
+        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node, self.template_registry.clone());
         birth_initializer
             .register_metric(
                 BirthMetricDetails::new_with_initial_value(constants::BDSEQ, bdseq)
@@ -364,35 +365,44 @@ impl Node {
         }
     }
 
-    async fn node_birth(&self) {
+    async fn node_birth(&mut self) -> Result<(),()> {
         /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
         self.state.start_birth();
+
         let bdseq = self.state.bdseq.load(Ordering::SeqCst) as i64;
+
+        //TODO any way we can avoid this clone? could use Ref counting in the TemplateRegistry but it might not be worth it
+        let mut updatable_template_registry = self.template_registry.as_ref().clone();
+        self.metric_manager.birth_update_template_registry(&mut updatable_template_registry);
+        self.template_registry = Arc::new(updatable_template_registry);
 
         let payload = self.generate_birth_payload(bdseq, 0);
         let topic = self.state.birth_topic();
         match self.client.publish_node_message(topic, payload).await {
-            Ok(_) => self.state.birth_completed(),
-            Err(_) => error!("Publishing birth message failed"),
+            Ok(_) => {
+                self.state.birth_completed();
+                Ok(())
+            },
+            Err(_) => {
+                error!("Publishing node birth message failed. node={}", self.state.edge_node_id);
+                Err(())
+            },
         }
     }
 
-    async fn birth(&self) {
-        info!("Birthing Node. Node = {}", self.state.edge_node_id);
-        self.node_birth().await;
-        self.devices.lock().unwrap().birth_devices(BirthType::Birth);
+    async fn birth(&mut self, birth_type: BirthType) {
+        info!("Birthing Node. node={} type={birth_type:?}", self.state.edge_node_id);
+        if self.node_birth().await.is_err() {
+            return
+        }
+        self.devices.lock().unwrap().birth_devices(birth_type, &self.template_registry);
     }
 
-    async fn rebirth(&self) {
+    async fn rebirth(&mut self) {
         if !self.state.birthed() {
             return;
         }
-        info!("Re-Birthing Node. Node = {}", self.state.edge_node_id);
-        self.node_birth().await;
-        self.devices
-            .lock()
-            .unwrap()
-            .birth_devices(BirthType::Rebirth);
+        self.birth(BirthType::Rebirth).await;
     }
 
     fn death(&self) {
@@ -401,7 +411,7 @@ impl Node {
         self.devices.lock().unwrap().on_death();
     }
 
-    async fn on_online(&self) {
+    async fn on_online(&mut self) {
         if self.state.online_swap(true) {
             return;
         }
@@ -410,7 +420,7 @@ impl Node {
         let sub_topics = self.state.sub_topics();
 
         if self.client.subscribe_many(sub_topics).await.is_ok() {
-            self.birth().await
+            self.birth(BirthType::Birth).await
         };
     }
 
@@ -556,7 +566,9 @@ impl EoN {
             edge_node_id: node_id,
         });
 
-        let devices = Arc::new(Mutex::new(DeviceMap::new()));
+        let template_registry = Arc::new(builder.templates);
+
+        let devices = Arc::new(Mutex::new(DeviceMap::new(template_registry.clone())));
 
         let (node_message_tx, node_message_rx) = mpsc::unbounded_channel();
         let (rebirth_request_tx, rebirth_request_rx) = mpsc::channel(1);
@@ -564,6 +576,7 @@ impl EoN {
 
         let node = Node {
             metric_manager,
+            template_registry,
             client: client.clone(),
             state: state.clone(),
             devices: devices.clone(),

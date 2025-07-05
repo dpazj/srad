@@ -41,19 +41,19 @@ pub trait NodeMetricManager: MetricManager {
     /// Initialise the struct.
     ///
     /// Called when the Node is created
-    fn init(&self, handle: &NodeHandle) {}
+    fn init(&self, _handle: &NodeHandle) {}
 
     /// Update the templates registered with the node.
     /// 
     /// This is called before [MetricManager::initialise_birth]. Gives the node the ability to 
     /// dynamically update the set of templates definitions it can use. 
-    fn birth_update_template_registry(&self, template_registry: &mut TemplateRegistry) {}
+    fn birth_update_template_registry(&self, _template_registry: &mut TemplateRegistry) {}
 
     /// Processes NCMD metrics.
     ///
     /// This async method is called when a NCMD message for the node is received, allowing
     /// the implementation to handle command metrics as it sees fit. The default implementation does nothing.
-    async fn on_ncmd(&self, node: NodeHandle, metrics: MessageMetrics) {}
+    async fn on_ncmd(&self, _node: NodeHandle, _metrics: MessageMetrics) {}
 }
 
 ///A trait for implementing a type that defines device-specific metrics
@@ -62,13 +62,13 @@ pub trait DeviceMetricManager: MetricManager {
     /// Initialise the struct.
     ///
     /// Called when the Device is created
-    fn init(&self, handle: &DeviceHandle) {}
+    fn init(&self, _handle: &DeviceHandle) {}
 
     /// Processes DCMD metrics.
     ///
     /// This async method is called when a DCMD message for the device is received, allowing
     /// the implementation to handle command metrics as it sees fit. The default implementation does nothing.
-    async fn on_dcmd(&self, device: DeviceHandle, metrics: MessageMetrics) {}
+    async fn on_dcmd(&self, _device: DeviceHandle, _metrics: MessageMetrics) {}
 }
 
 /// A no-op implementation [MetricManager] which will provide no metrics on Birth

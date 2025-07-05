@@ -220,7 +220,7 @@ impl TemplateParameter {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TemplateDefinition {
     pub version: Option<String>,
     pub metrics: Vec<TemplateMetric>,
