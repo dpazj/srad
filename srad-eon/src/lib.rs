@@ -19,6 +19,7 @@ mod error;
 mod metric;
 mod metric_manager;
 mod node;
+use thiserror::Error;
 
 pub use birth::{BirthInitializer, BirthMetricDetails};
 pub use builder::EoNBuilder;
@@ -34,4 +35,12 @@ pub use node::{EoN, NodeHandle};
 pub(crate) enum BirthType {
     Birth,
     Rebirth,
+}
+
+#[derive(Debug, Error)]
+pub enum StateError {
+    #[error("Connection state is Offline")]
+    Offline,
+    #[error("The node or device is not birthed.")]
+    UnBirthed,
 }

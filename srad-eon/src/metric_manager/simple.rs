@@ -5,7 +5,7 @@ use crate::{
     metric::{
         MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishError, PublishMetric,
     },
-    NodeHandle,
+    NodeHandle, StateError,
 };
 use async_trait::async_trait;
 use futures::future::join_all;
@@ -306,7 +306,7 @@ where
         let handle = {
             match &self.inner.lock().unwrap().handle {
                 Some(handle) => handle.clone(),
-                None => return Err(PublishError::UnBirthed),
+                None => return Err(PublishError::State(StateError::UnBirthed)),
             }
         };
 
