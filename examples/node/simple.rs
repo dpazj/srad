@@ -1,6 +1,6 @@
 use srad::{
     client_rumqtt as rumqtt,
-    eon::{EoNBuilder, SimpleMetricManager},
+    eon::{EoNBuilder, SimpleMetricBuilder, SimpleMetricManager},
 };
 use std::time::Duration;
 
@@ -18,7 +18,9 @@ async fn main() {
 
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
     let node_metrics = SimpleMetricManager::new();
-    let node_counter = node_metrics.register_metric("Node Counter", 0_u64).unwrap();
+    let node_counter = node_metrics
+        .register_metric(SimpleMetricBuilder::new("Node Counter", 0_u64))
+        .unwrap();
 
     let (eon, handle) = EoNBuilder::new(eventloop, client)
         .with_group_id("foo")
@@ -32,17 +34,17 @@ async fn main() {
         .register_device("dev1", dev1_metrics.clone())
         .unwrap();
     let dev1_counter = dev1_metrics
-        .register_metric("Device Counter", 0_i8)
+        .register_metric(SimpleMetricBuilder::new("Device Counter", 0_i8))
         .unwrap();
     dev1_metrics
-        .register_metric_with_cmd_handler(
-            "Writeable UInt64",
-            0_u64,
-            |manager, metric, value| async move {
-                _ = manager
-                    .publish_metric(metric.update(|x| *x = value.unwrap_or(0)))
-                    .await;
-            },
+        .register_metric(
+            SimpleMetricBuilder::new("Writeable UInt64", 0_u64).with_cmd_handler(
+                |manager, metric, value| async move {
+                    _ = manager
+                        .publish_metric(metric.update(|x| *x = value.unwrap_or(0)))
+                        .await;
+                },
+            ),
         )
         .unwrap();
 

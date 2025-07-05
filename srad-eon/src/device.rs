@@ -18,7 +18,7 @@ use crate::{
     metric::{MetricPublisher, PublishError, PublishMetric},
     metric_manager::manager::DynDeviceMetricManager,
     node::EoNState,
-    BirthType,
+    BirthType, StateError,
 };
 
 #[derive(Clone)]
@@ -51,20 +51,14 @@ impl DeviceHandle {
         _ = self.handle_tx.send(DeviceHandleRequest::Disable);
     }
 
-    fn check_publish_state(&self) -> Result<(), PublishError> {
-        if !self.node_state.is_online() {
-            return Err(PublishError::Offline);
-        }
-        if !self.node_state.birthed() {
-            return Err(PublishError::UnBirthed);
-        }
+    fn check_publish_state_and_get_seq(&self) -> Result<u64, PublishError> {
         if !self.state.birthed.load(Ordering::Relaxed) {
-            return Err(PublishError::UnBirthed);
+            return Err(PublishError::State(StateError::UnBirthed));
         }
-        Ok(())
+        Ok(self.node_state.get_next_seq()?)
     }
 
-    fn publish_metrics_to_payload(&self, metrics: Vec<PublishMetric>) -> Payload {
+    fn publish_metrics_to_payload(&self, seq: u64, metrics: Vec<PublishMetric>) -> Payload {
         let timestamp = timestamp();
         let mut payload_metrics = Vec::with_capacity(metrics.len());
         for x in metrics.into_iter() {
@@ -73,7 +67,7 @@ impl DeviceHandle {
         Payload {
             timestamp: Some(timestamp),
             metrics: payload_metrics,
-            seq: Some(self.node_state.get_seq()),
+            seq: Some(seq),
             uuid: None,
             body: None,
         }
@@ -88,17 +82,16 @@ impl MetricPublisher for DeviceHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        self.check_publish_state()?;
         match self
             .client
             .try_publish_device_message(
                 self.state.ddata_topic.clone(),
-                self.publish_metrics_to_payload(metrics),
+                self.publish_metrics_to_payload(self.check_publish_state_and_get_seq()?, metrics),
             )
             .await
         {
             Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::Offline),
+            Err(_) => Err(PublishError::State(StateError::Offline)),
         }
     }
 
@@ -109,17 +102,16 @@ impl MetricPublisher for DeviceHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        self.check_publish_state()?;
         match self
             .client
             .publish_device_message(
                 self.state.ddata_topic.clone(),
-                self.publish_metrics_to_payload(metrics),
+                self.publish_metrics_to_payload(self.check_publish_state_and_get_seq()?, metrics),
             )
             .await
         {
             Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::Offline),
+            Err(_) => Err(PublishError::State(StateError::Offline)),
         }
     }
 }
@@ -131,6 +123,7 @@ pub(crate) struct DeviceState {
     ddata_topic: DeviceTopic,
 }
 
+#[derive(Debug)]
 enum DeviceHandleRequest {
     Enable,
     Disable,
@@ -150,14 +143,14 @@ pub struct Device {
 }
 
 impl Device {
-    fn generate_birth_payload(&self) -> Payload {
+    fn generate_birth_payload(&self, seq: u64) -> Payload {
         let mut birth_initializer = BirthInitializer::new(BirthObjectType::Device(self.state.id));
         self.dev_impl.initialise_birth(&mut birth_initializer);
         let timestamp = timestamp();
         let metrics = birth_initializer.finish();
 
         Payload {
-            seq: Some(self.eon_state.get_seq()),
+            seq: Some(seq),
             timestamp: Some(timestamp),
             metrics,
             uuid: None,
@@ -165,10 +158,10 @@ impl Device {
         }
     }
 
-    fn generate_death_payload(&self) -> Payload {
+    fn generate_death_payload(&self, seq: u64) -> Payload {
         let timestamp = timestamp();
         Payload {
-            seq: Some(self.eon_state.get_seq()),
+            seq: Some(seq),
             timestamp: Some(timestamp),
             metrics: Vec::new(),
             uuid: None,
@@ -180,14 +173,19 @@ impl Device {
         if !self.enabled {
             return;
         }
-        if !self.eon_state.birthed() {
-            return;
-        }
+
         if *birth_type == BirthType::Birth && self.state.birthed.load(Ordering::SeqCst) {
             return;
         }
+
+        let seq = match self.eon_state.get_next_seq() {
+            Ok(seq) => seq,
+            Err(_) => return,
+        };
+
         self.state.birthed.store(false, Ordering::SeqCst);
-        let payload = self.generate_birth_payload();
+
+        let payload = self.generate_birth_payload(seq);
         if self
             .client
             .publish_device_message(
@@ -214,8 +212,23 @@ impl Device {
         if !self.state.birthed.load(Ordering::SeqCst) {
             return;
         }
+
+        self.state.birthed.store(false, Ordering::SeqCst);
+
+        info!(
+            "Device dead. Node = {}, Device = {}",
+            self.eon_state.edge_node_id, self.state.name
+        );
+
         if publish {
-            let payload = self.generate_death_payload();
+            //getting the sequence can only fail if the node is no longer birthed/offline
+            //in this case we cant/shouldn't publish
+            let seq = match self.eon_state.get_next_seq() {
+                Ok(seq) => seq,
+                Err(_) => return,
+            };
+
+            let payload = self.generate_death_payload(seq);
             _ = self
                 .client
                 .publish_device_message(
@@ -229,11 +242,6 @@ impl Device {
                 )
                 .await;
         }
-        self.state.birthed.store(false, Ordering::SeqCst);
-        info!(
-            "Device dead. Node = {}, Device = {}",
-            self.eon_state.edge_node_id, self.state.name
-        );
     }
 
     async fn handle_sparkplug_message(&self, message: Message, handle: DeviceHandle) {
@@ -277,15 +285,16 @@ impl Device {
         loop {
             select! {
                 biased;
-                Some(state_update) = self.node_state_rx.recv() => {
-                    match state_update {
-                        NodeStateMessage::Birth(birth_type) => self.birth(&birth_type).await,
-                        NodeStateMessage::Death => self.death(false).await,
-                        NodeStateMessage::Removed => {
-                            self.death(true).await;
-                            break;
-                        },
-                    }
+                maybe_state_update = self.node_state_rx.recv() => match maybe_state_update {
+                    Some(state_update) => match state_update {
+                            NodeStateMessage::Birth(birth_type) => self.birth(&birth_type).await,
+                            NodeStateMessage::Death => self.death(false).await,
+                            NodeStateMessage::Removed => {
+                                self.death(true).await;
+                                break;
+                            },
+                    },
+                    None => break, //Node has dropped tx
                 },
                 Some(request) = self.handle_request_rx.recv() => {
                     match request {
@@ -294,12 +303,17 @@ impl Device {
                         DeviceHandleRequest::Rebirth => self.birth(&BirthType::Rebirth).await,
                     }
                 },
-                Some(message) = self.device_message_rx.recv() => self.handle_sparkplug_message(message, self.create_handle()).await,
+                maybe_message = self.device_message_rx.recv() => match maybe_message {
+                    Some(message) => self.handle_sparkplug_message(message, self.create_handle()).await,
+                    None => break,
+                }
+
             }
         }
     }
 }
 
+#[derive(Debug)]
 enum NodeStateMessage {
     Birth(BirthType),
     Death,
@@ -413,7 +427,7 @@ impl DeviceMap {
     }
 
     pub(crate) fn birth_devices(&self, birth_type: BirthType) {
-        info!("Birthing Devices. Type = {:?}", birth_type);
+        info!("Birthing Devices. Type = {birth_type:?}");
         for entry in self.devices.values() {
             _ = entry
                 .node_state_tx
