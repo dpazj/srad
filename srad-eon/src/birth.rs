@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
-    hash::{DefaultHasher, Hash, Hasher}, sync::Arc,
+    hash::{DefaultHasher, Hash, Hasher},
+    sync::Arc,
 };
 
 use srad_types::{
@@ -126,17 +127,20 @@ pub struct BirthInitializer {
     metric_names: HashSet<String>,
     metric_aliases: HashSet<u64>,
     inserter_type: BirthObjectType,
-    template_registry: Arc<TemplateRegistry>
+    template_registry: Arc<TemplateRegistry>,
 }
 
 impl BirthInitializer {
-    pub(crate) fn new(inserter_type: BirthObjectType, template_registry: Arc<TemplateRegistry>) -> Self {
+    pub(crate) fn new(
+        inserter_type: BirthObjectType,
+        template_registry: Arc<TemplateRegistry>,
+    ) -> Self {
         Self {
             birth_metrics: Vec::new(),
             metric_names: HashSet::new(),
             metric_aliases: HashSet::new(),
             inserter_type,
-            template_registry
+            template_registry,
         }
     }
 

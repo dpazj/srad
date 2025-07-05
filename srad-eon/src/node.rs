@@ -1,8 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet}, sync::{
+    collections::{HashMap, HashSet},
+    sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
-    }, time::{Duration, SystemTime, UNIX_EPOCH}
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use log::{debug, error, info, warn};
@@ -24,7 +26,10 @@ use tokio::{
 };
 
 use crate::{
-    birth::BirthObjectType, builder, device::DeviceMap, error::DeviceRegistrationError, metric_manager::manager::DynNodeMetricManager, BirthInitializer, BirthMetricDetails, BirthType, DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError, PublishMetric, StateError
+    birth::BirthObjectType, device::DeviceMap, error::DeviceRegistrationError,
+    metric_manager::manager::DynNodeMetricManager, BirthInitializer, BirthMetricDetails, BirthType,
+    DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError,
+    PublishMetric, StateError,
 };
 
 pub(crate) struct EoNConfig {
@@ -283,11 +288,10 @@ impl MetricPublisher for NodeHandle {
 
 #[derive(Debug, Clone)]
 pub struct TemplateRegistry {
-    templates: HashMap<String, TemplateDefinition>
+    templates: HashMap<String, TemplateDefinition>,
 }
 
 impl TemplateRegistry {
-
     pub(crate) fn new() -> Self {
         Self {
             templates: HashMap::new(),
@@ -298,23 +302,35 @@ impl TemplateRegistry {
         self.templates.clear();
     }
 
-    /// The use of `register` is prefered. 
-    pub fn register_definition(&mut self, template_definition_metric_name: String, definition: TemplateDefinition) -> Result<(), ()> {
-        if self.templates.contains_key(&template_definition_metric_name) { return Err(()) }
-        self.templates.insert(template_definition_metric_name, definition);
+    /// The use of `register` is prefered.
+    pub fn register_definition(
+        &mut self,
+        template_definition_metric_name: String,
+        definition: TemplateDefinition,
+    ) -> Result<(), ()> {
+        if self
+            .templates
+            .contains_key(&template_definition_metric_name)
+        {
+            return Err(());
+        }
+        self.templates
+            .insert(template_definition_metric_name, definition);
         Ok(())
     }
 
-    /// Remove a template 
+    /// Remove a template
     pub fn deregister(&mut self, name: &str) {
         self.templates.remove(name);
     }
 
     /// Add a template
     pub fn register<T: Template>(&mut self) -> Result<(), ()> {
-        self.register_definition(T::template_definition_metric_name(), T::template_definition())
+        self.register_definition(
+            T::template_definition_metric_name(),
+            T::template_definition(),
+        )
     }
-
 }
 
 struct Node {
@@ -336,10 +352,10 @@ struct Node {
 }
 
 impl Node {
-
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
-        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node, self.template_registry.clone());
+        let mut birth_initializer =
+            BirthInitializer::new(BirthObjectType::Node, self.template_registry.clone());
         birth_initializer
             .register_metric(
                 BirthMetricDetails::new_with_initial_value(constants::BDSEQ, bdseq)
@@ -365,7 +381,7 @@ impl Node {
         }
     }
 
-    async fn node_birth(&mut self) -> Result<(),()> {
+    async fn node_birth(&mut self) -> Result<(), ()> {
         /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
         self.state.start_birth();
 
@@ -373,7 +389,8 @@ impl Node {
 
         //TODO any way we can avoid this clone? could use Ref counting in the TemplateRegistry but it might not be worth it
         let mut updatable_template_registry = self.template_registry.as_ref().clone();
-        self.metric_manager.birth_update_template_registry(&mut updatable_template_registry);
+        self.metric_manager
+            .birth_update_template_registry(&mut updatable_template_registry);
         self.template_registry = Arc::new(updatable_template_registry);
 
         let payload = self.generate_birth_payload(bdseq, 0);
@@ -382,20 +399,29 @@ impl Node {
             Ok(_) => {
                 self.state.birth_completed();
                 Ok(())
-            },
+            }
             Err(_) => {
-                error!("Publishing node birth message failed. node={}", self.state.edge_node_id);
+                error!(
+                    "Publishing node birth message failed. node={}",
+                    self.state.edge_node_id
+                );
                 Err(())
-            },
+            }
         }
     }
 
     async fn birth(&mut self, birth_type: BirthType) {
-        info!("Birthing Node. node={} type={birth_type:?}", self.state.edge_node_id);
+        info!(
+            "Birthing Node. node={} type={birth_type:?}",
+            self.state.edge_node_id
+        );
         if self.node_birth().await.is_err() {
-            return
+            return;
         }
-        self.devices.lock().unwrap().birth_devices(birth_type, &self.template_registry);
+        self.devices
+            .lock()
+            .unwrap()
+            .birth_devices(birth_type, &self.template_registry);
     }
 
     async fn rebirth(&mut self) {

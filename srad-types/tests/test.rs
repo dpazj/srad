@@ -64,7 +64,8 @@ pub fn test() {
     let template_instance_diff = a.template_instance_from_difference(&b);
     println!("{template_instance_diff:#?}");
 
-    a.update_from_instance(template_instance_diff.unwrap()).unwrap();
+    a.update_from_instance(template_instance_diff.unwrap())
+        .unwrap();
 
     panic!("A")
 }

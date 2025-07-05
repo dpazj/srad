@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 
-use crate::{birth::BirthInitializer, device::DeviceHandle, metric::MessageMetrics, node::TemplateRegistry, NodeHandle};
+use crate::{
+    birth::BirthInitializer, device::DeviceHandle, metric::MessageMetrics, node::TemplateRegistry,
+    NodeHandle,
+};
 
 /// A type alias for a trait object implementing [`NodeMetricManager`].
 pub type DynNodeMetricManager = dyn NodeMetricManager + Send + Sync + 'static;
@@ -44,9 +47,9 @@ pub trait NodeMetricManager: MetricManager {
     fn init(&self, _handle: &NodeHandle) {}
 
     /// Update the templates registered with the node.
-    /// 
-    /// This is called before [MetricManager::initialise_birth]. Gives the node the ability to 
-    /// dynamically update the set of templates definitions it can use. 
+    ///
+    /// This is called before [MetricManager::initialise_birth]. Gives the node the ability to
+    /// dynamically update the set of templates definitions it can use.
     fn birth_update_template_registry(&self, _template_registry: &mut TemplateRegistry) {}
 
     /// Processes NCMD metrics.

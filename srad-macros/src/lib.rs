@@ -94,7 +94,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     let mut instance_parameters = Vec::new();
 
     let mut from_difference_metrics = Vec::new();
-    let mut from_difference_parameters= Vec::new();
+    let mut from_difference_parameters = Vec::new();
 
     let mut from_instance_defines = Vec::new();
     let mut from_instance_metric_match = Vec::new();
@@ -164,18 +164,16 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             );
 
-            from_difference_parameters.push(
-                quote! {
-                    if self.#field_ident != other.#field_ident {
-                        parameters.push(
-                            ::srad_types::TemplateParameter::new_template_parameter(
-                                #name.to_string(),
-                                self.#field_ident.clone()
-                            )
+            from_difference_parameters.push(quote! {
+                if self.#field_ident != other.#field_ident {
+                    parameters.push(
+                        ::srad_types::TemplateParameter::new_template_parameter(
+                            #name.to_string(),
+                            self.#field_ident.clone()
                         )
-                    }
+                    )
                 }
-            );
+            });
 
             update_from_instance_parameter_match.push(
                 quote! {
@@ -186,9 +184,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     },
                 }
             );
-
         } else {
-
             definition_metrics.push(quote! {
                 ::srad_types::TemplateMetric::new_template_metric::<#ty>(
                     #name.to_string(),
@@ -227,16 +223,14 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             );
 
-            update_from_instance_metric_match.push(
-                quote! {
-                    #name => {
-                        ::srad_types::TemplateMetricValuePartial::try_update_from_metric_value(
-                            &mut self.#field_ident, 
-                            metric.value.map(::srad_types::MetricValue::from)
-                        )?
-                    },
-                }
-            );
+            update_from_instance_metric_match.push(quote! {
+                #name => {
+                    ::srad_types::TemplateMetricValuePartial::try_update_from_metric_value(
+                        &mut self.#field_ident,
+                        metric.value.map(::srad_types::MetricValue::from)
+                    )?
+                },
+            });
         }
     }
 
@@ -273,7 +267,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             fn try_update_from_metric_value(&mut self, value: Option<::srad_types::MetricValue>) -> Result<(), ()> {
                 let instance = match value {
                     Some(val) => ::srad_types::TemplateInstance::try_from(val)?,
-                    None => return Ok(()) 
+                    None => return Ok(())
                 };
                 ::srad_types::Template::update_from_instance(self, instance)
             }
@@ -320,7 +314,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 #(#from_difference_metrics)*
                 #(#from_difference_parameters)*
 
-                if parameters.is_empty() && metrics.is_empty() { 
+                if parameters.is_empty() && metrics.is_empty() {
                     return None
                 }
 

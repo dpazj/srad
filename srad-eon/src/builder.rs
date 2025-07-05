@@ -4,7 +4,9 @@ use srad_client::{Client, DynClient, DynEventLoop, EventLoop};
 use srad_types::Template;
 
 use crate::{
-    metric_manager::manager::{DynNodeMetricManager, NoMetricManager, NodeMetricManager}, node::TemplateRegistry, EoN, NodeHandle
+    metric_manager::manager::{DynNodeMetricManager, NoMetricManager, NodeMetricManager},
+    node::TemplateRegistry,
+    EoN, NodeHandle,
 };
 
 /// A builder for creating and configuring Edge of Network (EoN) instances.
@@ -14,7 +16,7 @@ pub struct EoNBuilder {
     pub(crate) eventloop_client: (Box<DynEventLoop>, Arc<DynClient>),
     pub(crate) metric_manager: Box<DynNodeMetricManager>,
     pub(crate) node_rebirth_request_cooldown: Duration,
-    pub(crate) templates: TemplateRegistry
+    pub(crate) templates: TemplateRegistry,
 }
 
 impl EoNBuilder {
@@ -68,12 +70,15 @@ impl EoNBuilder {
         self
     }
 
-    /// Register a template definition with the node. 
-    /// 
+    /// Register a template definition with the node.
+    ///
     /// Will panic if a template with the same template_metric_definition_name has been registered
     pub fn register_template<T: Template>(mut self) -> Self {
         if self.templates.register::<T>().is_err() {
-            panic!("Template with duplicate metric definition name registered. name={}", T::template_definition_metric_name())
+            panic!(
+                "Template with duplicate metric definition name registered. name={}",
+                T::template_definition_metric_name()
+            )
         }
         self
     }

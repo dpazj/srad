@@ -104,7 +104,7 @@ where
 //A trait to support recursive partial templates
 pub trait TemplateMetricValuePartial {
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>>;
-    fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()>; 
+    fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()>;
 }
 
 macro_rules! impl_template_metric_value_partial {
@@ -160,9 +160,7 @@ where
 
     fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()> {
         *self = match other {
-            Some(value) => {
-                Some(T::try_from_template_metric_value(Some(value))?)
-            },
+            Some(value) => Some(T::try_from_template_metric_value(Some(value))?),
             None => None,
         };
         Ok(())

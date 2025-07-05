@@ -9,7 +9,11 @@ use std::{
 
 use log::{info, warn};
 use srad_client::{DeviceMessage, DynClient, Message, MessageKind};
-use srad_types::{payload::{template, Payload}, topic::DeviceTopic, utils::timestamp};
+use srad_types::{
+    payload::{template, Payload},
+    topic::DeviceTopic,
+    utils::timestamp,
+};
 use tokio::{select, sync::mpsc, task};
 
 use crate::{
@@ -144,9 +148,11 @@ pub struct Device {
 }
 
 impl Device {
-
     fn generate_birth_payload(&self, seq: u64) -> Payload {
-        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Device(self.state.id), self.template_registry.clone());
+        let mut birth_initializer = BirthInitializer::new(
+            BirthObjectType::Device(self.state.id),
+            self.template_registry.clone(),
+        );
         self.dev_impl.initialise_birth(&mut birth_initializer);
         let timestamp = timestamp();
         let metrics = birth_initializer.finish();
@@ -333,7 +339,7 @@ struct DeviceMapEntry {
 pub struct DeviceMap {
     device_ids: HashSet<DeviceId>,
     devices: HashMap<Arc<String>, DeviceMapEntry>,
-    template_registry: Arc<TemplateRegistry>
+    template_registry: Arc<TemplateRegistry>,
 }
 
 const OBJECT_ID_NODE: u32 = 0;
@@ -344,7 +350,7 @@ impl DeviceMap {
         Self {
             device_ids: HashSet::new(),
             devices: HashMap::new(),
-            template_registry
+            template_registry,
         }
     }
 
@@ -433,13 +439,18 @@ impl DeviceMap {
         _ = entry.node_state_tx.send(NodeStateMessage::Removed);
     }
 
-    pub(crate) fn birth_devices(&mut self, birth_type: BirthType, new_template_registry: &Arc<TemplateRegistry>) {
+    pub(crate) fn birth_devices(
+        &mut self,
+        birth_type: BirthType,
+        new_template_registry: &Arc<TemplateRegistry>,
+    ) {
         self.template_registry = new_template_registry.clone();
         info!("Birthing Devices. Type = {birth_type:?}");
         for entry in self.devices.values() {
-            _ = entry
-                .node_state_tx
-                .send(NodeStateMessage::Birth(birth_type, new_template_registry.clone()));
+            _ = entry.node_state_tx.send(NodeStateMessage::Birth(
+                birth_type,
+                new_template_registry.clone(),
+            ));
         }
     }
 

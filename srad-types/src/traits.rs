@@ -1,8 +1,4 @@
-use crate::{
-    metadata::MetaData,
-    payload::DataType,
-    value,
-};
+use crate::{metadata::MetaData, payload::DataType, value};
 
 /// Trait used to query the Sparkplug datatype(s) that an implementing type supports
 pub trait HasDataType {
