@@ -134,7 +134,7 @@ impl From<Topic> for String {
             Topic::NodeTopic(node_topic) => node_topic.topic,
             Topic::DeviceTopic(device_topic) => device_topic.topic,
             Topic::State(state_topic) => state_topic.topic,
-            Topic::Node { group_id, node_id } => format!("{}/{}/+/{}/#", SPBV01, group_id, node_id),
+            Topic::Node { group_id, node_id } => format!("{SPBV01}/{group_id}/+/{node_id}/#"),
             Topic::Group { id } => format!("{SPBV01}/{id}/+/#"),
             Topic::FullNamespace => format!("{SPBV01}/#"),
         }
@@ -164,7 +164,7 @@ impl TopicFilter {
 }
 
 pub fn node_topic_raw(group_id: &str, message_type: &str, node_id: &str) -> String {
-    format!("{}/{}/{}/{}", SPBV01, group_id, message_type, node_id)
+    format!("{SPBV01}/{group_id}/{message_type}/{node_id}")
 }
 
 pub fn node_topic(group_id: &str, message_type: &NodeMessage, node_id: &str) -> String {
@@ -177,18 +177,12 @@ pub fn device_topic(
     node_id: &str,
     device_id: &str,
 ) -> String {
-    format!(
-        "{}/{}/{}/{}/{}",
-        SPBV01,
-        group_id,
-        message_type.as_str(),
-        node_id,
-        device_id
-    )
+    let message_type = message_type.as_str();
+    format!("{SPBV01}/{group_id}/{message_type}/{node_id}/{device_id}")
 }
 
 pub fn state_host_topic(host_id: &str) -> String {
-    format!("{}/{}/{}", SPBV01, STATE, host_id)
+    format!("{SPBV01}/{STATE}/{host_id}")
 }
 
 pub fn state_sub_topic() -> String {
