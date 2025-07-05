@@ -1,9 +1,8 @@
 use std::{
-    sync::{
+    collections::{HashMap, HashSet}, sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
-    },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    }, time::{Duration, SystemTime, UNIX_EPOCH}
 };
 
 use log::{debug, error, info, warn};
@@ -16,7 +15,7 @@ use srad_types::{
         QoS, StateTopic, Topic, TopicFilter,
     },
     utils::timestamp,
-    MetricValue,
+    MetricValue, Template, TemplateDefinition,
 };
 use tokio::{
     select,
@@ -261,6 +260,41 @@ impl MetricPublisher for NodeHandle {
             Err(_) => Err(PublishError::Offline),
         }
     }
+}
+
+pub struct TemplateRegistry {
+    templates: HashMap<String, TemplateDefinition>
+}
+
+impl TemplateRegistry {
+
+    pub(crate) fn new() -> Self {
+        Self {
+            templates: HashMap::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.templates.clear();
+    }
+
+    /// The use of `register` is prefered. 
+    pub fn register_definition(&mut self, template_definition_metric_name: String, definition: TemplateDefinition) -> Result<(), ()> {
+        if self.templates.contains_key(&template_definition_metric_name) { return Err(()) }
+        self.templates.insert(template_definition_metric_name, definition);
+        Ok(())
+    }
+
+    /// Remove a template 
+    pub fn deregister(&mut self, name: &str) {
+        self.templates.remove(name);
+    }
+
+    /// Add a template
+    pub fn register<T: Template>(&mut self) -> Result<(), ()> {
+        self.register_definition(T::template_definition_metric_name(), T::template_definition())
+    }
+
 }
 
 struct Node {

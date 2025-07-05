@@ -7,7 +7,7 @@ struct NestedTest {
 }
 
 impl TemplateMetadata for NestedTest {
-    fn template_definition_metric_name() -> &'static str {
+    fn template_name() -> &'static str {
         "nested_test"
     }
 }
@@ -26,7 +26,7 @@ struct Test {
 }
 
 impl TemplateMetadata for Test {
-    fn template_definition_metric_name() -> &'static str {
+    fn template_name() -> &'static str {
         "test"
     }
 }

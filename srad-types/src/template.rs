@@ -340,7 +340,14 @@ pub trait TemplateMetadata {
     fn template_version() -> Option<&'static str> {
         None
     }
-    fn template_definition_metric_name() -> &'static str;
+    fn template_name() -> &'static str;
+    fn template_definition_metric_name() -> String {
+        let version = Self::template_version();
+        match version {
+            Some(version) => format!("{}:{}", Self::template_name(), version),
+            None => Self::template_name().into(),
+        }
+    }
 }
 
 pub trait Template: TemplateMetadata {
