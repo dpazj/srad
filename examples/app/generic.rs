@@ -54,9 +54,13 @@ impl MetricStore for MetricStoreImpl {
                 }
                 None => None,
             };
+            let alias = match id {
+                MetricId::Name(_) => None,
+                MetricId::Alias(alias) => Some(alias),
+            }; 
             info!(
-                "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
-                self.node, self.device, id, value
+                "Node ({:?}) Device ({:?}) Got birth metric {:?} (alias={:?}) with value {:?}",
+                self.node, self.device, birth_details.name, alias, value
             );
             if self
                 .metric_types

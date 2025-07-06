@@ -10,7 +10,7 @@ use std::{
 use log::{debug, error, info, warn};
 use srad_client::{DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind};
 use srad_types::{
-    constants::{self, NODE_CONTROL_REBIRTH},
+    constants::{self, BDSEQ, NODE_CONTROL_REBIRTH},
     payload::{metric::Value, Payload},
     topic::{
         DeviceMessage as DeviceMessageType, DeviceTopic, NodeMessage as NodeMessageType, NodeTopic,
@@ -303,23 +303,6 @@ impl TemplateRegistry {
         self.templates.clear();
     }
 
-    /// The use of `register` is prefered.
-    pub fn register_definition(
-        &mut self,
-        template_definition_metric_name: String,
-        definition: TemplateDefinition,
-    ) -> Result<(), ()> {
-        if self
-            .templates
-            .contains_key(&template_definition_metric_name)
-        {
-            return Err(());
-        }
-        self.templates
-            .insert(template_definition_metric_name, definition);
-        Ok(())
-    }
-
     /// Remove a template
     pub fn deregister(&mut self, name: &str) {
         self.templates.remove(name);
@@ -327,10 +310,22 @@ impl TemplateRegistry {
 
     /// Add a template
     pub fn register<T: Template>(&mut self) -> Result<(), ()> {
-        self.register_definition(
-            T::template_definition_metric_name(),
-            T::template_definition(),
-        )
+        let name = T::template_definition_metric_name();
+        if name == NODE_CONTROL_REBIRTH || name == BDSEQ {
+            return Err(())
+        }
+
+        if self
+            .templates
+            .contains_key(&name)
+        {
+            return Err(());
+        }
+
+        let definition = T::template_definition();
+        self.templates
+            .insert(name, definition);
+        Ok(())
     }
 
     pub fn contains(&self, template_definition_metric_name: &str) -> bool {
@@ -358,10 +353,12 @@ struct Node {
 }
 
 impl Node {
+
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
         let mut birth_initializer =
             BirthInitializer::new(BirthObjectType::Node, self.template_registry.clone());
+
         birth_initializer
             .register_metric(
                 BirthMetricDetails::new_with_initial_value(constants::BDSEQ, bdseq)
@@ -374,6 +371,15 @@ impl Node {
                     .use_alias(false),
             )
             .unwrap();
+
+        for (name, template_definition) in &self.template_registry.templates {
+            birth_initializer
+                .register_template_definition(
+                    name.clone(), 
+                    template_definition.clone()
+                )
+                .unwrap();
+        }
 
         self.metric_manager.initialise_birth(&mut birth_initializer);
         let metrics = birth_initializer.finish();

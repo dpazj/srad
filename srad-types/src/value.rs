@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use crate::payload::{
     data_set::data_set_value, metric, property_value, template::parameter, DataType,
 };
-use crate::traits;
+use crate::{payload, traits, TemplateValue};
 
 use paste::paste;
 use thiserror::Error;
@@ -616,10 +616,10 @@ pub enum MetricValueKind {
     DateTime(DateTime),
     Text(String),
     Uuid(String),
-    //DataSet,
+    DataSet(payload::DataSet),
     Bytes(Vec<u8>),
     File(Vec<u8>),
-    //Template
+    Template(TemplateValue),
     Int8Array(Vec<i8>),
     Int16Array(Vec<i16>),
     Int32Array(Vec<i32>),
@@ -668,13 +668,12 @@ impl MetricValueKind {
             DataType::Text => MetricValueKind::String(String::try_from(value)?),
             DataType::Uuid => MetricValueKind::Uuid(String::try_from(value)?),
             DataType::DataSet => {
-                return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet))
+                if let payload::metric::Value::DatasetValue(ds) = value.0 { MetricValueKind::DataSet(ds) }
+                else { return Err (FromMetricValueError::ValueDecodeError(FromValueTypeError::InvalidVariantType))}
             }
             DataType::Bytes => MetricValueKind::Bytes(Vec::<u8>::try_from(value)?),
             DataType::File => MetricValueKind::File(Vec::<u8>::try_from(value)?),
-            DataType::Template => {
-                return Err(FromMetricValueError::UnsupportedDataType(DataType::DataSet))
-            }
+            DataType::Template => MetricValueKind::Template(TemplateValue::try_from(value)?),
             DataType::PropertySet => {
                 return Err(FromMetricValueError::UnsupportedDataType(
                     DataType::PropertySet,

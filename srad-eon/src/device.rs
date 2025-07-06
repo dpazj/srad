@@ -10,7 +10,7 @@ use std::{
 use log::{info, warn};
 use srad_client::{DeviceMessage, DynClient, Message, MessageKind};
 use srad_types::{
-    payload::{template, Payload},
+    payload::Payload,
     topic::DeviceTopic,
     utils::timestamp,
 };
@@ -346,6 +346,7 @@ const OBJECT_ID_NODE: u32 = 0;
 pub type DeviceId = u32;
 
 impl DeviceMap {
+
     pub(crate) fn new(template_registry: Arc<TemplateRegistry>) -> Self {
         Self {
             device_ids: HashSet::new(),

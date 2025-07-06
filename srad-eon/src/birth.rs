@@ -8,7 +8,7 @@ use srad_types::{
     payload::{DataType, Metric},
     traits,
     utils::timestamp,
-    MetaData, MetricId, MetricValue, PropertySet, Template,
+    MetaData, MetricId, MetricValue, PropertySet, Template, TemplateDefinition,
 };
 
 use crate::{device::DeviceId, metric::MetricToken, node::TemplateRegistry};
@@ -86,7 +86,6 @@ impl<T> BirthMetricDetails<T>
         birth_metric.value = value.map(MetricValue::into);
         birth_metric.properties = self.properties.map(PropertySet::into);
         birth_metric
-
     }
 
 }
@@ -206,10 +205,29 @@ impl BirthInitializer {
                 };
                 MetricId::Alias(alias)
             }
-            false => MetricId::Name(metric),
+            false => MetricId::Name(metric.clone()),
         };
-
+        self.metric_names.insert(metric);
         Ok(MetricToken::new(id))
+    }
+
+    pub(crate) fn register_template_definition(
+        &mut self, 
+        name: String,
+        definition: TemplateDefinition,
+    ) -> Result<(), BirthMetricError>
+    {
+        if self.metric_names.contains(&name) {
+            return Err(BirthMetricError::DuplicateMetric);
+        }
+
+        let mut metric = Metric::new();
+        metric.name = Some(name.clone());
+        metric.datatype = Some(DataType::Template as u32);
+        metric.value = Some(MetricValue::from(definition).into());
+        self.metric_names.insert(name);
+
+        Ok(())
     }
 
     pub fn register_metric<T>(
@@ -240,9 +258,12 @@ impl BirthInitializer {
     {
         let template_instance = match details.initial_value.take() {
             Some(value) => value.template_instance(),
-            //we should never really get here since BirthMetricDetails does not allow 
-            //the provision of a template metric without an initial value
-            None => return Err(BirthMetricError::ValueNotProvided), 
+            None => {
+                //we should never really get here since BirthMetricDetails does not allow 
+                //the provision of a template metric without an initial value
+                debug_assert!(false);
+                return Err(BirthMetricError::ValueNotProvided)
+            }, 
         }; 
 
         if !self.template_registry.contains(&template_instance.template_ref) {
