@@ -668,8 +668,13 @@ impl MetricValueKind {
             DataType::Text => MetricValueKind::String(String::try_from(value)?),
             DataType::Uuid => MetricValueKind::Uuid(String::try_from(value)?),
             DataType::DataSet => {
-                if let payload::metric::Value::DatasetValue(ds) = value.0 { MetricValueKind::DataSet(ds) }
-                else { return Err (FromMetricValueError::ValueDecodeError(FromValueTypeError::InvalidVariantType))}
+                if let payload::metric::Value::DatasetValue(ds) = value.0 {
+                    MetricValueKind::DataSet(ds)
+                } else {
+                    return Err(FromMetricValueError::ValueDecodeError(
+                        FromValueTypeError::InvalidVariantType,
+                    ));
+                }
             }
             DataType::Bytes => MetricValueKind::Bytes(Vec::<u8>::try_from(value)?),
             DataType::File => MetricValueKind::File(Vec::<u8>::try_from(value)?),

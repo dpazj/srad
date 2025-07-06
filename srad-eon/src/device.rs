@@ -9,21 +9,17 @@ use std::{
 
 use log::{info, warn};
 use srad_client::{DeviceMessage, DynClient, Message, MessageKind};
-use srad_types::{
-    payload::Payload,
-    topic::DeviceTopic,
-    utils::timestamp,
-};
+use srad_types::{payload::Payload, topic::DeviceTopic, utils::timestamp};
 use tokio::{select, sync::mpsc, task};
 
 use crate::{
     birth::{BirthInitializer, BirthObjectType},
-    error::DeviceRegistrationError,
     metric::{MetricPublisher, PublishError, PublishMetric},
     metric_manager::manager::DynDeviceMetricManager,
     node::{EoNState, TemplateRegistry},
     BirthType, StateError,
 };
+use thiserror::Error;
 
 #[derive(Clone)]
 pub struct DeviceHandle {
@@ -330,6 +326,14 @@ enum NodeStateMessage {
     Removed,
 }
 
+#[derive(Error, Debug)]
+pub enum DeviceRegistrationError {
+    #[error("Duplicate device")]
+    DuplicateDevice,
+    #[error("Invalid Device name: {0}")]
+    InvalidName(String),
+}
+
 struct DeviceMapEntry {
     id: DeviceId,
     device_message_tx: mpsc::UnboundedSender<Message>,
@@ -346,7 +350,6 @@ const OBJECT_ID_NODE: u32 = 0;
 pub type DeviceId = u32;
 
 impl DeviceMap {
-
     pub(crate) fn new(template_registry: Arc<TemplateRegistry>) -> Self {
         Self {
             device_ids: HashSet::new(),

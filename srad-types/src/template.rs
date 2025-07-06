@@ -1,5 +1,7 @@
 use crate::{
-    payload::{self, metric, DataType}, traits::{self, HasDataType}, FromValueTypeError, MetricValue, ParameterValue
+    payload::{self, metric, DataType},
+    traits::{self, HasDataType},
+    FromValueTypeError, MetricValue, ParameterValue,
 };
 
 pub trait TemplateMetricValue {
@@ -257,11 +259,16 @@ impl TryFrom<MetricValue> for TemplateDefinition {
         if let metric::Value::TemplateValue(template) = value.0 {
             // [tck-id-payloads-template-definition-ref] A Template Definition MUST omit the template_ref field
             if template.template_ref.is_some() {
-                return Err(FromValueTypeError::InvalidValue("Template payload violates tck-id-payloads-template-definition-ref".into()))
+                return Err(FromValueTypeError::InvalidValue(
+                    "Template payload violates tck-id-payloads-template-definition-ref".into(),
+                ));
             }
             // [tck-id-payloads-template-definition-is-definition] A Template Definition MUST have is_definition set to true.
             if template.is_definition.unwrap_or(false) {
-                return Err(FromValueTypeError::InvalidValue("Template payload violates tck-id-payloads-template-definition-is_definition".into()))
+                return Err(FromValueTypeError::InvalidValue(
+                    "Template payload violates tck-id-payloads-template-definition-is_definition"
+                        .into(),
+                ));
             }
             Ok(TemplateDefinition {
                 version: template.version,
@@ -317,11 +324,16 @@ impl TryFrom<MetricValue> for TemplateInstance {
         if let metric::Value::TemplateValue(template) = value.0 {
             //[tck-id-payloads-template-instance-is-definition] A Template Instance MUST have is_definition set to false.
             if template.is_definition.unwrap_or(true) {
-                return Err(FromValueTypeError::InvalidValue("Template payload violates tck-id-payloads-template-instance-is_definition".into()))
+                return Err(FromValueTypeError::InvalidValue(
+                    "Template payload violates tck-id-payloads-template-instance-is_definition"
+                        .into(),
+                ));
             }
-            let template_ref = template.template_ref.ok_or(
-                FromValueTypeError::InvalidValue("Template payload violates tck-id-payloads-template-instance-ref".into())
-            )?;
+            let template_ref = template
+                .template_ref
+                .ok_or(FromValueTypeError::InvalidValue(
+                    "Template payload violates tck-id-payloads-template-instance-ref".into(),
+                ))?;
             Ok(TemplateInstance {
                 template_ref,
                 version: template.version,
@@ -347,14 +359,18 @@ impl TryFrom<MetricValue> for TemplateValue {
         if let metric::Value::TemplateValue(template) = &value.0 {
             let is_def = match template.is_definition {
                 Some(is_def) => is_def,
-                None => return Err(FromValueTypeError::InvalidValue("Template field template_ref cannot be None".into())),
+                None => {
+                    return Err(FromValueTypeError::InvalidValue(
+                        "Template field template_ref cannot be None".into(),
+                    ))
+                }
             };
             Ok(match is_def {
                 true => TemplateValue::Definition(TemplateDefinition::try_from(value)?),
                 false => TemplateValue::Instance(TemplateInstance::try_from(value)?),
             })
         } else {
-            return Err(FromValueTypeError::InvalidVariantType)
+            return Err(FromValueTypeError::InvalidVariantType);
         }
     }
 }

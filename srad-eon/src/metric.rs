@@ -188,8 +188,7 @@ pub struct MetricToken<T> {
     pub id: MetricId,
 }
 
-impl<T> MetricToken<T>
-{
+impl<T> MetricToken<T> {
     pub(crate) fn new(id: MetricId) -> Self {
         Self {
             phantom: PhantomData,

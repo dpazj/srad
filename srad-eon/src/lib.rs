@@ -15,7 +15,6 @@
 mod birth;
 mod builder;
 mod device;
-mod error;
 mod metric;
 mod metric_manager;
 mod node;

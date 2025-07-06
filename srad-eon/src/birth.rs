@@ -29,7 +29,6 @@ pub enum BirthMetricError {
     UnregisteredTemplate,
 }
 
-
 /// Details about a metric to be included in a birth message
 pub struct BirthMetricDetails<T> {
     name: String,
@@ -41,8 +40,7 @@ pub struct BirthMetricDetails<T> {
     timestamp: u64,
 }
 
-impl<T> BirthMetricDetails<T> 
-{
+impl<T> BirthMetricDetails<T> {
     fn new(name: String, initial_value: Option<T>, datatype: DataType) -> Self {
         Self {
             name,
@@ -76,25 +74,20 @@ impl<T> BirthMetricDetails<T>
     }
 
     fn into_metric_value(self, value: Option<MetricValue>) -> Metric {
-
         let mut birth_metric = Metric::new();
-        birth_metric
-            .set_name(self.name)
-            .set_datatype(self.datatype);
+        birth_metric.set_name(self.name).set_datatype(self.datatype);
         birth_metric.timestamp = Some(self.timestamp);
         birth_metric.metadata = self.metadata.map(MetaData::into);
         birth_metric.value = value.map(MetricValue::into);
         birth_metric.properties = self.properties.map(PropertySet::into);
         birth_metric
     }
-
 }
 
 impl<T> BirthMetricDetails<T>
 where
     T: traits::MetricValue,
 {
-
     pub fn new_with_initial_value<S: Into<String>>(name: S, initial_value: T) -> Self {
         Self::new(name.into(), Some(initial_value), T::default_datatype())
     }
@@ -124,12 +117,11 @@ where
     ) -> Result<Self, BirthMetricError> {
         Self::new_with_explicit_datatype(name.into(), datatype, None)
     }
-
 }
 
 impl<T> BirthMetricDetails<T>
 where
-    T: Template 
+    T: Template,
 {
     pub fn new_template_metric<S: Into<String>>(name: S, value: T) -> Self {
         Self::new(name.into(), Some(value), DataType::Template)
@@ -212,11 +204,10 @@ impl BirthInitializer {
     }
 
     pub(crate) fn register_template_definition(
-        &mut self, 
+        &mut self,
         name: String,
         definition: TemplateDefinition,
-    ) -> Result<(), BirthMetricError>
-    {
+    ) -> Result<(), BirthMetricError> {
         if self.metric_names.contains(&name) {
             return Err(BirthMetricError::DuplicateMetric);
         }
@@ -233,12 +224,13 @@ impl BirthInitializer {
     pub fn register_metric<T>(
         &mut self,
         mut details: BirthMetricDetails<T>,
-    ) -> Result<MetricToken<T>, BirthMetricError> where 
-        T: traits::MetricValue
+    ) -> Result<MetricToken<T>, BirthMetricError>
+    where
+        T: traits::MetricValue,
     {
         if details.datatype == DataType::Template {
             debug_assert!(false, "Cannot register Template datatypes through this api");
-            return Err(BirthMetricError::UnsupportedDatatype)
+            return Err(BirthMetricError::UnsupportedDatatype);
         }
         let tok = self.create_metric_token(&details.name, details.use_alias)?;
         let value = details.initial_value.take().map(T::into);
@@ -253,20 +245,24 @@ impl BirthInitializer {
     pub fn register_template_metric<T>(
         &mut self,
         mut details: BirthMetricDetails<T>,
-    ) -> Result<MetricToken<T>, BirthMetricError> where 
-        T: Template
+    ) -> Result<MetricToken<T>, BirthMetricError>
+    where
+        T: Template,
     {
         let template_instance = match details.initial_value.take() {
             Some(value) => value.template_instance(),
             None => {
-                //we should never really get here since BirthMetricDetails does not allow 
+                //we should never really get here since BirthMetricDetails does not allow
                 //the provision of a template metric without an initial value
                 debug_assert!(false);
-                return Err(BirthMetricError::ValueNotProvided)
-            }, 
-        }; 
+                return Err(BirthMetricError::ValueNotProvided);
+            }
+        };
 
-        if !self.template_registry.contains(&template_instance.template_ref) {
+        if !self
+            .template_registry
+            .contains(&template_instance.template_ref)
+        {
             return Err(BirthMetricError::UnregisteredTemplate);
         }
 
@@ -282,5 +278,4 @@ impl BirthInitializer {
     pub(crate) fn finish(self) -> Vec<Metric> {
         self.birth_metrics
     }
-
 }

@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap},
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
@@ -26,10 +26,11 @@ use tokio::{
 };
 
 use crate::{
-    birth::BirthObjectType, device::DeviceMap, error::DeviceRegistrationError,
-    metric_manager::manager::DynNodeMetricManager, BirthInitializer, BirthMetricDetails, BirthType,
-    DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError,
-    PublishMetric, StateError,
+    birth::BirthObjectType,
+    device::{DeviceMap, DeviceRegistrationError},
+    metric_manager::manager::DynNodeMetricManager,
+    BirthInitializer, BirthMetricDetails, BirthType, DeviceHandle, DeviceMetricManager, EoNBuilder,
+    MessageMetrics, MetricPublisher, PublishError, PublishMetric, StateError,
 };
 
 pub(crate) struct EoNConfig {
@@ -292,7 +293,6 @@ pub struct TemplateRegistry {
 }
 
 impl TemplateRegistry {
-
     pub(crate) fn new() -> Self {
         Self {
             templates: HashMap::new(),
@@ -312,26 +312,21 @@ impl TemplateRegistry {
     pub fn register<T: Template>(&mut self) -> Result<(), ()> {
         let name = T::template_definition_metric_name();
         if name == NODE_CONTROL_REBIRTH || name == BDSEQ {
-            return Err(())
+            return Err(());
         }
 
-        if self
-            .templates
-            .contains_key(&name)
-        {
+        if self.templates.contains_key(&name) {
             return Err(());
         }
 
         let definition = T::template_definition();
-        self.templates
-            .insert(name, definition);
+        self.templates.insert(name, definition);
         Ok(())
     }
 
     pub fn contains(&self, template_definition_metric_name: &str) -> bool {
         self.templates.contains_key(template_definition_metric_name)
     }
-
 }
 
 struct Node {
@@ -353,7 +348,6 @@ struct Node {
 }
 
 impl Node {
-
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
         let mut birth_initializer =
@@ -374,10 +368,7 @@ impl Node {
 
         for (name, template_definition) in &self.template_registry.templates {
             birth_initializer
-                .register_template_definition(
-                    name.clone(), 
-                    template_definition.clone()
-                )
+                .register_template_definition(name.clone(), template_definition.clone())
                 .unwrap();
         }
 

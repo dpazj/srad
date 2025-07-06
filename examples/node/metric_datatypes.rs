@@ -12,7 +12,7 @@ use log::LevelFilter;
 struct Point {
     x: f64,
     y: f64,
-    z: f64
+    z: f64,
 }
 
 impl TemplateMetadata for Point {
@@ -76,7 +76,7 @@ impl DatatypesManager {
             datetime: DateTime::new(0),
             text: "Some Text".into(),
             bytes: vec![0xde, 0xad, 0xbe, 0xef],
-            template: Point::default(), 
+            template: Point::default(),
             bool_array: vec![
                 true, false, true, false, true, true, true, false, true, false, false,
             ],
@@ -167,11 +167,11 @@ impl MetricManager for DatatypesManager {
             .unwrap(),
         )
         .unwrap();
-        bi.register_template_metric(
-            BirthMetricDetails::new_template_metric(
-                "Template",
-                data.template.clone()
-        )).unwrap();
+        bi.register_template_metric(BirthMetricDetails::new_template_metric(
+            "Template",
+            data.template.clone(),
+        ))
+        .unwrap();
         bi.register_metric(
             BirthMetricDetails::new_with_initial_value_explicit_type(
                 "Bytes",
