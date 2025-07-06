@@ -326,7 +326,6 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 })
             }
 
-
             fn update_from_instance(&mut self, instance: ::srad_types::TemplateInstance) -> Result<(), ()> {
 
                 if instance.template_ref != Self::template_definition_metric_name() {

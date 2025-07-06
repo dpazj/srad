@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
@@ -292,6 +292,7 @@ pub struct TemplateRegistry {
 }
 
 impl TemplateRegistry {
+
     pub(crate) fn new() -> Self {
         Self {
             templates: HashMap::new(),
@@ -331,6 +332,11 @@ impl TemplateRegistry {
             T::template_definition(),
         )
     }
+
+    pub fn contains(&self, template_definition_metric_name: &str) -> bool {
+        self.templates.contains_key(template_definition_metric_name)
+    }
+
 }
 
 struct Node {

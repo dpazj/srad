@@ -8,10 +8,27 @@ use srad_types::{
     payload::{DataType, Metric},
     traits,
     utils::timestamp,
-    MetaData, MetricId, MetricValue, PropertySet,
+    MetaData, MetricId, MetricValue, PropertySet, Template,
 };
 
-use crate::{device::DeviceId, error::Error, metric::MetricToken, node::TemplateRegistry};
+use crate::{device::DeviceId, metric::MetricToken, node::TemplateRegistry};
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum BirthMetricError {
+    #[error("Duplicate metric")]
+    DuplicateMetric,
+    #[error("The provided type does not support that datatype")]
+    MetricValueDatatypeMismatch,
+    #[error("The datatype is unsupported")]
+    UnsupportedDatatype,
+    #[error("A value was expected but not provided")]
+    ValueNotProvided,
+    #[error("The provided template uses a definition that has not been registered with the node.")]
+    UnregisteredTemplate,
+}
+
 
 /// Details about a metric to be included in a birth message
 pub struct BirthMetricDetails<T> {
@@ -24,9 +41,7 @@ pub struct BirthMetricDetails<T> {
     timestamp: u64,
 }
 
-impl<T> BirthMetricDetails<T>
-where
-    T: traits::MetricValue,
+impl<T> BirthMetricDetails<T> 
 {
     fn new(name: String, initial_value: Option<T>, datatype: DataType) -> Self {
         Self {
@@ -38,36 +53,6 @@ where
             properties: None,
             timestamp: timestamp(),
         }
-    }
-
-    pub fn new_with_initial_value<S: Into<String>>(name: S, initial_value: T) -> Self {
-        Self::new(name.into(), Some(initial_value), T::default_datatype())
-    }
-
-    fn new_with_explicit_datatype(
-        name: String,
-        datatype: DataType,
-        initial_value: Option<T>,
-    ) -> Result<Self, Error> {
-        if !T::supported_datatypes().contains(&datatype) {
-            return Err(Error::MetricValueDatatypeMismatch);
-        }
-        Ok(Self::new(name, initial_value, datatype))
-    }
-
-    pub fn new_with_initial_value_explicit_type<S: Into<String>>(
-        name: S,
-        initial_value: T,
-        datatype: DataType,
-    ) -> Result<Self, Error> {
-        Self::new_with_explicit_datatype(name.into(), datatype, Some(initial_value))
-    }
-
-    pub fn new_without_initial_value<S: Into<String>>(
-        name: S,
-        datatype: DataType,
-    ) -> Result<Self, Error> {
-        Self::new_with_explicit_datatype(name.into(), datatype, None)
     }
 
     pub fn use_alias(mut self, use_alias: bool) -> Self {
@@ -89,26 +74,66 @@ where
         self.properties = Some(properties.into());
         self
     }
+
+    fn into_metric_value(self, value: Option<MetricValue>) -> Metric {
+
+        let mut birth_metric = Metric::new();
+        birth_metric
+            .set_name(self.name)
+            .set_datatype(self.datatype);
+        birth_metric.timestamp = Some(self.timestamp);
+        birth_metric.metadata = self.metadata.map(MetaData::into);
+        birth_metric.value = value.map(MetricValue::into);
+        birth_metric.properties = self.properties.map(PropertySet::into);
+        birth_metric
+
+    }
+
 }
 
-impl<T> From<BirthMetricDetails<T>> for Metric
+impl<T> BirthMetricDetails<T>
 where
     T: traits::MetricValue,
 {
-    fn from(value: BirthMetricDetails<T>) -> Metric {
-        let mut birth_metric = Metric::new();
-        birth_metric
-            .set_name(value.name)
-            .set_datatype(value.datatype);
-        birth_metric.timestamp = Some(value.timestamp);
-        birth_metric.metadata = value.metadata.map(MetaData::into);
-        if let Some(val) = value.initial_value {
-            let val: MetricValue = val.into();
-            birth_metric.set_value(val.into());
-        }
-        birth_metric.properties = value.properties.map(PropertySet::into);
 
-        birth_metric
+    pub fn new_with_initial_value<S: Into<String>>(name: S, initial_value: T) -> Self {
+        Self::new(name.into(), Some(initial_value), T::default_datatype())
+    }
+
+    fn new_with_explicit_datatype(
+        name: String,
+        datatype: DataType,
+        initial_value: Option<T>,
+    ) -> Result<Self, BirthMetricError> {
+        if !T::supported_datatypes().contains(&datatype) {
+            return Err(BirthMetricError::MetricValueDatatypeMismatch);
+        }
+        Ok(Self::new(name, initial_value, datatype))
+    }
+
+    pub fn new_with_initial_value_explicit_type<S: Into<String>>(
+        name: S,
+        initial_value: T,
+        datatype: DataType,
+    ) -> Result<Self, BirthMetricError> {
+        Self::new_with_explicit_datatype(name.into(), datatype, Some(initial_value))
+    }
+
+    pub fn new_without_initial_value<S: Into<String>>(
+        name: S,
+        datatype: DataType,
+    ) -> Result<Self, BirthMetricError> {
+        Self::new_with_explicit_datatype(name.into(), datatype, None)
+    }
+
+}
+
+impl<T> BirthMetricDetails<T>
+where
+    T: Template 
+{
+    pub fn new_template_metric<S: Into<String>>(name: S, value: T) -> Self {
+        Self::new(name.into(), Some(value), DataType::Template)
     }
 }
 
@@ -160,15 +185,15 @@ impl BirthInitializer {
         alias
     }
 
-    fn create_metric_token<T: traits::MetricValue>(
+    fn create_metric_token<T>(
         &mut self,
         name: &String,
         use_alias: bool,
-    ) -> Result<MetricToken<T>, Error> {
+    ) -> Result<MetricToken<T>, BirthMetricError> {
         let metric = name.into();
 
         if self.metric_names.contains(&metric) {
-            return Err(Error::DuplicateMetric);
+            return Err(BirthMetricError::DuplicateMetric);
         }
 
         let id = match use_alias {
@@ -187,12 +212,45 @@ impl BirthInitializer {
         Ok(MetricToken::new(id))
     }
 
-    pub fn register_metric<T: traits::MetricValue>(
+    pub fn register_metric<T>(
         &mut self,
-        details: BirthMetricDetails<T>,
-    ) -> Result<MetricToken<T>, Error> {
+        mut details: BirthMetricDetails<T>,
+    ) -> Result<MetricToken<T>, BirthMetricError> where 
+        T: traits::MetricValue
+    {
+        if details.datatype == DataType::Template {
+            debug_assert!(false, "Cannot register Template datatypes through this api");
+            return Err(BirthMetricError::UnsupportedDatatype)
+        }
         let tok = self.create_metric_token(&details.name, details.use_alias)?;
-        let mut metric: Metric = details.into();
+        let value = details.initial_value.take().map(T::into);
+        let mut metric = details.into_metric_value(value);
+        if let MetricId::Alias(alias) = &tok.id {
+            metric.set_alias(*alias);
+        }
+        self.birth_metrics.push(metric);
+        Ok(tok)
+    }
+
+    pub fn register_template_metric<T>(
+        &mut self,
+        mut details: BirthMetricDetails<T>,
+    ) -> Result<MetricToken<T>, BirthMetricError> where 
+        T: Template
+    {
+        let template_instance = match details.initial_value.take() {
+            Some(value) => value.template_instance(),
+            //we should never really get here since BirthMetricDetails does not allow 
+            //the provision of a template metric without an initial value
+            None => return Err(BirthMetricError::ValueNotProvided), 
+        }; 
+
+        if !self.template_registry.contains(&template_instance.template_ref) {
+            return Err(BirthMetricError::UnregisteredTemplate);
+        }
+
+        let tok = self.create_metric_token(&details.name, details.use_alias)?;
+        let mut metric: Metric = details.into_metric_value(Some(template_instance.into()));
         if let MetricId::Alias(alias) = &tok.id {
             metric.set_alias(*alias);
         }
@@ -203,4 +261,5 @@ impl BirthInitializer {
     pub(crate) fn finish(self) -> Vec<Metric> {
         self.birth_metrics
     }
+
 }

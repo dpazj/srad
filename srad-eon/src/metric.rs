@@ -189,8 +189,6 @@ pub struct MetricToken<T> {
 }
 
 impl<T> MetricToken<T>
-where
-    T: traits::MetricValue,
 {
     pub(crate) fn new(id: MetricId) -> Self {
         Self {
@@ -198,7 +196,12 @@ where
             id,
         }
     }
+}
 
+impl<T> MetricToken<T>
+where
+    T: traits::MetricValue,
+{
     /// Create a new [PublishMetric]
     pub fn create_publish_metric(&self, value: Option<T>) -> PublishMetric {
         PublishMetric::new(self.id.clone(), value)
