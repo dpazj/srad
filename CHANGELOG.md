@@ -1,5 +1,19 @@
 # Changelog
 
+## [?]
+
+### Eon
+
+- **breaking change** Add `SimpleMetricBuilder` type to configure simple metric manager nodes.
+- Add ability to configure `SimpleMetricManager` metrics to use an alias
+
+### App
+
+- **breaking change** Move generic application configuration to new `generic::ApplicationBuilder` struct
+- Add ability to configure node queue sizes
+- Add ability to disable application message reordering.
+- App will now discard messages produced before node went stale
+
 ## [0.2.2]
 
 ### App

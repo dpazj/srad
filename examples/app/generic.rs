@@ -54,11 +54,15 @@ impl MetricStore for MetricStoreImpl {
                 }
                 None => None,
             };
-            // info!(
-            //     "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
-            //     self.node, self.device, id, value
-            // );
-            if let Some(_) = self.metric_types.insert(id, birth_details.datatype) {
+            info!(
+                "Node ({:?}) Device ({:?}) Got birth metric {:?} with value {:?}",
+                self.node, self.device, id, value
+            );
+            if self
+                .metric_types
+                .insert(id, birth_details.datatype)
+                .is_some()
+            {
                 return Err(StateUpdateError::InvalidValue);
             }
         }
@@ -98,25 +102,28 @@ async fn main() {
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
     let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
-    let (application, client) =
-        generic_app::Application::new("foo", eventloop, client, SubscriptionConfig::AllGroups);
+    let (application, client) = generic_app::ApplicationBuilder::new(
+        "foo",
+        eventloop,
+        client,
+        SubscriptionConfig::AllGroups,
+    )
+    .on_node_created(|node| {
+        info!("Node created {:?}", node.id());
+        node.register_metric_store(MetricStoreImpl::new(node.id().clone(), None));
+        let node_id = node.id().clone();
+        node.on_device_created(move |dev| {
+            info!("Device created {} node {:?}", dev.name(), node_id);
+            dev.register_metric_store(MetricStoreImpl::new(
+                node_id.clone(),
+                Some(dev.name().to_string()),
+            ));
+        });
+    })
+    .build();
 
     tokio::spawn(async move {
-        application
-            .on_node_created(|node| {
-                info!("Node created {:?}", node.id());
-                node.register_metric_store(MetricStoreImpl::new(node.id().clone(), None));
-                let node_id = node.id().clone();
-                node.on_device_created(move |dev| {
-                    info!("Device created {} node {:?}", dev.name(), node_id);
-                    dev.register_metric_store(MetricStoreImpl::new(
-                        node_id.clone(),
-                        Some(dev.name().to_string()),
-                    ));
-                });
-            })
-            .run()
-            .await;
+        application.run().await;
     });
 
     if let Err(e) = tokio::signal::ctrl_c().await {

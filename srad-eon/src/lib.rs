@@ -9,8 +9,8 @@
 //! The implementation requires the provision of [MetricManager] implementations to the node or when registering devices. This allows for
 //! defining metrics which belong to the node or device as well as the custom handling of CMD messages for those metrics.
 //!
-//! The node starts a tokio `task` for each incoming CMD message.
-//!
+//! The node starts a tokio `task` for itself node and each subsequent device.
+//! These tasks are used to process incoming state changes and messages from sparkplug topics such as CMD messages
 
 mod birth;
 mod builder;
@@ -19,7 +19,7 @@ mod error;
 mod metric;
 mod metric_manager;
 mod node;
-mod registry;
+use thiserror::Error;
 
 pub use birth::{BirthInitializer, BirthMetricDetails};
 pub use builder::EoNBuilder;
@@ -28,11 +28,19 @@ pub use metric::*;
 pub use metric_manager::manager::{
     DeviceMetricManager, MetricManager, NoMetricManager, NodeMetricManager,
 };
-pub use metric_manager::simple::SimpleMetricManager;
+pub use metric_manager::simple::{SimpleMetricBuilder, SimpleMetricManager};
 pub use node::{EoN, NodeHandle};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum BirthType {
     Birth,
     Rebirth,
+}
+
+#[derive(Debug, Error)]
+pub enum StateError {
+    #[error("Connection state is Offline")]
+    Offline,
+    #[error("The node or device is not birthed.")]
+    UnBirthed,
 }

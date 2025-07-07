@@ -1,6 +1,6 @@
 use srad::{
     client_rumqtt as rumqtt,
-    eon::{EoNBuilder, NoMetricManager, SimpleMetricManager},
+    eon::{EoNBuilder, NoMetricManager, SimpleMetricBuilder, SimpleMetricManager},
 };
 use std::time::Duration;
 use rand::Rng;
@@ -19,7 +19,7 @@ async fn main() {
 
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
-        let opts = rumqtt::MqttOptions::new(node_name, "localhost", 1883);
+        let opts = rumqtt::MqttOptions::new(node_name.clone(), "localhost", 1883);
         let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
 
         let (mut eon, handle) = EoNBuilder::new(eventloop, client)
@@ -35,7 +35,7 @@ async fn main() {
             for k in 0..PER_DEVICE_METRIC_COUNT {
                 metrics.push(
                     device_metrics
-                        .register_metric(format!("metric-{k}"), 0_u64)
+                        .register_metric(SimpleMetricBuilder::new(format!("metric-{k}"), 0_u64))
                         .unwrap(),
                 );
             }
@@ -81,9 +81,14 @@ async fn main() {
                 }
             });
         }
-
-        tokio::spawn(async move { eon.run().await });
+        let run_handle = tokio::spawn(async move { eon.run().await });
+        node_handles.push((handle.clone(), run_handle));
     }
 
     tokio::signal::ctrl_c().await.unwrap();
+
+    for (node_handle, run_handle) in node_handles {
+        node_handle.cancel().await;
+        run_handle.await.unwrap();
+    }
 }

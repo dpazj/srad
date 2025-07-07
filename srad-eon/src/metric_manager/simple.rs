@@ -5,7 +5,7 @@ use crate::{
     metric::{
         MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishError, PublishMetric,
     },
-    NodeHandle,
+    NodeHandle, StateError,
 };
 use async_trait::async_trait;
 use futures::future::join_all;
@@ -32,6 +32,7 @@ struct MetricData<T, H> {
     value: T,
     token: Option<MetricToken<T>>,
     cb: Option<CmdCallback<T, H>>,
+    use_alias: bool,
 }
 
 pub struct SimpleManagerPublishMetric(Option<PublishMetric>);
@@ -77,7 +78,9 @@ where
         let val = metric.value.clone();
 
         let token = bi
-            .register_metric(BirthMetricDetails::new_with_initial_value(name, val).use_alias(true))
+            .register_metric(
+                BirthMetricDetails::new_with_initial_value(name, val).use_alias(metric.use_alias),
+            )
             .unwrap();
         let id = token.id.clone();
         metric.token = Some(token);
@@ -112,6 +115,59 @@ where
     }
 }
 
+/// A Metric Builder to configure a metric to add to a [SimpleMetricManager]
+pub struct SimpleMetricBuilder<T, H> {
+    name: String,
+    initial_value: T,
+    use_alias: bool,
+    cmd_cb: Option<CmdCallback<T, H>>,
+}
+
+impl<T, H> SimpleMetricBuilder<T, H>
+where
+    T: traits::MetricValue + Clone + Send + 'static,
+{
+    /// Create a new metric builder instance
+    pub fn new<S: Into<String>>(name: S, value: T) -> Self {
+        Self {
+            name: name.into(),
+            initial_value: value,
+            use_alias: true,
+            cmd_cb: None,
+        }
+    }
+
+    /// Set a handler which will be called when command messages for this metric are received.
+    ///
+    /// The command handler is an async function that receives the manager, the metric,
+    /// and an optional new value for the metric. If the value is "None" that indicates the CMD metric's 'is_null'
+    /// field was true
+    pub fn with_cmd_handler<F, Fut>(mut self, cb: F) -> Self
+    where
+        F: Fn(SimpleMetricManager<H>, SimpleManagerMetric<T, H>, Option<T>) -> Fut
+            + Send
+            + Sync
+            + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.cmd_cb = Some(Arc::new(
+            move |manager: SimpleMetricManager<H>,
+                  metric: SimpleManagerMetric<T, H>,
+                  value: Option<T>|
+                  -> Pin<Box<dyn Future<Output = ()> + Send>> {
+                Box::pin(cb(manager, metric, value))
+            },
+        ));
+        self
+    }
+
+    /// Set if the metric should use an alias. Defaults to true.
+    pub fn use_alias(mut self, use_alias: bool) -> Self {
+        self.use_alias = use_alias;
+        self
+    }
+}
+
 struct SimpleMetricManagerInner<H> {
     handle: Option<H>,
     metrics: HashMap<String, Arc<dyn Stored<H> + Send + Sync>>,
@@ -124,7 +180,7 @@ struct SimpleMetricManagerInner<H> {
 /// command callbacks and metric publishing.
 /// # Example
 /// ```no_run
-/// use srad_eon::SimpleMetricManager;
+/// use srad_eon::{SimpleMetricManager, SimpleMetricBuilder};
 /// # use srad_eon::DeviceHandle;
 ///
 /// # fn create_device_with_manager(manager: &SimpleMetricManager<DeviceHandle>) {
@@ -137,17 +193,18 @@ struct SimpleMetricManagerInner<H> {
 /// create_device_with_manager(&manager);
 ///
 /// // Register a simple metric
-/// let counter = manager.register_metric("Counter", 0 as i32).unwrap();
+/// let counter = manager.register_metric(SimpleMetricBuilder::new("Counter", 0 as i32)).unwrap();
 ///
 /// // Register a metric with a command handler
-/// let temperature = manager.register_metric_with_cmd_handler(
-///     "temperature",
-///     25.5,
-///     |mgr, metric, new_value| async move {
-///         if let Some(value) = new_value {
-///           mgr.publish_metric(metric.update(|x|{ *x = value })).await;
+/// let temperature = manager.register_metric(
+///     SimpleMetricBuilder::new("temperature", 25.5)
+///     .with_cmd_handler(
+///         |mgr, metric, new_value| async move {
+///             if let Some(value) = new_value {
+///                 mgr.publish_metric(metric.update(|x|{ *x = value })).await;
+///             }
 ///         }
-///     }
+///     )
 /// );
 /// ```
 #[derive(Clone)]
@@ -172,77 +229,33 @@ where
         }
     }
 
-    fn register<T>(
+    /// Registers a new metric from the builders settings.
+    ///
+    /// Returns `None` if a metric with the same name already exists, otherwise
+    /// returns the newly created metric.
+    pub fn register_metric<T>(
         &self,
-        name: String,
-        value: T,
-        cb: Option<CmdCallback<T, H>>,
+        builder: SimpleMetricBuilder<T, H>,
     ) -> Option<SimpleManagerMetric<T, H>>
     where
         T: traits::MetricValue + Clone + Send + 'static,
     {
         let mut manager = self.inner.lock().unwrap();
-        if manager.metrics.contains_key(&name) {
+        if manager.metrics.contains_key(&builder.name) {
             return None;
         }
 
         let metric = SimpleManagerMetric {
             data: Arc::new(Mutex::new(MetricData {
-                value,
+                value: builder.initial_value,
                 token: None,
-                cb,
+                cb: builder.cmd_cb,
+                use_alias: builder.use_alias,
             })),
         };
         let metric_insert = Arc::new(metric.clone());
-        manager.metrics.insert(name, metric_insert);
+        manager.metrics.insert(builder.name, metric_insert);
         Some(metric)
-    }
-
-    /// Registers a new metric with the given name and initial value.
-    ///
-    /// Returns `None` if a metric with the same name already exists, otherwise
-    /// returns the newly created metric.
-    pub fn register_metric<S, T>(&self, name: S, value: T) -> Option<SimpleManagerMetric<T, H>>
-    where
-        S: Into<String>,
-        T: traits::MetricValue + Clone + Send + 'static,
-    {
-        self.register::<T>(name.into(), value, None)
-    }
-
-    /// Registers a new metric with a command handler that will be called when
-    /// commands for this metric are received.
-    ///
-    /// The command handler is an async function that receives the manager, the metric,
-    /// and an optional new value for the metric. If the value is "None" that indicates the CMD metric 'is_null'
-    /// field was true
-    ///
-    /// Returns `None` if a metric with the same name already exists, otherwise
-    /// returns the newly created metric.
-    pub fn register_metric_with_cmd_handler<S, T, F, Fut>(
-        &self,
-        name: S,
-        value: T,
-        cmd_handler: F,
-    ) -> Option<SimpleManagerMetric<T, H>>
-    where
-        S: Into<String>,
-        T: traits::MetricValue + Clone + Send + 'static,
-        F: Fn(SimpleMetricManager<H>, SimpleManagerMetric<T, H>, Option<T>) -> Fut
-            + Send
-            + Sync
-            + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
-        let cmd_handler = Arc::new(
-            move |manager: SimpleMetricManager<H>,
-                  metric: SimpleManagerMetric<T, H>,
-                  value: Option<T>|
-                  -> Pin<Box<dyn Future<Output = ()> + Send>> {
-                Box::pin(cmd_handler(manager, metric, value))
-            },
-        );
-        self.register::<T>(name.into(), value, Some(cmd_handler))
     }
 
     fn get_callbacks_from_cmd_message_metrics(
@@ -294,7 +307,7 @@ where
         let handle = {
             match &self.inner.lock().unwrap().handle {
                 Some(handle) => handle.clone(),
-                None => return Err(PublishError::UnBirthed),
+                None => return Err(PublishError::State(StateError::UnBirthed)),
             }
         };
 
