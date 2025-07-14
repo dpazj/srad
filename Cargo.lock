@@ -947,6 +947,7 @@ dependencies = [
  "srad-client",
  "srad-client-rumqtt",
  "srad-eon",
+ "srad-macros",
  "srad-types",
  "tokio",
 ]
@@ -1005,6 +1006,7 @@ version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "quote",
+ "srad",
  "syn",
 ]
 

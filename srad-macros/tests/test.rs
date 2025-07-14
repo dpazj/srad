@@ -1,4 +1,4 @@
-use srad_types::{Template, TemplateMetadata};
+use srad::types::{Template, TemplateMetadata};
 
 #[derive(Default, Debug, Clone, Template, PartialEq)]
 struct NestedTest {
@@ -61,17 +61,12 @@ pub fn test() {
 
     assert!(a_from_instance == a);
 
-    let template_instance_diff = a.template_instance_from_difference(&b);
-    println!("{template_instance_diff:#?}");
+    // let template_instance_diff = a.template_instance_from_difference(&b);
+    // println!("{template_instance_diff:#?}");
 
-    a.update_from_instance(template_instance_diff.unwrap())
-        .unwrap();
+    // a.update_from_instance(template_instance_diff.unwrap())
+    //     .unwrap();
 
     panic!("A")
 }
 
-// #[derive(Template)]
-// enum AA{
-//     A,
-//     B
-// }

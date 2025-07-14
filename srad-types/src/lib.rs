@@ -24,8 +24,6 @@ pub use quality::*;
 pub use template::*;
 pub use value::*;
 
-pub use srad_macros::Template;
-
 pub mod traits;
 
 /// Represents a unique identifier of a metric

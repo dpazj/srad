@@ -395,7 +395,6 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
         }
 
-
     }.into())
 }
 

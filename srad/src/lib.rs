@@ -68,4 +68,8 @@ pub use srad_client as client;
 #[cfg(feature = "rumqtt-client")]
 pub use srad_client_rumqtt as client_rumqtt;
 
-pub use srad_types as types;
+pub mod types {
+    pub use srad_types::*;
+    pub use srad_macros::Template;
+}
+

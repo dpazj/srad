@@ -23,6 +23,7 @@ srad-app = { path = "../srad-app", version = "0.2.2" }
 srad-client = { path = "../srad-client", version = "0.2.2" }
 srad-client-rumqtt = { path = "../srad-client-rumqtt", version = "0.2.2" }
 srad-types = { path = "../srad-types", version = "0.2.2" }
+srad-macros = { path = "../srad-macros", version = "0.2.2" }
 
 [dev-dependencies]
 tokio = { workspace = true }

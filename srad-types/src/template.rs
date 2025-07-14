@@ -389,10 +389,10 @@ pub trait TemplateMetadata {
     }
 }
 
+
 pub trait Template: TemplateMetadata {
     fn template_definition() -> TemplateDefinition;
     fn template_instance(&self) -> TemplateInstance;
-
     fn template_instance_from_difference(&self, other: &Self) -> Option<TemplateInstance>;
     fn update_from_instance(&mut self, instance: TemplateInstance) -> Result<(), ()>;
 }
