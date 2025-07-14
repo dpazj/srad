@@ -7,9 +7,11 @@ members = [
   "srad-client-rumqtt",
   "srad-eon",
   "srad-types",
+  "srad-macros",
   "srad-app",
-  "examples"
-, "codegen", "srad-macros"]
+  "examples",
+  "codegen"
+]
 
 [workspace.package]
 edition = "2021"

@@ -375,11 +375,26 @@ impl TryFrom<MetricValue> for TemplateValue {
     }
 }
 
+/// Provides metadata information for a Template
+/// 
+/// This trait defines basic metadata for Sparkplug templates 
 pub trait TemplateMetadata {
+
+    ///Provide an optional version for the template
     fn template_version() -> Option<&'static str> {
         None
     }
+
+    ///Provide the name of the template
     fn template_name() -> &'static str;
+
+    ///Provides a name that will be used as the metric name for the templates definition in a birth message. 
+    /// 
+    /// This should be unique in the context of an Edge Node.
+    /// By default, this method combines the template name and version (if available) to create
+    /// a metric name that follows Sparkplug conventions. The format is:
+    /// - With version: `"template_name:version"`
+    /// - Without version: `"template_name"`
     fn template_definition_metric_name() -> String {
         let version = Self::template_version();
         match version {
@@ -390,8 +405,14 @@ pub trait TemplateMetadata {
 }
 
 
+/// Trait used to represent a Template
+/// 
+/// **It is strongly recommended to use the [srad_macros::Template] derive macro instead of 
+/// implementing this trait manually**
 pub trait Template: TemplateMetadata {
+    /// Returns the template definition 
     fn template_definition() -> TemplateDefinition;
+    /// Creates a template instance from the current state 
     fn template_instance(&self) -> TemplateInstance;
 }
 
@@ -405,7 +426,14 @@ where
     }
 }
 
+/// Trait used to represent a Template implementation that supports generating partial template instances 
+/// and is updatable from partial template instances 
+/// 
+/// **It is strongly recommended to use the [srad_macros::Template] derive macro instead of 
+/// implementing this trait manually**
 pub trait PartialTemplate: Template{
+    /// Create a template instance based on the difference between a template and another copy 
     fn template_instance_from_difference(&self, other: &Self) -> Option<TemplateInstance>;
+    /// Update the template from a [TemplateInstance]
     fn update_from_instance(&mut self, instance: TemplateInstance) -> Result<(), ()>;
 }

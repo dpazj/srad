@@ -401,6 +401,131 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     }.into())
 }
 
+/// # Template Derive Macro
+/// 
+/// The `#[derive(Template)]` macro provides automatic implementation of the `Template`
+/// and `PartialTemplate` traits for Templates.  
+/// 
+/// ## Requirements
+/// 
+/// - **Struct with named fields**: The macro only works with structs that have named fields
+/// - **TemplateMetadata implementation**: You must manually implement `TemplateMetadata` for your struct
+/// 
+/// ## Basic Usage
+/// 
+/// ```rust
+/// # use srad::types::{Template, TemplateMetadata};
+/// 
+/// #[derive(Template)]
+/// struct SensorData {
+///     temperature: f64,
+///     humidity: f64,
+///     battery_level: u8,
+///     timestamp: u64,
+/// }
+/// 
+/// impl TemplateMetadata for SensorData {
+///     fn template_name() -> &'static str {
+///         "sensor_data"
+///     }
+///     
+///     fn template_version() -> Option<&'static str> {
+///         Some("1.0.0")
+///     }
+/// }
+/// 
+/// // Template and PartialTemplate are automatically implemented!
+/// ```
+/// 
+/// ## Field Attributes
+/// 
+/// The macro supports several attributes to customise field behavior:
+/// 
+/// ### `#[template(skip)]`
+/// 
+/// Excludes a field from the template definition and instances. 
+/// 
+/// ### `#[template(parameter)]`
+/// 
+/// Marks a field as a template parameter rather than as a metric.  
+/// 
+/// ### `#[template(default = value)]`
+/// 
+/// Provides a default value for a field in the template definition. If not provided then [Default::default()] 
+/// trait is used.
+/// 
+/// ### `#[template(rename = "new_name")]`
+/// 
+/// Changes the metric or parameter name in the template definition. By default, the field 
+/// name is used as the metric name. **note** names must be unique.
+/// 
+/// ## Example 
+/// 
+/// ```rust
+/// use srad::types::{Template, PartialTemplate, TemplateMetadata};
+/// use std::collections::HashMap;
+/// 
+/// #[derive(Template, Clone)]
+/// struct MotorController {
+///     #[template(rename = "rpm")]
+///     revolutions_per_minute: f64,
+///     
+///     #[template(rename = "temp_c")]
+///     temperature_celsius: f64,
+///     
+///     #[template(parameter, default = 3000.0)]
+///     max_rpm: f64,
+///     
+///     #[template(parameter, default = 85.0)]
+///     temp_warning_threshold: f64,
+///     
+///     #[template(default = false)]
+///     alarm_active: bool,
+///     
+///     #[template(skip)]
+///     internal_diagnostics: HashMap<String, String>,
+/// }
+/// 
+/// impl TemplateMetadata for MotorController {
+///     fn template_name() -> &'static str {
+///         "motor_controller"
+///     }
+///     
+///     fn template_version() -> Option<&'static str> {
+///         Some("2.1.0")
+///     }
+/// }
+/// 
+/// // Usage
+/// let motor = MotorController {
+///     revolutions_per_minute: 2500.0,
+///     temperature_celsius: 72.0,
+///     max_rpm: 3000.0,
+///     temp_warning_threshold: 85.0,
+///     alarm_active: false,
+///     internal_diagnostics: HashMap::new(),
+/// };
+/// 
+/// // Get template definition
+/// let definition = MotorController::template_definition();
+/// 
+/// // Create instance
+/// let instance = motor.template_instance();
+/// 
+/// // Create differential update
+/// let updated_motor = MotorController { 
+///     revolutions_per_minute: 2750.0,  // Changed
+///     temperature_celsius: 72.0,       // Same
+///     max_rpm: 3000.0,
+///     temp_warning_threshold: 85.0,
+///     alarm_active: false,
+///     internal_diagnostics: HashMap::new(),
+/// };
+/// 
+/// if let Some(diff) = updated_motor.template_instance_from_difference(&motor) {
+///     // diff contains only the 'rpm' metric
+/// }
+/// ```
 #[proc_macro_derive(Template, attributes(template))]
 pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

@@ -17,4 +17,3 @@ proc-macro2 = { workspace = true }
 
 [dev-dependencies]
 srad = { path = "../srad" }
-
