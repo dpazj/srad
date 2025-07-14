@@ -258,7 +258,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
         impl ::srad::types::TemplateMetricValuePartial for #type_name {
             fn metric_value_if_ne(&self, other: &Self) -> Option<Option<::srad::types::MetricValue>> {
-                if let Some(difference_instance) = ::srad::types::Template::template_instance_from_difference(self, other)
+                if let Some(difference_instance) = ::srad::types::PartialTemplate::template_instance_from_difference(self, other)
                 {
                     return Some(Some(difference_instance.into()))
                 }
@@ -269,7 +269,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     Some(val) => ::srad::types::TemplateInstance::try_from(val).map_err(|_|())?,
                     None => return Ok(())
                 };
-                ::srad::types::Template::update_from_instance(self, instance)
+                ::srad::types::PartialTemplate::update_from_instance(self, instance)
             }
         }
 
@@ -305,6 +305,9 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     parameters
                 }
             }
+        }
+
+        impl ::srad::types::PartialTemplate for #type_name {
 
             fn template_instance_from_difference(&self, other: &Self) -> Option<::srad::types::TemplateInstance>
             {
