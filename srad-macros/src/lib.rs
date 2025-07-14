@@ -403,19 +403,21 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
 /// # Template Derive Macro
 /// 
-/// The `#[derive(Template)]` macro provides automatic implementation of the `Template`
-/// and `PartialTemplate` traits for Templates.  
+/// The `#[derive(Template)]` macro provides automatic implementation of the `Template`,
+/// `PartialTemplate`, `TemplateMetricValuePartial` and `TemplateMetricValue` traits. 
 /// 
 /// ## Requirements
 /// 
 /// - **Struct with named fields**: The macro only works with structs that have named fields
 /// - **TemplateMetadata implementation**: You must manually implement `TemplateMetadata` for your struct
+/// - All metric fields must implement `TemplateMetricValue`, `TemplateMetricValuePartial`.
+/// - All fields must implement `Clone`.
+/// - If no default attribute value is provided, fields must implement `Default` 
 /// 
 /// ## Basic Usage
 /// 
 /// ```rust
 /// # use srad::types::{Template, TemplateMetadata};
-/// 
 /// #[derive(Template)]
 /// struct SensorData {
 ///     temperature: f64,
@@ -457,7 +459,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 /// ### `#[template(rename = "new_name")]`
 /// 
 /// Changes the metric or parameter name in the template definition. By default, the field 
-/// name is used as the metric name. **note** names must be unique.
+/// name is used. Names must be unique.
 /// 
 /// ## Example 
 /// 
