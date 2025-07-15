@@ -1,6 +1,6 @@
 use srad::types::{
     PartialTemplate, Template, TemplateDefinition, TemplateInstance, TemplateMetadata,
-    TemplateMetric, TemplateParameter
+    TemplateMetric, TemplateParameter,
 };
 
 #[derive(Template, Clone, Default)]
@@ -44,7 +44,7 @@ pub fn test_simple() {
                 TemplateMetric::new_template_metric("z".into(), 0)
             ],
             parameters: vec![],
-            template_ref: Simple::template_definition_metric_name() 
+            template_ref: Simple::template_definition_metric_name()
         }
     );
 }
@@ -63,7 +63,6 @@ impl TemplateMetadata for NestedTemplate {
 
 #[test]
 pub fn test_nested() {
-
     let definition = NestedTemplate::template_definition();
     assert_eq!(
         definition,
@@ -72,7 +71,7 @@ pub fn test_nested() {
             metrics: vec![
                 TemplateMetric::new_template_metric("first".into(), 0),
                 TemplateMetric::new_template_metric(
-                    "nested".into(), 
+                    "nested".into(),
                     TemplateInstance {
                         version: None,
                         metrics: vec![
@@ -81,7 +80,7 @@ pub fn test_nested() {
                             TemplateMetric::new_template_metric("z".into(), 0)
                         ],
                         parameters: vec![],
-                        template_ref: Simple::template_definition_metric_name() 
+                        template_ref: Simple::template_definition_metric_name()
                     }
                 ),
             ],
@@ -101,7 +100,7 @@ pub fn test_nested() {
             metrics: vec![
                 TemplateMetric::new_template_metric("first".into(), 1),
                 TemplateMetric::new_template_metric(
-                    "nested".into(), 
+                    "nested".into(),
                     TemplateInstance {
                         version: None,
                         metrics: vec![
@@ -110,27 +109,26 @@ pub fn test_nested() {
                             TemplateMetric::new_template_metric("z".into(), 3)
                         ],
                         parameters: vec![],
-                        template_ref: Simple::template_definition_metric_name() 
+                        template_ref: Simple::template_definition_metric_name()
                     }
                 )
             ],
             parameters: vec![],
-            template_ref: NestedTemplate::template_definition_metric_name() 
+            template_ref: NestedTemplate::template_definition_metric_name()
         }
     );
-
 }
 
 #[test]
 pub fn test_attribute_default() {
     #[derive(Template)]
     struct TemplateDefault {
-        #[template(default=true)]
+        #[template(default = true)]
         default_bool: bool,
-        #[template(default=42)]
+        #[template(default = 42)]
         default_int: i32,
         #[template(default="Hello, World!".into())]
-        default_string: String 
+        default_string: String,
     }
 
     impl TemplateMetadata for TemplateDefault {
@@ -147,7 +145,10 @@ pub fn test_attribute_default() {
             metrics: vec![
                 TemplateMetric::new_template_metric("default_bool".into(), true),
                 TemplateMetric::new_template_metric("default_int".into(), 42_i32),
-                TemplateMetric::new_template_metric("default_string".into(), "Hello, World!".to_string()),
+                TemplateMetric::new_template_metric(
+                    "default_string".into(),
+                    "Hello, World!".to_string()
+                ),
             ],
             parameters: vec![],
         }
@@ -157,7 +158,7 @@ pub fn test_attribute_default() {
 #[test]
 pub fn test_attribute_skip() {
     #[derive(Template)]
-    struct TemplateSkip{
+    struct TemplateSkip {
         not_skipped: u32,
         #[allow(dead_code)]
         #[template(skip)]
@@ -175,29 +176,31 @@ pub fn test_attribute_skip() {
         definition,
         TemplateDefinition {
             version: None,
-            metrics: vec![
-                TemplateMetric::new_template_metric("not_skipped".into(), 0_u32),
-            ],
+            metrics: vec![TemplateMetric::new_template_metric(
+                "not_skipped".into(),
+                0_u32
+            ),],
             parameters: vec![],
         }
     );
 
-    let skip = TemplateSkip { not_skipped: 42, skipped: 123};
+    let skip = TemplateSkip {
+        not_skipped: 42,
+        skipped: 123,
+    };
     let instance = skip.template_instance();
     assert_eq!(
         instance,
         TemplateInstance {
             version: None,
-            metrics: vec![
-                TemplateMetric::new_template_metric("not_skipped".into(), 42_u32),
-            ],
+            metrics: vec![TemplateMetric::new_template_metric(
+                "not_skipped".into(),
+                42_u32
+            ),],
             parameters: vec![],
-            template_ref: TemplateSkip::template_definition_metric_name() 
+            template_ref: TemplateSkip::template_definition_metric_name()
         }
     );
-
-
-
 }
 
 #[test]
@@ -208,13 +211,13 @@ pub fn test_attribute_rename() {
         #[template(rename = "custom_name")]
         renamed_field: i32,
     }
-    
+
     impl TemplateMetadata for TemplateRename {
         fn template_name() -> &'static str {
             "rename"
         }
     }
-    
+
     let definition = TemplateRename::template_definition();
     assert_eq!(
         definition,
@@ -232,13 +235,13 @@ pub fn test_attribute_rename() {
 #[test]
 pub fn test_parameter() {
     #[derive(Template)]
-    struct TemplateWithParameter{
+    struct TemplateWithParameter {
         metric_field: u32,
         #[template(parameter)]
         parameter_field: u32,
     }
-    
-    impl TemplateMetadata for TemplateWithParameter{
+
+    impl TemplateMetadata for TemplateWithParameter {
         fn template_name() -> &'static str {
             "parameter"
         }
@@ -248,12 +251,14 @@ pub fn test_parameter() {
         definition,
         TemplateDefinition {
             version: None,
-            metrics: vec![
-                TemplateMetric::new_template_metric("metric_field".into(), 0_u32),
-            ],
-            parameters: vec![
-                TemplateParameter::new_template_parameter("parameter_field".into(), 0_u32),
-            ],
+            metrics: vec![TemplateMetric::new_template_metric(
+                "metric_field".into(),
+                0_u32
+            ),],
+            parameters: vec![TemplateParameter::new_template_parameter(
+                "parameter_field".into(),
+                0_u32
+            ),],
         }
     );
 }
