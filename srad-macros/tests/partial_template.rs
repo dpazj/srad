@@ -52,11 +52,16 @@ fn test_template_instance_from_difference()
         })
     );
 
+    //test no difference 
+    assert_eq!(
+        simple1.template_instance_from_difference(&simple1),
+        None
+    );
     let simple3 = simple1.clone();
     assert_eq!(
         simple3.template_instance_from_difference(&simple1),
         None
-    )
+    );
 }
 
 #[test]
@@ -76,4 +81,16 @@ fn test_update_from_instance()
     simple1.update_from_instance(update_b_and_d).unwrap();
     assert_eq!(simple1.b, 4);
     assert_eq!(simple1.d, 5);
+}
+
+#[test]
+fn test_template_instance_from_difference_nested()
+{
+
+}
+
+#[test]
+fn test_update_from_instance_nested()
+{
+
 }
