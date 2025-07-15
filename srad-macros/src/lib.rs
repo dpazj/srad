@@ -104,7 +104,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     let mut update_from_instance_metric_match = Vec::new();
     let mut update_from_instance_parameter_match = Vec::new();
 
-    for field in fields.named {
+    for field in &fields.named {
         let attrs = parse_builder_attributes(&field.attrs)?;
         let field_ident = &field.ident;
         let ty = field.ty.clone();
@@ -113,13 +113,6 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
         } else {
             field.ident.as_ref().unwrap().to_string()
         };
-
-        if !unique_names.insert(name.clone()) {
-            return Err(Error::new_spanned(
-                field.ident,
-                format!("Duplicate name provided - {name}"),
-            ));
-        }
 
         let default = if let Some(default) = attrs.default {
             default
@@ -137,6 +130,13 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
         if attrs.skip {
             continue;
+        }
+
+        if !unique_names.insert(name.clone()) {
+            return Err(Error::new_spanned(
+                field.ident.clone(),
+                format!("Duplicate name provided - {name}"),
+            ));
         }
 
         if attrs.parameter {
@@ -232,6 +232,13 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 },
             });
         }
+    }
+
+    if unique_names.is_empty() {
+        return Err(Error::new_spanned(
+            fields,
+            format!("At least one field must be provided"),
+        ));
     }
 
     let type_name = &input.ident;
@@ -402,20 +409,20 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 }
 
 /// # Template Derive Macro
-/// 
+///
 /// The `#[derive(Template)]` macro provides automatic implementation of the `Template`,
-/// `PartialTemplate`, `TemplateMetricValuePartial` and `TemplateMetricValue` traits. 
-/// 
+/// `PartialTemplate`, `TemplateMetricValuePartial` and `TemplateMetricValue` traits.
+///
 /// ## Requirements
-/// 
+///
 /// - **Struct with named fields**: The macro only works with structs that have named fields
 /// - **TemplateMetadata implementation**: You must manually implement `TemplateMetadata` for your struct
 /// - All metric fields must implement `TemplateMetricValue`, `TemplateMetricValuePartial`.
 /// - All fields must implement `Clone`.
-/// - If no default attribute value is provided, fields must implement `Default` 
-/// 
+/// - If no default attribute value is provided, fields must implement `Default`
+///
 /// ## Basic Usage
-/// 
+///
 /// ```rust
 /// # use srad::types::{Template, TemplateMetadata};
 /// #[derive(Template)]
@@ -425,7 +432,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 ///     battery_level: u8,
 ///     timestamp: u64,
 /// }
-/// 
+///
 /// impl TemplateMetadata for SensorData {
 ///     fn template_name() -> &'static str {
 ///         "sensor_data"
@@ -435,38 +442,38 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 ///         Some("1.0.0")
 ///     }
 /// }
-/// 
+///
 /// // Template and PartialTemplate are automatically implemented!
 /// ```
-/// 
+///
 /// ## Field Attributes
-/// 
+///
 /// The macro supports several attributes to customise field behavior:
-/// 
+///
 /// ### `#[template(skip)]`
-/// 
-/// Excludes a field from the template definition and instances. 
-/// 
+///
+/// Excludes a field from the template definition and instances.
+///
 /// ### `#[template(parameter)]`
-/// 
+///
 /// Marks a field as a template parameter rather than as a metric.  
-/// 
+///
 /// ### `#[template(default = value)]`
-/// 
-/// Provides a default value for a field in the template definition. If not provided then [Default::default()] 
+///
+/// Provides a default value for a field in the template definition. If not provided then [Default::default()]
 /// trait is used.
-/// 
+///
 /// ### `#[template(rename = "new_name")]`
-/// 
-/// Changes the metric or parameter name in the template definition. By default, the field 
+///
+/// Changes the metric or parameter name in the template definition. By default, the field
 /// name is used. Names must be unique.
-/// 
-/// ## Example 
-/// 
+///
+/// ## Example
+///
 /// ```rust
 /// use srad::types::{Template, PartialTemplate, TemplateMetadata};
 /// use std::collections::HashMap;
-/// 
+///
 /// #[derive(Template, Clone)]
 /// struct MotorController {
 ///     #[template(rename = "rpm")]
@@ -487,7 +494,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 ///     #[template(skip)]
 ///     internal_diagnostics: HashMap<String, String>,
 /// }
-/// 
+///
 /// impl TemplateMetadata for MotorController {
 ///     fn template_name() -> &'static str {
 ///         "motor_controller"
@@ -497,7 +504,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 ///         Some("2.1.0")
 ///     }
 /// }
-/// 
+///
 /// // Usage
 /// let motor = MotorController {
 ///     revolutions_per_minute: 2500.0,
@@ -507,15 +514,15 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 ///     alarm_active: false,
 ///     internal_diagnostics: HashMap::new(),
 /// };
-/// 
+///
 /// // Get template definition
 /// let definition = MotorController::template_definition();
-/// 
+///
 /// // Create instance
 /// let instance = motor.template_instance();
-/// 
+///
 /// // Create differential update
-/// let updated_motor = MotorController { 
+/// let updated_motor = MotorController {
 ///     revolutions_per_minute: 2750.0,  // Changed
 ///     temperature_celsius: 72.0,       // Same
 ///     max_rpm: 3000.0,
@@ -523,7 +530,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 ///     alarm_active: false,
 ///     internal_diagnostics: HashMap::new(),
 /// };
-/// 
+///
 /// if let Some(diff) = updated_motor.template_instance_from_difference(&motor) {
 ///     // diff contains only the 'rpm' metric
 /// }

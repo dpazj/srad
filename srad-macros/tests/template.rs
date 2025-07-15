@@ -1,4 +1,7 @@
-use srad::types::{Template, PartialTemplate, TemplateMetadata};
+use srad::types::{
+    PartialTemplate, Template, TemplateDefinition, TemplateInstance, TemplateMetadata,
+    TemplateMetric,
+};
 
 #[derive(Template, Clone, Default)]
 struct Simple {
@@ -15,14 +18,41 @@ impl TemplateMetadata for Simple {
 
 #[test]
 pub fn test_simple() {
-    let simple = Simple::default();
-}
+    let definition = Simple::template_definition();
+    assert_eq!(
+        definition,
+        TemplateDefinition {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("x".into(), 0),
+                TemplateMetric::new_template_metric("y".into(), 0),
+                TemplateMetric::new_template_metric("z".into(), 0)
+            ],
+            parameters: vec![],
+        }
+    );
 
+    let simple = Simple::default();
+    let instance = simple.template_instance();
+    assert_eq!(
+        instance,
+        TemplateInstance {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("x".into(), 0),
+                TemplateMetric::new_template_metric("y".into(), 0),
+                TemplateMetric::new_template_metric("z".into(), 0)
+            ],
+            parameters: vec![],
+            template_ref: Simple::template_definition_metric_name() 
+        }
+    );
+}
 
 #[derive(Template)]
 struct NestedTemplate {
     first: i32,
-    nested: Simple
+    nested: Simple,
 }
 
 impl TemplateMetadata for NestedTemplate {
@@ -33,21 +63,127 @@ impl TemplateMetadata for NestedTemplate {
 
 #[test]
 pub fn test_nested() {
-    todo!()
+
+    let definition = NestedTemplate::template_definition();
+    assert_eq!(
+        definition,
+        TemplateDefinition {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("first".into(), 0),
+                TemplateMetric::new_template_metric(
+                    "nested".into(), 
+                    TemplateInstance {
+                        version: None,
+                        metrics: vec![
+                            TemplateMetric::new_template_metric("x".into(), 0),
+                            TemplateMetric::new_template_metric("y".into(), 0),
+                            TemplateMetric::new_template_metric("z".into(), 0)
+                        ],
+                        parameters: vec![],
+                        template_ref: Simple::template_definition_metric_name() 
+                    }
+                ),
+            ],
+            parameters: vec![],
+        }
+    );
+
+    let nested = NestedTemplate {
+        first: 1,
+        nested: Simple { x: 1, y: 2, z: 3 },
+    };
+
+    assert_eq!(
+        nested.template_instance(),
+        TemplateInstance {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("first".into(), 1),
+                TemplateMetric::new_template_metric(
+                    "nested".into(), 
+                    TemplateInstance {
+                        version: None,
+                        metrics: vec![
+                            TemplateMetric::new_template_metric("x".into(), 1),
+                            TemplateMetric::new_template_metric("y".into(), 2),
+                            TemplateMetric::new_template_metric("z".into(), 3)
+                        ],
+                        parameters: vec![],
+                        template_ref: Simple::template_definition_metric_name() 
+                    }
+                )
+            ],
+            parameters: vec![],
+            template_ref: NestedTemplate::template_definition_metric_name() 
+        }
+    );
+
+}
+
+#[derive(Template)]
+struct TemplateDefault {
+    #[template(default=true)]
+    default_bool: bool,
+    #[template(default=42)]
+    default_int: i32,
+    #[template(default="Hello, World!".into())]
+    default_string: String 
+}
+
+impl TemplateMetadata for TemplateDefault {
+    fn template_name() -> &'static str {
+        "default"
+    }
 }
 
 #[test]
-pub fn test_default() {
-    todo!()
+pub fn test_attribute_default() {
+    let definition = TemplateDefault::template_definition();
+    assert_eq!(
+        definition,
+        TemplateDefinition {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("default_bool".into(), true),
+                TemplateMetric::new_template_metric("default_int".into(), 42_i32),
+                TemplateMetric::new_template_metric("default_string".into(), "Hello, World!".to_string()),
+            ],
+            parameters: vec![],
+        }
+    );
+}
+
+#[derive(Template)]
+struct TemplateSkip{
+    not_skipped: u32,
+    #[template(skip)]
+    skipped: i32,
+}
+
+impl TemplateMetadata for TemplateSkip {
+    fn template_name() -> &'static str {
+        "skip"
+    }
 }
 
 #[test]
-pub fn test_skip() {
-    todo!()
+pub fn test_attribute_skip() {
+    let definition = TemplateSkip::template_definition();
+    assert_eq!(
+        definition,
+        TemplateDefinition {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("not_skipped".into(), 0_u32),
+            ],
+            parameters: vec![],
+        }
+    );
 }
 
 #[test]
-pub fn test_rename() {
+pub fn test_attribute_rename() {
     todo!()
 }
 
@@ -55,5 +191,3 @@ pub fn test_rename() {
 pub fn test_parameter() {
     todo!()
 }
-
-

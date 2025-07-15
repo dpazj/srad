@@ -218,7 +218,7 @@ impl TemplateParameter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TemplateDefinition {
     pub version: Option<String>,
     pub metrics: Vec<TemplateMetric>,
@@ -281,7 +281,7 @@ impl TryFrom<MetricValue> for TemplateDefinition {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TemplateInstance {
     //name of the metric that represents the template definition
     pub template_ref: String,
