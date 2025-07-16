@@ -78,7 +78,11 @@ impl<T> BirthMetricDetails<T> {
         birth_metric.set_name(self.name).set_datatype(self.datatype);
         birth_metric.timestamp = Some(self.timestamp);
         birth_metric.metadata = self.metadata.map(MetaData::into);
+        if value.is_none() {
+            birth_metric.is_null = Some(true);
+        }
         birth_metric.value = value.map(MetricValue::into);
+
         birth_metric.properties = self.properties.map(PropertySet::into);
         birth_metric
     }
