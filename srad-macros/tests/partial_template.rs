@@ -3,7 +3,7 @@ use srad::types::{
     TemplateMetric, TemplateParameter
 };
 
-#[derive(Template, Clone, Default)]
+#[derive(Template, Clone, Default, PartialEq, Debug)]
 struct PartialTest {
     a: i32,
     b: i32,
@@ -79,18 +79,83 @@ fn test_update_from_instance()
         template_ref: PartialTest::template_definition_metric_name()
     };
     simple1.update_from_instance(update_b_and_d).unwrap();
-    assert_eq!(simple1.b, 4);
-    assert_eq!(simple1.d, 5);
+    assert_eq!(simple1, PartialTest { a: 1, b: 4, c: 3, d: 5});
+}
+
+#[derive(Template, Clone, Default, PartialEq, Debug)]
+struct PartialNestedTest {
+    a: i32,
+    #[template(parameter)]
+    b: i32,
+    c: PartialTest
+}
+
+impl TemplateMetadata for PartialNestedTest {
+    fn template_name() -> &'static str {
+        "nested_test"
+    }
 }
 
 #[test]
 fn test_template_instance_from_difference_nested()
 {
+    let nested =  PartialNestedTest { a: 2, b: 4, c: PartialTest { a: 1, b: 2, c: 3, d: 4}};
+    assert_eq!(
+        nested.template_instance_from_difference(&nested),
+        None
+    );
+
+    let mut nested1 = nested.clone();
+    nested1.a = 4;
+    nested1.c.a = 2;
+    assert_eq!(
+        nested1.template_instance_from_difference(&nested),
+        Some(TemplateInstance {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("a".into(), 4_i32),
+                TemplateMetric::new_template_metric(
+                    "c".into(),
+                    TemplateInstance {
+                        version: None,
+                        metrics: vec![
+                            TemplateMetric::new_template_metric("a".into(), 2_i32),
+                        ],
+                        parameters: vec![],
+                        template_ref: PartialTest::template_definition_metric_name()
+                    }
+                ),
+            ],
+            parameters: vec![],
+            template_ref: PartialNestedTest::template_definition_metric_name()
+        })
+    );
 
 }
 
 #[test]
 fn test_update_from_instance_nested()
 {
-
+    let mut nested =  PartialNestedTest { a: 2, b: 4, c: PartialTest { a: 1, b: 2, c: 3, d: 4}};
+    let instance = TemplateInstance {
+        version: None,
+        metrics: vec![
+            TemplateMetric::new_template_metric("a".into(), 4_i32),
+            TemplateMetric::new_template_metric(
+                "c".into(),
+                TemplateInstance {
+                    version: None,
+                    metrics: vec![
+                        TemplateMetric::new_template_metric("a".into(), 2_i32),
+                    ],
+                    parameters: vec![],
+                    template_ref: PartialTest::template_definition_metric_name()
+                }
+            ),
+        ],
+        parameters: vec![],
+        template_ref: PartialNestedTest::template_definition_metric_name()
+    };
+    nested.update_from_instance(instance).unwrap();
+    assert_eq!(nested, PartialNestedTest { a: 4, b: 4, c: PartialTest { a: 2, b: 2, c: 3, d: 4}});
 }

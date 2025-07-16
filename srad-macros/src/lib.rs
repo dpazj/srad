@@ -101,8 +101,10 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     let mut from_instance_parameter_match = Vec::new();
     let mut from_instance_init_struct = Vec::new();
 
+    let mut update_from_instance_init_defines = Vec::new();
     let mut update_from_instance_metric_match = Vec::new();
     let mut update_from_instance_parameter_match = Vec::new();
+    let mut update_from_instance_update_defines = Vec::new();
 
     for field in &fields.named {
         let attrs = parse_builder_attributes(&field.attrs)?;
@@ -139,6 +141,16 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             ));
         }
 
+        update_from_instance_init_defines.push(quote! {
+            let mut #field_ident = None;
+        });
+
+        update_from_instance_update_defines.push(quote! {
+            if let Some(v) = #field_ident {
+                self.#field_ident = v;
+            }
+        });
+
         if attrs.parameter {
             definition_parameters.push(quote! {
                 ::srad::types::TemplateParameter::new_template_parameter::<#ty>(
@@ -157,9 +169,12 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             from_instance_parameter_match.push(
                 quote! {
                     #name => {
-                        #field_ident = ::srad::types::TemplateParameterValue::try_from_template_parameter_value(
+                        #field_ident = match ::srad::types::TemplateParameterValue::try_from_template_parameter_value(
                             parameter.value.map(::srad::types::ParameterValue::from)
-                        )?
+                        ) {
+                            Ok(v) => v,
+                            Err(_) => return Err(::srad::types::TemplateError::InvalidParameterValue(#name.to_string()))
+                        }
                     },
                 }
             );
@@ -178,12 +193,16 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             update_from_instance_parameter_match.push(
                 quote! {
                     #name => {
-                        self.#field_ident = ::srad::types::TemplateParameterValue::try_from_template_parameter_value(
+                        #field_ident = match ::srad::types::TemplateParameterValue::try_from_template_parameter_value(
                             parameter.value.map(::srad::types::ParameterValue::from)
-                        )?
+                        ) {
+                            Ok(v) => Some(v),
+                            Err(_) => return Err(::srad::types::TemplateError::InvalidParameterValue(#name.to_string()))
+                        };
                     },
                 }
             );
+
         } else {
             definition_metrics.push(quote! {
                 ::srad::types::TemplateMetric::new_template_metric::<#ty>(
@@ -202,9 +221,12 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             from_instance_metric_match.push(
                 quote! {
                     #name => {
-                        #field_ident = ::srad::types::TemplateMetricValue::try_from_template_metric_value(
+                        #field_ident = match ::srad::types::TemplateMetricValue::try_from_template_metric_value(
                             metric.value.map(::srad::types::MetricValue::from)
-                        )?
+                        ) {
+                            Ok(v) => v,
+                            Err(e) => return Err(::srad::types::TemplateError::InvalidMetricValue(#name.to_string()))
+                        }
                     },
                 }
             );
@@ -223,14 +245,20 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
             );
 
-            update_from_instance_metric_match.push(quote! {
-                #name => {
-                    ::srad::types::TemplateMetricValuePartial::try_update_from_metric_value(
-                        &mut self.#field_ident,
-                        metric.value.map(::srad::types::MetricValue::from)
-                    )?
-                },
-            });
+            update_from_instance_metric_match.push(
+                quote! {
+                    #name => {
+                        let mut tmp = self.#field_ident.clone();
+                        if let Err(_) = ::srad::types::TemplateMetricValuePartial::try_update_from_metric_value(
+                            &mut tmp,
+                            metric.value.map(::srad::types::MetricValue::from)
+                        ) {
+                            return Err(::srad::types::TemplateError::InvalidMetricValue(#name.to_string()))
+                        }
+                        #field_ident = Some(tmp);
+                    },
+                }
+            );
         }
     }
 
@@ -276,7 +304,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     Some(val) => ::srad::types::TemplateInstance::try_from(val).map_err(|_|())?,
                     None => return Ok(())
                 };
-                ::srad::types::PartialTemplate::update_from_instance(self, instance)
+                ::srad::types::PartialTemplate::update_from_instance(self, instance).map_err(|_|())
             }
         }
 
@@ -336,31 +364,35 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 })
             }
 
-            fn update_from_instance(&mut self, instance: ::srad::types::TemplateInstance) -> Result<(), ()> {
+            fn update_from_instance(&mut self, instance: ::srad::types::TemplateInstance) -> Result<(), ::srad::types::TemplateError> {
 
                 if instance.template_ref != Self::template_definition_metric_name() {
-                    return Err(())
+                    return Err(::srad::types::TemplateError::RefMismatch(instance.template_ref))
                 }
 
                 if instance.version.as_deref() != Self::template_version() {
-                    return Err(())
+                    return Err(::srad::types::TemplateError::VersionMismatch)
                 }
 
+                #(#update_from_instance_init_defines)*
+
                 for parameter in instance.parameters {
-                    let name = parameter.name.ok_or(())?;
+                    let name = parameter.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#update_from_instance_parameter_match)*
-                        _ => return Err(())
+                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
                     }
                 }
 
                 for metric in instance.metrics {
-                    let name = metric.name.ok_or(())?;
+                    let name = metric.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#update_from_instance_metric_match)*
-                        _ => return Err(())
+                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
                     }
                 }
+
+                #(#update_from_instance_update_defines)*
 
                 Ok(())
             }
@@ -369,32 +401,32 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 
         impl TryFrom<::srad::types::TemplateInstance> for #type_name {
 
-            type Error = ();
+            type Error = ::srad::types::TemplateError;
 
             fn try_from(value: ::srad::types::TemplateInstance) -> Result<Self, Self::Error> {
                 if value.template_ref != Self::template_definition_metric_name() {
-                    return Err(())
+                    return Err(::srad::types::TemplateError::RefMismatch(value.template_ref))
                 }
 
                 if value.version.as_deref() != Self::template_version() {
-                    return Err(())
+                    return Err(::srad::types::TemplateError::VersionMismatch)
                 }
 
                 #(#from_instance_defines)*
 
                 for parameter in value.parameters {
-                    let name = parameter.name.ok_or(())?;
+                    let name = parameter.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#from_instance_parameter_match)*
-                        _ => return Err(())
+                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
                     }
                 }
 
                 for metric in value.metrics {
-                    let name = metric.name.ok_or(())?;
+                    let name = metric.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#from_instance_metric_match)*
-                        _ => return Err(())
+                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
                     }
                 }
 

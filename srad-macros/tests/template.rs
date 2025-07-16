@@ -1,5 +1,5 @@
 use srad::types::{
-    PartialTemplate, Template, TemplateDefinition, TemplateInstance, TemplateMetadata,
+    Template, TemplateDefinition, TemplateInstance, TemplateMetadata,
     TemplateMetric, TemplateParameter,
 };
 

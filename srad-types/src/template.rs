@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 use crate::{
     payload::{self, metric, DataType},
     traits::{self, HasDataType},
@@ -404,12 +406,27 @@ pub trait TemplateMetadata {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum TemplateError {
+    #[error("Invalid Template Payload")]
+    InvalidPayload,
+    #[error("Unexpected Field: {0}")]
+    UnknownField(String),
+    #[error("Template ref mismatch: {0}")]
+    RefMismatch(String),
+    #[error("Template version mismatch")]
+    VersionMismatch,
+    #[error("Invalid value for parameter field {0}")]
+    InvalidParameterValue(String),
+    #[error("Invalid value for metric field {0}")]
+    InvalidMetricValue(String)
+}
 
 /// Trait used to represent a Template
 /// 
 /// **It is strongly recommended to use the [srad_macros::Template] derive macro instead of 
 /// implementing this trait manually**
-pub trait Template: TemplateMetadata {
+pub trait Template: TemplateMetadata + TryFrom<TemplateInstance> {
     /// Returns the template definition 
     fn template_definition() -> TemplateDefinition;
     /// Creates a template instance from the current state 
@@ -435,5 +452,5 @@ pub trait PartialTemplate: Template{
     /// Create a template instance based on the difference between a template and another copy 
     fn template_instance_from_difference(&self, other: &Self) -> Option<TemplateInstance>;
     /// Update the template from a [TemplateInstance]
-    fn update_from_instance(&mut self, instance: TemplateInstance) -> Result<(), ()>;
+    fn update_from_instance(&mut self, instance: TemplateInstance) -> Result<(), TemplateError>;
 }
