@@ -410,8 +410,10 @@ pub trait TemplateMetadata {
 pub enum TemplateError {
     #[error("Invalid Template Payload")]
     InvalidPayload,
-    #[error("Unexpected Field: {0}")]
-    UnknownField(String),
+    #[error("Unexpected Parameter: {0}")]
+    UnknownParameter(String),
+    #[error("Unexpected Metric: {0}")]
+    UnknownMetric(String),
     #[error("Template ref mismatch: {0}")]
     RefMismatch(String),
     #[error("Template version mismatch")]
@@ -419,7 +421,7 @@ pub enum TemplateError {
     #[error("Invalid value for parameter field {0}")]
     InvalidParameterValue(String),
     #[error("Invalid value for metric field {0}")]
-    InvalidMetricValue(String)
+    InvalidMetricValue(String),
 }
 
 /// Trait used to represent a Template

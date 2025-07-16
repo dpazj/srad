@@ -380,7 +380,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     let name = parameter.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#update_from_instance_parameter_match)*
-                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
+                        _ => return Err(::srad::types::TemplateError::UnknownParameter(name))
                     }
                 }
 
@@ -388,7 +388,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     let name = metric.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#update_from_instance_metric_match)*
-                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
+                        _ => return Err(::srad::types::TemplateError::UnknownMetric(name))
                     }
                 }
 
@@ -418,7 +418,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     let name = parameter.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#from_instance_parameter_match)*
-                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
+                        _ => return Err(::srad::types::TemplateError::UnknownParameter(name))
                     }
                 }
 
@@ -426,7 +426,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     let name = metric.name.ok_or(::srad::types::TemplateError::InvalidPayload)?;
                     match name.as_str() {
                         #(#from_instance_metric_match)*
-                        _ => return Err(::srad::types::TemplateError::UnknownField(name))
+                        _ => return Err(::srad::types::TemplateError::UnknownMetric(name))
                     }
                 }
 
