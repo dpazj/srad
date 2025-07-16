@@ -1,6 +1,5 @@
 use srad::types::{
-    PartialTemplate, Template, TemplateInstance, TemplateMetadata,
-    TemplateMetric, TemplateParameter
+    PartialTemplate, Template, TemplateError, TemplateInstance, TemplateMetadata, TemplateMetric, TemplateParameter
 };
 
 #[derive(Template, Clone, Default, PartialEq, Debug)]
@@ -68,18 +67,50 @@ fn test_template_instance_from_difference()
 fn test_update_from_instance()
 {
     let mut simple1 = PartialTest { a: 1, b: 2, c: 3, d: 4};
-    let update_b_and_d = TemplateInstance {
-        version: None,
-        metrics: vec![
-            TemplateMetric::new_template_metric("b".into(), 4),
-        ],
-        parameters: vec![
-            TemplateParameter::new_template_parameter("d".into(), 5),
-        ],
-        template_ref: PartialTest::template_definition_metric_name()
+    let valid_update = ||{
+        TemplateInstance {
+            version: None,
+            metrics: vec![
+                TemplateMetric::new_template_metric("b".into(), 4),
+            ],
+            parameters: vec![
+                TemplateParameter::new_template_parameter("d".into(), 5),
+            ],
+            template_ref: PartialTest::template_definition_metric_name()
+        }
     };
+
+    let update_b_and_d = valid_update();
     simple1.update_from_instance(update_b_and_d).unwrap();
     assert_eq!(simple1, PartialTest { a: 1, b: 4, c: 3, d: 5});
+
+    let mut invalid_ref = valid_update();
+    invalid_ref.template_ref = "INVALID".into();
+    assert!(matches!(
+        simple1.update_from_instance(
+            invalid_ref
+        ),
+        Err(TemplateError::RefMismatch(_))
+    ));
+
+    let mut unknown_metric= valid_update();
+    unknown_metric.metrics.push(TemplateMetric::new_template_metric("UNKNOWN".into(), 0));
+    assert!(matches!(
+        simple1.update_from_instance(
+            unknown_metric 
+        ),
+        Err(TemplateError::UnknownMetric(_))
+    ));
+
+    let mut unknown_param= valid_update();
+    unknown_param.parameters.push(TemplateParameter::new_template_parameter("UNKNOWN".into(), 0));
+    assert!(matches!(
+        simple1.update_from_instance(
+           unknown_param 
+        ),
+        Err(TemplateError::UnknownParameter(_))
+    ));
+
 }
 
 #[derive(Template, Clone, Default, PartialEq, Debug)]
