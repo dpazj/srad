@@ -38,7 +38,7 @@ pub trait MetricManager {
     fn initialise_birth(&self, bi: &mut BirthInitializer);
 }
 
-///A trait for implementing a type that defines node-specific metrics
+///A trait for implementing a type that defines and manage node-specific metrics and template definitions
 #[async_trait]
 pub trait NodeMetricManager: MetricManager {
     /// Initialise the struct.
@@ -56,6 +56,7 @@ pub trait NodeMetricManager: MetricManager {
     ///
     /// This async method is called when a NCMD message for the node is received, allowing
     /// the implementation to handle command metrics as it sees fit. The default implementation does nothing.
+    /// Note this is blocking for the nodes state progression.
     async fn on_ncmd(&self, _node: NodeHandle, _metrics: MessageMetrics) {}
 }
 
@@ -71,6 +72,7 @@ pub trait DeviceMetricManager: MetricManager {
     ///
     /// This async method is called when a DCMD message for the device is received, allowing
     /// the implementation to handle command metrics as it sees fit. The default implementation does nothing.
+    /// Note this is blocking for the devices state progression.
     async fn on_dcmd(&self, _device: DeviceHandle, _metrics: MessageMetrics) {}
 }
 

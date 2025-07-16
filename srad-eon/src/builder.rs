@@ -72,7 +72,9 @@ impl EoNBuilder {
 
     /// Register a template definition with the node.
     ///
-    /// Will panic if a template with the same template_metric_definition_name has been registered
+    /// Updates the initial [TemplateRegistry] that the node will use.
+    /// Will panic if a template with the same [srad_types::TemplateMetadata::template_definition_metric_name] has been registered
+    /// See [TemplateRegistry::register] for more details.
     pub fn register_template<T: Template>(mut self) -> Self {
         if self.templates.register::<T>().is_err() {
             panic!(

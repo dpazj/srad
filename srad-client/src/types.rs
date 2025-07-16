@@ -39,7 +39,7 @@ pub enum MessageKind {
     Other(String),
 }
 
-/// A Message structure containing payload and the type of topic it was received on
+/// A Message struct containing payload and the type of topic it was received on
 #[derive(Debug, PartialEq)]
 pub struct Message {
     pub payload: Payload,
@@ -118,7 +118,7 @@ pub enum Event {
     },
 }
 
-/// Structure representing the last will of a Node or Application
+/// struct representing the last will of a Node or Application
 #[derive(Debug, Clone, PartialEq)]
 pub struct LastWill {
     pub topic: String,

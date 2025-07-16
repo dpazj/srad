@@ -142,6 +142,7 @@ pub enum BirthObjectType {
     Device(DeviceId),
 }
 
+/// A struct used to register metrics to be included in a node or devices birth. 
 pub struct BirthInitializer {
     birth_metrics: Vec<Metric>,
     metric_names: HashSet<String>,
@@ -225,6 +226,10 @@ impl BirthInitializer {
         Ok(())
     }
 
+    /// Register a metric for the birth of the node/device
+    ///
+    /// Metric names must be unique. 
+    /// **Note**: For metrics with Template datatypes, use [Self::register_template_metric] instead.
     pub fn register_metric<T>(
         &mut self,
         mut details: BirthMetricDetails<T>,
@@ -246,6 +251,10 @@ impl BirthInitializer {
         Ok(tok)
     }
 
+    /// Register a new template metric
+    /// 
+    /// **Note**: Templates must have been registered with [TemplateRegistry]
+    /// See [Self::register_metric] for further details 
     pub fn register_template_metric<T>(
         &mut self,
         mut details: BirthMetricDetails<T>,

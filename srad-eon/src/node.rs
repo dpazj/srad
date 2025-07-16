@@ -11,7 +11,7 @@ use log::{debug, error, info, warn};
 use srad_client::{DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind};
 use srad_types::{
     constants::{self, BDSEQ, NODE_CONTROL_REBIRTH},
-    payload::{metric::Value, Payload},
+    payload::{self, metric::Value, DataType, Payload},
     topic::{
         DeviceMessage as DeviceMessageType, DeviceTopic, NodeMessage as NodeMessageType, NodeTopic,
         QoS, StateTopic, Topic, TopicFilter,
@@ -19,6 +19,7 @@ use srad_types::{
     utils::timestamp,
     MetricValue, Template, TemplateDefinition,
 };
+use thiserror::Error;
 use tokio::{
     select,
     sync::{mpsc, oneshot},
@@ -169,7 +170,7 @@ impl NodeHandle {
         if !self.state.running.load(Ordering::SeqCst) {
             return;
         }
-        info!("Edge node stopping. Node = {}", self.state.edge_node_id);
+        info!("Edge node stopping. node={}", self.state.edge_node_id);
         let topic = NodeTopic::new(
             &self.state.group_id,
             NodeMessageType::NDeath,
@@ -178,7 +179,7 @@ impl NodeHandle {
         let payload = self.state.generate_death_payload();
         match self.client.try_publish_node_message(topic, payload).await {
             Ok(_) => (),
-            Err(_) => debug!("Unable to publish node death certificate on exit"),
+            Err(_) => debug!("Unable to publish node death certificate on exit. node={}", self.state.edge_node_id),
         };
         _ = self.stop_tx.send(EoNShutdown).await;
         _ = self.client.disconnect().await;
@@ -287,6 +288,32 @@ impl MetricPublisher for NodeHandle {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum TemplateRegistryError {
+    #[error("Invalid template name")]
+    InvalidName,
+    #[error("Duplicate template. A template with that name is already registered")]
+    Duplicate,
+    #[error("The Templates Definition is invalid")]
+    InvalidDefinition,
+    #[error("The Templates Definition contained a template that has not been registered")]
+    UnregisteredMetric
+
+}
+
+/// A struct representing a collection of Template Definitions for a Node
+/// 
+/// Used to manage the template definitions for the node. A definition must be included in the registry 
+/// in order to register a metric that has a template datatype with a [BirthInitializer].
+/// 
+/// When a Node generates a birth message, a template definition for each templates registered with this structure 
+/// will be included in the Nodes birth message. [srad_types::TemplateMetadata::template_definition_metric_name] 
+/// for the type is used to define the name of the metric that represents the template definition. [srad_types::Template::template_definition()]
+/// is used to generate the definition used for the metrics value.
+/// 
+/// For templates which use another template as one of it's metrics, the template used as a field must be registered first.
+/// 
+/// This registry is checked any time a metric that uses a template as the type for its value is registered for birth.
 #[derive(Debug, Clone)]
 pub struct TemplateRegistry {
     templates: HashMap<String, TemplateDefinition>,
@@ -299,6 +326,7 @@ impl TemplateRegistry {
         }
     }
 
+    /// Empty the registry of all template definitions
     pub fn clear(&mut self) {
         self.templates.clear();
     }
@@ -308,22 +336,48 @@ impl TemplateRegistry {
         self.templates.remove(name);
     }
 
-    /// Add a template
-    pub fn register<T: Template>(&mut self) -> Result<(), ()> {
+    // Recurse through all template metrics in the metric list and ensure they have been registered.
+    fn check_template_metrics(&self, metrics: &Vec<payload::Metric>) -> Result<(), TemplateRegistryError>{
+        for x in metrics {
+            let datatype = match &x.datatype {
+                Some(t) => match DataType::try_from(*t) {
+                    Ok(datatype) => datatype,
+                    Err(_) => return Err(TemplateRegistryError::InvalidDefinition),
+                },
+                None => return Err(TemplateRegistryError::InvalidDefinition),
+            };
+            if datatype != DataType::Template { continue; }
+
+            if let Value::TemplateValue(template) = x.value.as_ref().ok_or(TemplateRegistryError::InvalidDefinition)? {
+                let ref_name = template.template_ref.as_ref().ok_or(TemplateRegistryError::InvalidDefinition)?;
+                if self.templates.contains_key(ref_name) { return Ok(()) }
+                return self.check_template_metrics(&template.metrics);
+            } else {
+                return Err(TemplateRegistryError::InvalidDefinition)
+            }
+        }
+        Ok(())
+    }
+
+    /// Add a template definition
+    pub fn register<T: Template>(&mut self) -> Result<(), TemplateRegistryError> {
         let name = T::template_definition_metric_name();
         if name == NODE_CONTROL_REBIRTH || name == BDSEQ {
-            return Err(());
+            return Err(TemplateRegistryError::InvalidName);
         }
 
         if self.templates.contains_key(&name) {
-            return Err(());
+            return Err(TemplateRegistryError::Duplicate);
         }
 
         let definition = T::template_definition();
+        self.check_template_metrics(&definition.metrics)?;
+
         self.templates.insert(name, definition);
         Ok(())
     }
 
+    /// Check the registry contain a template with the given name
     pub fn contains(&self, template_definition_metric_name: &str) -> bool {
         self.templates.contains_key(template_definition_metric_name)
     }
@@ -445,7 +499,7 @@ impl Node {
             return;
         }
 
-        info!("Edge node online. Node = {}", self.state.edge_node_id);
+        info!("Edge node online. node={}", self.state.edge_node_id);
         let sub_topics = self.state.sub_topics();
 
         if self.client.subscribe_many(sub_topics).await.is_ok() {
@@ -458,7 +512,7 @@ impl Node {
             return;
         }
 
-        info!("Edge node offline. Node = {}", self.state.edge_node_id);
+        info!("Edge node offline. node={}", self.state.edge_node_id);
         self.death();
         let new_lastwill = self.state.create_last_will();
         _ = will_sender.send(new_lastwill);
@@ -490,14 +544,14 @@ impl Node {
                 };
 
                 if !rebirth {
-                    warn!("Received invalid CMD Rebirth metric - ignoring request")
+                    warn!("Received invalid NCMD Rebirth metric - ignoring request. node={}", self.state.edge_node_id)
                 }
             }
 
             let message_metrics: MessageMetrics = match payload.try_into() {
                 Ok(metrics) => metrics,
                 Err(_) => {
-                    warn!("Received invalid CMD payload - ignoring request");
+                    warn!("Received invalid CMD payload - ignoring request. node={}", self.state.edge_node_id);
                     return;
                 }
             };
@@ -507,10 +561,10 @@ impl Node {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                 let time_since_last = now - self.last_node_rebirth_request;
                 if time_since_last < self.config.node_rebirth_request_cooldown {
-                    info!("Got Rebirth CMD but cooldown time not expired. Ignoring");
+                    info!("Got Rebirth CMD but cooldown time not expired. Ignoring. node={}", self.state.edge_node_id);
                     return;
                 }
-                info!("Got Rebirth CMD - Rebirthing Node");
+                info!("Got Rebirth CMD - Rebirthing Node. node={}", self.state.edge_node_id);
                 self.rebirth().await;
                 self.last_node_rebirth_request = now;
             }
@@ -555,7 +609,7 @@ enum ClientStateMessage {
     Offline(oneshot::Sender<LastWill>),
 }
 
-/// Structure that represents a Sparkplug Edge Node instance.
+/// struct that represents a Sparkplug Edge Node instance.
 ///
 /// See [EoNBuilder] on how to create an [EoN] instance.
 pub struct EoN {
@@ -697,7 +751,7 @@ impl EoN {
     ///
     /// Runs the Edge Node until [NodeHandle::cancel()] is called
     pub async fn run(mut self) {
-        info!("Edge node running. Node = {}", self.state.edge_node_id);
+        info!("Edge node running. node={}", self.state.edge_node_id);
         self.state.running.store(true, Ordering::SeqCst);
 
         self.update_last_will(self.state.create_last_will());
@@ -717,7 +771,7 @@ impl EoN {
         }
 
         _ = self.client_state_tx.send(ClientStateMessage::Stopped).await;
-        info!("Edge node stopped. Node = {}", self.state.edge_node_id);
+        info!("Edge node stopped. node={}", self.state.edge_node_id);
         self.state.running.store(false, Ordering::SeqCst);
     }
 }
