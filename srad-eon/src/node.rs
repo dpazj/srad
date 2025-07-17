@@ -351,7 +351,7 @@ impl TemplateRegistry {
             if let Value::TemplateValue(template) = x.value.as_ref().ok_or(TemplateRegistryError::InvalidDefinition)? {
                 let ref_name = template.template_ref.as_ref().ok_or(TemplateRegistryError::InvalidDefinition)?;
                 if self.templates.contains_key(ref_name) { return Ok(()) }
-                return self.check_template_metrics(&template.metrics);
+                self.check_template_metrics(&template.metrics)?;
             } else {
                 return Err(TemplateRegistryError::InvalidDefinition)
             }
