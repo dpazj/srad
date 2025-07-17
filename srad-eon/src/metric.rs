@@ -81,7 +81,7 @@ pub trait MetricPublisher {
     }
 }
 
-/// A structure for creating a metric to be published with associated metadata and properties.
+/// A struct for creating a metric to be published with associated metadata and properties.
 ///
 /// `PublishMetric` provides a builder pattern for configuring metric publications,
 /// allowing for optional fields like transience, historical status, custom timestamps,
