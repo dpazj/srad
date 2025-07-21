@@ -393,7 +393,7 @@ impl TemplateRegistry {
         Ok(())
     }
 
-    /// Check the registry contain a template with the given name
+    /// Check the registry contains a template with the given name
     pub fn contains(&self, template_definition_metric_name: &str) -> bool {
         self.templates.contains_key(template_definition_metric_name)
     }
