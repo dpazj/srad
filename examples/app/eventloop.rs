@@ -26,8 +26,8 @@ async fn main() {
         match application.poll().await {
             srad::app::AppEvent::Online => info!("App online"),
             srad::app::AppEvent::Offline => info!("App offline"),
-            srad::app::AppEvent::Node(node_event) => (), //info!("Node event {node_event:?}"),
-            srad::app::AppEvent::Device(device_event) => (), // info!("Device event {device_event:?}"),
+            srad::app::AppEvent::Node(node_event) => info!("Node event {node_event:?}"),
+            srad::app::AppEvent::Device(device_event) => info!("Device event {device_event:?}"),
             srad::app::AppEvent::InvalidPayload(details) => {
                 info!(
                     "Issuing rebirth request to node {0:?}, due to invalid payload: {1:?}",
