@@ -1,9 +1,13 @@
 # Changelog
 
-## [?]
+## [0.3.0]
 
-### Eon
+- Added Template support
+  - Traits, Derive Macro and utility types
 
+### EoN
+
+- Add Support for use of Template metric values
 - **breaking change** Add `SimpleMetricBuilder` type to configure simple metric manager nodes.
 - Add ability to configure `SimpleMetricManager` metrics to use an alias
 

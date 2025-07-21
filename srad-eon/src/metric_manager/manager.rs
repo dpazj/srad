@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 
-use crate::{birth::BirthInitializer, device::DeviceHandle, metric::MessageMetrics, NodeHandle};
+use crate::{
+    birth::BirthInitializer, device::DeviceHandle, metric::MessageMetrics, node::TemplateRegistry,
+    NodeHandle,
+};
 
 /// A type alias for a trait object implementing [`NodeMetricManager`].
 pub type DynNodeMetricManager = dyn NodeMetricManager + Send + Sync + 'static;
@@ -35,7 +38,7 @@ pub trait MetricManager {
     fn initialise_birth(&self, bi: &mut BirthInitializer);
 }
 
-///A trait for implementing a type that defines node-specific metrics
+///A trait for implementing a type that defines and manage node-specific metrics and template definitions
 #[async_trait]
 pub trait NodeMetricManager: MetricManager {
     /// Initialise the struct.
@@ -43,10 +46,17 @@ pub trait NodeMetricManager: MetricManager {
     /// Called when the Node is created
     fn init(&self, _handle: &NodeHandle) {}
 
+    /// Update the templates registered with the node.
+    ///
+    /// This is called before [MetricManager::initialise_birth]. Gives the node the ability to
+    /// dynamically update the set of templates definitions it can use.
+    fn birth_update_template_registry(&self, _template_registry: &mut TemplateRegistry) {}
+
     /// Processes NCMD metrics.
     ///
     /// This async method is called when a NCMD message for the node is received, allowing
     /// the implementation to handle command metrics as it sees fit. The default implementation does nothing.
+    /// Note this is blocking for the nodes state progression.
     async fn on_ncmd(&self, _node: NodeHandle, _metrics: MessageMetrics) {}
 }
 
@@ -62,6 +72,7 @@ pub trait DeviceMetricManager: MetricManager {
     ///
     /// This async method is called when a DCMD message for the device is received, allowing
     /// the implementation to handle command metrics as it sees fit. The default implementation does nothing.
+    /// Note this is blocking for the devices state progression.
     async fn on_dcmd(&self, _device: DeviceHandle, _metrics: MessageMetrics) {}
 }
 

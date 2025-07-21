@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
@@ -9,15 +10,16 @@ use std::{
 use log::{debug, error, info, warn};
 use srad_client::{DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind};
 use srad_types::{
-    constants::{self, NODE_CONTROL_REBIRTH},
-    payload::{metric::Value, Payload},
+    constants::{self, BDSEQ, NODE_CONTROL_REBIRTH},
+    payload::{self, metric::Value, DataType, Payload},
     topic::{
         DeviceMessage as DeviceMessageType, DeviceTopic, NodeMessage as NodeMessageType, NodeTopic,
         QoS, StateTopic, Topic, TopicFilter,
     },
     utils::timestamp,
-    MetricValue,
+    MetricValue, Template, TemplateDefinition,
 };
+use thiserror::Error;
 use tokio::{
     select,
     sync::{mpsc, oneshot},
@@ -25,10 +27,11 @@ use tokio::{
 };
 
 use crate::{
-    birth::BirthObjectType, device::DeviceMap, error::DeviceRegistrationError,
-    metric_manager::manager::DynNodeMetricManager, BirthInitializer, BirthMetricDetails, BirthType,
-    DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError,
-    PublishMetric, StateError,
+    birth::BirthObjectType,
+    device::{DeviceMap, DeviceRegistrationError},
+    metric_manager::manager::DynNodeMetricManager,
+    BirthInitializer, BirthMetricDetails, BirthType, DeviceHandle, DeviceMetricManager, EoNBuilder,
+    MessageMetrics, MetricPublisher, PublishError, PublishMetric, StateError,
 };
 
 pub(crate) struct EoNConfig {
@@ -167,7 +170,7 @@ impl NodeHandle {
         if !self.state.running.load(Ordering::SeqCst) {
             return;
         }
-        info!("Edge node stopping. Node = {}", self.state.edge_node_id);
+        info!("Edge node stopping. node={}", self.state.edge_node_id);
         let topic = NodeTopic::new(
             &self.state.group_id,
             NodeMessageType::NDeath,
@@ -176,7 +179,10 @@ impl NodeHandle {
         let payload = self.state.generate_death_payload();
         match self.client.try_publish_node_message(topic, payload).await {
             Ok(_) => (),
-            Err(_) => debug!("Unable to publish node death certificate on exit"),
+            Err(_) => debug!(
+                "Unable to publish node death certificate on exit. node={}",
+                self.state.edge_node_id
+            ),
         };
         _ = self.stop_tx.send(EoNShutdown).await;
         _ = self.client.disconnect().await;
@@ -285,6 +291,114 @@ impl MetricPublisher for NodeHandle {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum TemplateRegistryError {
+    #[error("Invalid template name")]
+    InvalidName,
+    #[error("Duplicate template. A template with that name is already registered")]
+    Duplicate,
+    #[error("The Templates Definition is invalid")]
+    InvalidDefinition,
+    #[error("The Templates Definition contained a template that has not been registered")]
+    UnregisteredMetric,
+}
+
+/// A struct representing a collection of Template Definitions for a Node
+///
+/// Used to manage the template definitions for the node. A definition must be included in the registry
+/// in order to register a metric that has a template datatype with a [BirthInitializer].
+///
+/// When a Node generates a birth message, a template definition for each templates registered with this structure
+/// will be included in the Nodes birth message. [srad_types::TemplateMetadata::template_definition_metric_name]
+/// for the type is used to define the name of the metric that represents the template definition. [srad_types::Template::template_definition()]
+/// is used to generate the definition used for the metrics value.
+///
+/// For templates which use another template as one of it's metrics, the template used as a field must be registered first.
+///
+/// This registry is checked any time a metric that uses a template as the type for its value is registered for birth.
+#[derive(Debug, Clone)]
+pub struct TemplateRegistry {
+    templates: HashMap<String, TemplateDefinition>,
+}
+
+impl TemplateRegistry {
+    pub(crate) fn new() -> Self {
+        Self {
+            templates: HashMap::new(),
+        }
+    }
+
+    /// Empty the registry of all template definitions
+    pub fn clear(&mut self) {
+        self.templates.clear();
+    }
+
+    /// Remove a template
+    pub fn deregister(&mut self, name: &str) {
+        self.templates.remove(name);
+    }
+
+    // Recurse through all template metrics in the metric list and ensure they have been registered.
+    fn check_template_metrics(
+        &self,
+        metrics: &Vec<payload::Metric>,
+    ) -> Result<(), TemplateRegistryError> {
+        for x in metrics {
+            let datatype = match &x.datatype {
+                Some(t) => match DataType::try_from(*t) {
+                    Ok(datatype) => datatype,
+                    Err(_) => return Err(TemplateRegistryError::InvalidDefinition),
+                },
+                None => return Err(TemplateRegistryError::InvalidDefinition),
+            };
+            if datatype != DataType::Template {
+                continue;
+            }
+
+            if let Value::TemplateValue(template) = x
+                .value
+                .as_ref()
+                .ok_or(TemplateRegistryError::InvalidDefinition)?
+            {
+                let ref_name = template
+                    .template_ref
+                    .as_ref()
+                    .ok_or(TemplateRegistryError::InvalidDefinition)?;
+                if self.templates.contains_key(ref_name) {
+                    return Ok(());
+                }
+                self.check_template_metrics(&template.metrics)?;
+            } else {
+                return Err(TemplateRegistryError::InvalidDefinition);
+            }
+        }
+        Ok(())
+    }
+
+    /// Add a template definition
+    pub fn register<T: Template>(&mut self) -> Result<(), TemplateRegistryError> {
+        let name = T::template_definition_metric_name();
+        if name == NODE_CONTROL_REBIRTH || name == BDSEQ {
+            return Err(TemplateRegistryError::InvalidName);
+        }
+
+        if self.templates.contains_key(&name) {
+            return Err(TemplateRegistryError::Duplicate);
+        }
+
+        let definition = T::template_definition();
+        self.check_template_metrics(&definition.metrics)?;
+
+        self.templates.insert(name, definition);
+        Ok(())
+    }
+
+    /// Check the registry contains a template with the given name
+    pub fn contains(&self, template_definition_metric_name: &str) -> bool {
+        self.templates.contains_key(template_definition_metric_name)
+    }
+}
+
 struct Node {
     metric_manager: Box<DynNodeMetricManager>,
     client: Arc<DynClient>,
@@ -293,6 +407,8 @@ struct Node {
     config: Arc<EoNConfig>,
     stop_tx: mpsc::Sender<EoNShutdown>,
     last_node_rebirth_request: Duration,
+
+    template_registry: Arc<TemplateRegistry>,
 
     rebirth_request_tx: mpsc::Sender<()>,
 
@@ -304,7 +420,9 @@ struct Node {
 impl Node {
     fn generate_birth_payload(&self, bdseq: i64, seq: u64) -> Payload {
         let timestamp = timestamp();
-        let mut birth_initializer = BirthInitializer::new(BirthObjectType::Node);
+        let mut birth_initializer =
+            BirthInitializer::new(BirthObjectType::Node, self.template_registry.clone());
+
         birth_initializer
             .register_metric(
                 BirthMetricDetails::new_with_initial_value(constants::BDSEQ, bdseq)
@@ -318,6 +436,12 @@ impl Node {
             )
             .unwrap();
 
+        for (name, template_definition) in &self.template_registry.templates {
+            birth_initializer
+                .register_template_definition(name.clone(), template_definition.clone())
+                .unwrap();
+        }
+
         self.metric_manager.initialise_birth(&mut birth_initializer);
         let metrics = birth_initializer.finish();
 
@@ -330,35 +454,54 @@ impl Node {
         }
     }
 
-    async fn node_birth(&self) {
+    async fn node_birth(&mut self) -> Result<(), ()> {
         /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
         self.state.start_birth();
+
         let bdseq = self.state.bdseq.load(Ordering::SeqCst) as i64;
+
+        //TODO any way we can avoid this clone? could use Ref counting in the TemplateRegistry but it might not be worth it
+        let mut updatable_template_registry = self.template_registry.as_ref().clone();
+        self.metric_manager
+            .birth_update_template_registry(&mut updatable_template_registry);
+        self.template_registry = Arc::new(updatable_template_registry);
 
         let payload = self.generate_birth_payload(bdseq, 0);
         let topic = self.state.birth_topic();
         match self.client.publish_node_message(topic, payload).await {
-            Ok(_) => self.state.birth_completed(),
-            Err(_) => error!("Publishing birth message failed"),
+            Ok(_) => {
+                self.state.birth_completed();
+                Ok(())
+            }
+            Err(_) => {
+                error!(
+                    "Publishing node birth message failed. node={}",
+                    self.state.edge_node_id
+                );
+                Err(())
+            }
         }
     }
 
-    async fn birth(&self) {
-        info!("Birthing Node. Node = {}", self.state.edge_node_id);
-        self.node_birth().await;
-        self.devices.lock().unwrap().birth_devices(BirthType::Birth);
-    }
-
-    async fn rebirth(&self) {
-        if !self.state.birthed() {
+    async fn birth(&mut self, birth_type: BirthType) {
+        info!(
+            "Birthing Node. node={} type={birth_type:?}",
+            self.state.edge_node_id
+        );
+        if self.node_birth().await.is_err() {
             return;
         }
-        info!("Re-Birthing Node. Node = {}", self.state.edge_node_id);
-        self.node_birth().await;
         self.devices
             .lock()
             .unwrap()
-            .birth_devices(BirthType::Rebirth);
+            .birth_devices(birth_type, &self.template_registry);
+    }
+
+    async fn rebirth(&mut self) {
+        if !self.state.birthed() {
+            return;
+        }
+        self.birth(BirthType::Rebirth).await;
     }
 
     fn death(&self) {
@@ -367,16 +510,16 @@ impl Node {
         self.devices.lock().unwrap().on_death();
     }
 
-    async fn on_online(&self) {
+    async fn on_online(&mut self) {
         if self.state.online_swap(true) {
             return;
         }
 
-        info!("Edge node online. Node = {}", self.state.edge_node_id);
+        info!("Edge node online. node={}", self.state.edge_node_id);
         let sub_topics = self.state.sub_topics();
 
         if self.client.subscribe_many(sub_topics).await.is_ok() {
-            self.birth().await
+            self.birth(BirthType::Birth).await
         };
     }
 
@@ -385,7 +528,7 @@ impl Node {
             return;
         }
 
-        info!("Edge node offline. Node = {}", self.state.edge_node_id);
+        info!("Edge node offline. node={}", self.state.edge_node_id);
         self.death();
         let new_lastwill = self.state.create_last_will();
         _ = will_sender.send(new_lastwill);
@@ -417,14 +560,20 @@ impl Node {
                 };
 
                 if !rebirth {
-                    warn!("Received invalid CMD Rebirth metric - ignoring request")
+                    warn!(
+                        "Received invalid NCMD Rebirth metric - ignoring request. node={}",
+                        self.state.edge_node_id
+                    )
                 }
             }
 
             let message_metrics: MessageMetrics = match payload.try_into() {
                 Ok(metrics) => metrics,
                 Err(_) => {
-                    warn!("Received invalid CMD payload - ignoring request");
+                    warn!(
+                        "Received invalid CMD payload - ignoring request. node={}",
+                        self.state.edge_node_id
+                    );
                     return;
                 }
             };
@@ -434,10 +583,16 @@ impl Node {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                 let time_since_last = now - self.last_node_rebirth_request;
                 if time_since_last < self.config.node_rebirth_request_cooldown {
-                    info!("Got Rebirth CMD but cooldown time not expired. Ignoring");
+                    info!(
+                        "Got Rebirth CMD but cooldown time not expired. Ignoring. node={}",
+                        self.state.edge_node_id
+                    );
                     return;
                 }
-                info!("Got Rebirth CMD - Rebirthing Node");
+                info!(
+                    "Got Rebirth CMD - Rebirthing Node. node={}",
+                    self.state.edge_node_id
+                );
                 self.rebirth().await;
                 self.last_node_rebirth_request = now;
             }
@@ -482,7 +637,7 @@ enum ClientStateMessage {
     Offline(oneshot::Sender<LastWill>),
 }
 
-/// Structure that represents a Sparkplug Edge Node instance.
+/// struct that represents a Sparkplug Edge Node instance.
 ///
 /// See [EoNBuilder] on how to create an [EoN] instance.
 pub struct EoN {
@@ -522,7 +677,9 @@ impl EoN {
             edge_node_id: node_id,
         });
 
-        let devices = Arc::new(Mutex::new(DeviceMap::new()));
+        let template_registry = Arc::new(builder.templates);
+
+        let devices = Arc::new(Mutex::new(DeviceMap::new(template_registry.clone())));
 
         let (node_message_tx, node_message_rx) = mpsc::unbounded_channel();
         let (rebirth_request_tx, rebirth_request_rx) = mpsc::channel(1);
@@ -530,6 +687,7 @@ impl EoN {
 
         let node = Node {
             metric_manager,
+            template_registry,
             client: client.clone(),
             state: state.clone(),
             devices: devices.clone(),
@@ -621,7 +779,7 @@ impl EoN {
     ///
     /// Runs the Edge Node until [NodeHandle::cancel()] is called
     pub async fn run(mut self) {
-        info!("Edge node running. Node = {}", self.state.edge_node_id);
+        info!("Edge node running. node={}", self.state.edge_node_id);
         self.state.running.store(true, Ordering::SeqCst);
 
         self.update_last_will(self.state.create_last_will());
@@ -641,7 +799,7 @@ impl EoN {
         }
 
         _ = self.client_state_tx.send(ClientStateMessage::Stopped).await;
-        info!("Edge node stopped. Node = {}", self.state.edge_node_id);
+        info!("Edge node stopped. node={}", self.state.edge_node_id);
         self.state.running.store(false, Ordering::SeqCst);
     }
 }

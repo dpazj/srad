@@ -3,10 +3,23 @@ use std::sync::Mutex;
 use srad::{
     client_rumqtt as rumqtt,
     eon::{BirthMetricDetails, EoNBuilder, MetricManager, NodeMetricManager},
-    types::{payload::DataType, DateTime},
+    types::{payload::DataType, DateTime, Template, TemplateMetadata},
 };
 
 use log::LevelFilter;
+
+#[derive(Template, Default, Clone)]
+struct Point {
+    x: f64,
+    y: f64,
+    z: f64,
+}
+
+impl TemplateMetadata for Point {
+    fn template_name() -> &'static str {
+        "point"
+    }
+}
 
 struct Data {
     boolean: bool,
@@ -27,7 +40,7 @@ struct Data {
     //dataset
     bytes: Vec<u8>,
     //file
-    //template
+    template: Point,
     bool_array: Vec<bool>,
     int8_array: Vec<i8>,
     int16_array: Vec<i16>,
@@ -63,6 +76,7 @@ impl DatatypesManager {
             datetime: DateTime::new(0),
             text: "Some Text".into(),
             bytes: vec![0xde, 0xad, 0xbe, 0xef],
+            template: Point::default(),
             bool_array: vec![
                 true, false, true, false, true, true, true, false, true, false, false,
             ],
@@ -152,6 +166,11 @@ impl MetricManager for DatatypesManager {
             )
             .unwrap(),
         )
+        .unwrap();
+        bi.register_template_metric(BirthMetricDetails::new_template_metric(
+            "Template",
+            data.template.clone(),
+        ))
         .unwrap();
         bi.register_metric(
             BirthMetricDetails::new_with_initial_value_explicit_type(
@@ -250,6 +269,7 @@ async fn main() {
         .with_group_id("foo")
         .with_node_id("bar")
         .with_metric_manager(DatatypesManager::new())
+        .register_template::<Point>()
         .build()
         .unwrap();
 

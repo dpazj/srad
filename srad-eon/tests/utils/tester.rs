@@ -42,7 +42,7 @@ pub fn verify_nbirth_payload(payload: Payload, expected_bdseq: i64) {
 
     let mut contains_node_control = false;
     let mut contains_bdseq = false;
-    for metric in payload.metrics {
+    for metric in &payload.metrics {
         assert_ne!(metric.datatype, None);
 
         let metric_name = match &metric.name {

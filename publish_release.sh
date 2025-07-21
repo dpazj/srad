@@ -13,6 +13,7 @@ fi
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 CRATES=( \
+  "srad-macros" \
   "srad-types" \
   "srad-client" \
   "srad-client-rumqtt" \

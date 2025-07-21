@@ -20,3 +20,4 @@ paste = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+srad-macros = { path = "../srad-macros", version = "0.2.2" }

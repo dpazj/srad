@@ -13,7 +13,7 @@ impl Metric {
             datatype: None,
             is_historical: None,
             is_transient: None,
-            is_null: Some(true),
+            is_null: None,
             metadata: None,
             properties: None,
             value: None,
