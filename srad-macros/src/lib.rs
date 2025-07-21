@@ -202,7 +202,6 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                     },
                 }
             );
-
         } else {
             definition_metrics.push(quote! {
                 ::srad::types::TemplateMetric::new_template_metric::<#ty>(

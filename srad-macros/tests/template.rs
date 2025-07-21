@@ -1,5 +1,6 @@
 use srad::types::{
-    Template, TemplateDefinition, TemplateError, TemplateInstance, TemplateMetadata, TemplateMetric, TemplateParameter
+    Template, TemplateDefinition, TemplateError, TemplateInstance, TemplateMetadata,
+    TemplateMetric, TemplateParameter,
 };
 
 #[derive(Template, Clone, Default)]
@@ -35,65 +36,54 @@ pub fn test_simple() {
     );
 
     let simple = Simple::default();
-    let valid_instance = || {
-        TemplateInstance {
-            version: Some("1.0".into()),
-            metrics: vec![
-                TemplateMetric::new_template_metric("x".into(), 0),
-                TemplateMetric::new_template_metric("y".into(), 0),
-                TemplateMetric::new_template_metric("z".into(), 0)
-            ],
-            parameters: vec![],
-            template_ref: Simple::template_definition_metric_name()
-        }
+    let valid_instance = || TemplateInstance {
+        version: Some("1.0".into()),
+        metrics: vec![
+            TemplateMetric::new_template_metric("x".into(), 0),
+            TemplateMetric::new_template_metric("y".into(), 0),
+            TemplateMetric::new_template_metric("z".into(), 0),
+        ],
+        parameters: vec![],
+        template_ref: Simple::template_definition_metric_name(),
     };
-    assert_eq!(
-        simple.template_instance(),
-        valid_instance()
-    );
+    assert_eq!(simple.template_instance(), valid_instance());
 
-    assert!(
-        Simple::try_from(
-            valid_instance()
-        ).is_ok()
-    );
+    assert!(Simple::try_from(valid_instance()).is_ok());
 
     let mut invalid_version = valid_instance();
     invalid_version.version = None;
     assert!(matches!(
-        Simple::try_from(
-            invalid_version
-        ),
+        Simple::try_from(invalid_version),
         Err(TemplateError::VersionMismatch)
     ));
 
-    let mut invalid_ref= valid_instance();
+    let mut invalid_ref = valid_instance();
     invalid_ref.template_ref = "INVALID".into();
     assert!(matches!(
-        Simple::try_from(
-            invalid_ref
-        ),
+        Simple::try_from(invalid_ref),
         Err(TemplateError::RefMismatch(_))
     ));
 
-    let mut unknown_metric= valid_instance();
-    unknown_metric.metrics.push(TemplateMetric::new_template_metric("UNKNOWN".into(), 0));
+    let mut unknown_metric = valid_instance();
+    unknown_metric
+        .metrics
+        .push(TemplateMetric::new_template_metric("UNKNOWN".into(), 0));
     assert!(matches!(
-        Simple::try_from(
-            unknown_metric 
-        ),
+        Simple::try_from(unknown_metric),
         Err(TemplateError::UnknownMetric(_))
     ));
 
-    let mut unknown_param= valid_instance();
-    unknown_param.parameters.push(TemplateParameter::new_template_parameter("UNKNOWN".into(), 0));
+    let mut unknown_param = valid_instance();
+    unknown_param
+        .parameters
+        .push(TemplateParameter::new_template_parameter(
+            "UNKNOWN".into(),
+            0,
+        ));
     assert!(matches!(
-        Simple::try_from(
-            unknown_param
-        ),
+        Simple::try_from(unknown_param),
         Err(TemplateError::UnknownParameter(_))
     ));
-
 }
 
 #[derive(Template)]
@@ -140,40 +130,31 @@ pub fn test_nested() {
         nested: Simple { x: 1, y: 2, z: 3 },
     };
 
-    let valid_instance = || {
-        TemplateInstance {
-            version: None,
-            metrics: vec![
-                TemplateMetric::new_template_metric("first".into(), 1),
-                TemplateMetric::new_template_metric(
-                    "nested".into(),
-                    TemplateInstance {
-                        version: Simple::template_version().map(String::from),
-                        metrics: vec![
-                            TemplateMetric::new_template_metric("x".into(), 1),
-                            TemplateMetric::new_template_metric("y".into(), 2),
-                            TemplateMetric::new_template_metric("z".into(), 3)
-                        ],
-                        parameters: vec![],
-                        template_ref: Simple::template_definition_metric_name()
-                    }
-                )
-            ],
-            parameters: vec![],
-            template_ref: NestedTemplate::template_definition_metric_name()
-        }
+    let valid_instance = || TemplateInstance {
+        version: None,
+        metrics: vec![
+            TemplateMetric::new_template_metric("first".into(), 1),
+            TemplateMetric::new_template_metric(
+                "nested".into(),
+                TemplateInstance {
+                    version: Simple::template_version().map(String::from),
+                    metrics: vec![
+                        TemplateMetric::new_template_metric("x".into(), 1),
+                        TemplateMetric::new_template_metric("y".into(), 2),
+                        TemplateMetric::new_template_metric("z".into(), 3),
+                    ],
+                    parameters: vec![],
+                    template_ref: Simple::template_definition_metric_name(),
+                },
+            ),
+        ],
+        parameters: vec![],
+        template_ref: NestedTemplate::template_definition_metric_name(),
     };
 
-    assert_eq!(
-        nested.template_instance(),
-        valid_instance() 
-    );
+    assert_eq!(nested.template_instance(), valid_instance());
 
-    assert!(
-        NestedTemplate::try_from(
-            valid_instance()
-        ).is_ok()
-    );
+    assert!(NestedTemplate::try_from(valid_instance()).is_ok());
 }
 
 #[test]

@@ -179,7 +179,10 @@ impl NodeHandle {
         let payload = self.state.generate_death_payload();
         match self.client.try_publish_node_message(topic, payload).await {
             Ok(_) => (),
-            Err(_) => debug!("Unable to publish node death certificate on exit. node={}", self.state.edge_node_id),
+            Err(_) => debug!(
+                "Unable to publish node death certificate on exit. node={}",
+                self.state.edge_node_id
+            ),
         };
         _ = self.stop_tx.send(EoNShutdown).await;
         _ = self.client.disconnect().await;
@@ -297,22 +300,21 @@ pub enum TemplateRegistryError {
     #[error("The Templates Definition is invalid")]
     InvalidDefinition,
     #[error("The Templates Definition contained a template that has not been registered")]
-    UnregisteredMetric
-
+    UnregisteredMetric,
 }
 
 /// A struct representing a collection of Template Definitions for a Node
-/// 
-/// Used to manage the template definitions for the node. A definition must be included in the registry 
+///
+/// Used to manage the template definitions for the node. A definition must be included in the registry
 /// in order to register a metric that has a template datatype with a [BirthInitializer].
-/// 
-/// When a Node generates a birth message, a template definition for each templates registered with this structure 
-/// will be included in the Nodes birth message. [srad_types::TemplateMetadata::template_definition_metric_name] 
+///
+/// When a Node generates a birth message, a template definition for each templates registered with this structure
+/// will be included in the Nodes birth message. [srad_types::TemplateMetadata::template_definition_metric_name]
 /// for the type is used to define the name of the metric that represents the template definition. [srad_types::Template::template_definition()]
 /// is used to generate the definition used for the metrics value.
-/// 
+///
 /// For templates which use another template as one of it's metrics, the template used as a field must be registered first.
-/// 
+///
 /// This registry is checked any time a metric that uses a template as the type for its value is registered for birth.
 #[derive(Debug, Clone)]
 pub struct TemplateRegistry {
@@ -337,7 +339,10 @@ impl TemplateRegistry {
     }
 
     // Recurse through all template metrics in the metric list and ensure they have been registered.
-    fn check_template_metrics(&self, metrics: &Vec<payload::Metric>) -> Result<(), TemplateRegistryError>{
+    fn check_template_metrics(
+        &self,
+        metrics: &Vec<payload::Metric>,
+    ) -> Result<(), TemplateRegistryError> {
         for x in metrics {
             let datatype = match &x.datatype {
                 Some(t) => match DataType::try_from(*t) {
@@ -346,14 +351,25 @@ impl TemplateRegistry {
                 },
                 None => return Err(TemplateRegistryError::InvalidDefinition),
             };
-            if datatype != DataType::Template { continue; }
+            if datatype != DataType::Template {
+                continue;
+            }
 
-            if let Value::TemplateValue(template) = x.value.as_ref().ok_or(TemplateRegistryError::InvalidDefinition)? {
-                let ref_name = template.template_ref.as_ref().ok_or(TemplateRegistryError::InvalidDefinition)?;
-                if self.templates.contains_key(ref_name) { return Ok(()) }
+            if let Value::TemplateValue(template) = x
+                .value
+                .as_ref()
+                .ok_or(TemplateRegistryError::InvalidDefinition)?
+            {
+                let ref_name = template
+                    .template_ref
+                    .as_ref()
+                    .ok_or(TemplateRegistryError::InvalidDefinition)?;
+                if self.templates.contains_key(ref_name) {
+                    return Ok(());
+                }
                 self.check_template_metrics(&template.metrics)?;
             } else {
-                return Err(TemplateRegistryError::InvalidDefinition)
+                return Err(TemplateRegistryError::InvalidDefinition);
             }
         }
         Ok(())
@@ -544,14 +560,20 @@ impl Node {
                 };
 
                 if !rebirth {
-                    warn!("Received invalid NCMD Rebirth metric - ignoring request. node={}", self.state.edge_node_id)
+                    warn!(
+                        "Received invalid NCMD Rebirth metric - ignoring request. node={}",
+                        self.state.edge_node_id
+                    )
                 }
             }
 
             let message_metrics: MessageMetrics = match payload.try_into() {
                 Ok(metrics) => metrics,
                 Err(_) => {
-                    warn!("Received invalid CMD payload - ignoring request. node={}", self.state.edge_node_id);
+                    warn!(
+                        "Received invalid CMD payload - ignoring request. node={}",
+                        self.state.edge_node_id
+                    );
                     return;
                 }
             };
@@ -561,10 +583,16 @@ impl Node {
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                 let time_since_last = now - self.last_node_rebirth_request;
                 if time_since_last < self.config.node_rebirth_request_cooldown {
-                    info!("Got Rebirth CMD but cooldown time not expired. Ignoring. node={}", self.state.edge_node_id);
+                    info!(
+                        "Got Rebirth CMD but cooldown time not expired. Ignoring. node={}",
+                        self.state.edge_node_id
+                    );
                     return;
                 }
-                info!("Got Rebirth CMD - Rebirthing Node. node={}", self.state.edge_node_id);
+                info!(
+                    "Got Rebirth CMD - Rebirthing Node. node={}",
+                    self.state.edge_node_id
+                );
                 self.rebirth().await;
                 self.last_node_rebirth_request = now;
             }

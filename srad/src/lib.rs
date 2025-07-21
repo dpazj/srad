@@ -69,7 +69,6 @@ pub use srad_client as client;
 pub use srad_client_rumqtt as client_rumqtt;
 
 pub mod types {
-    pub use srad_types::*;
     pub use srad_macros::Template;
+    pub use srad_types::*;
 }
-

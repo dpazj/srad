@@ -4,9 +4,9 @@ use std::vec::IntoIter;
 use log::warn;
 use srad_types::payload::{Metric, Payload};
 use srad_types::utils::timestamp;
-use srad_types::MetaData;
 use srad_types::PropertySet;
 use srad_types::{traits, MetricId, MetricValue};
+use srad_types::{MetaData, PartialTemplate, Template};
 
 use thiserror::Error;
 
@@ -204,6 +204,30 @@ where
     /// Create a new [PublishMetric]
     pub fn create_publish_metric(&self, value: Option<T>) -> PublishMetric {
         PublishMetric::new(self.id.clone(), value)
+    }
+}
+
+impl<T> MetricToken<T>
+where
+    T: Template,
+{
+    /// Create a new [PublishMetric]
+    pub fn create_publish_template_metric(&self, value: T) -> PublishMetric {
+        PublishMetric::new(self.id.clone(), Some(value.template_instance()))
+    }
+}
+
+impl<T> MetricToken<T>
+where
+    T: Template + PartialTemplate,
+{
+    pub fn create_publish_template_metric_from_difference(
+        &self,
+        value: T,
+        other: &T,
+    ) -> Option<PublishMetric> {
+        let diff = value.template_instance_from_difference(other)?;
+        Some(PublishMetric::new(self.id.clone(), Some(diff)))
     }
 }
 
