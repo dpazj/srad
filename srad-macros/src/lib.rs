@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use proc_macro2;
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, Attribute, Data, DataEnum, DataUnion, DeriveInput, Error};
 
@@ -264,7 +263,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     if unique_names.is_empty() {
         return Err(Error::new_spanned(
             fields,
-            format!("At least one field must be provided"),
+            "At least one field must be provided",
         ));
     }
 
@@ -273,10 +272,11 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     Ok(quote!{
 
         impl ::srad::types::TemplateMetricValue for #type_name {
+            type Error = ();
             fn to_template_metric_value(self) -> Option<::srad::types::MetricValue> {
                 Some(::srad::types::Template::template_instance(&self).into())
             }
-            fn try_from_template_metric_value(value: Option<::srad::types::MetricValue>) -> Result<Self, ()> where Self: Sized {
+            fn try_from_template_metric_value(value: Option<::srad::types::MetricValue>) -> Result<Self, Self::Error> where Self: Sized {
                 match value {
                     Some(value) => {
                         Self::try_from(
@@ -291,6 +291,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
         }
 
         impl ::srad::types::TemplateMetricValuePartial for #type_name {
+            type Error = ();
             fn metric_value_if_ne(&self, other: &Self) -> Option<Option<::srad::types::MetricValue>> {
                 if let Some(difference_instance) = ::srad::types::PartialTemplate::template_instance_from_difference(self, other)
                 {
@@ -298,7 +299,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 }
                 return None
             }
-            fn try_update_from_metric_value(&mut self, value: Option<::srad::types::MetricValue>) -> Result<(), ()> {
+            fn try_update_from_metric_value(&mut self, value: Option<::srad::types::MetricValue>) -> Result<(), Self::Error> {
                 let instance = match value {
                     Some(val) => ::srad::types::TemplateInstance::try_from(val).map_err(|_|())?,
                     None => return Ok(())
