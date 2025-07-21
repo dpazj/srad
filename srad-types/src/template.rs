@@ -35,7 +35,6 @@ where
             None => Err(()),
         }
     }
-    
 }
 
 impl<T> TemplateMetricValue for Option<T>
@@ -65,7 +64,9 @@ where
 pub trait TemplateParameterValue {
     type Error;
     fn to_template_parameter_value(self) -> Option<ParameterValue>;
-    fn try_from_template_parameter_value(value: Option<ParameterValue>) -> Result<Self, Self::Error>
+    fn try_from_template_parameter_value(
+        value: Option<ParameterValue>,
+    ) -> Result<Self, Self::Error>
     where
         Self: Sized;
 }
@@ -89,7 +90,6 @@ where
             None => Err(()),
         }
     }
-    
 }
 
 impl<T> TemplateParameterValue for Option<T>
@@ -120,7 +120,10 @@ where
 pub trait TemplateMetricValuePartial {
     type Error;
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>>;
-    fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), Self::Error>;
+    fn try_update_from_metric_value(
+        &mut self,
+        other: Option<MetricValue>,
+    ) -> Result<(), Self::Error>;
 }
 
 macro_rules! impl_template_metric_value_partial {
@@ -177,9 +180,12 @@ where
         Some(self.clone().map(|x| x.into()))
     }
 
-    fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), Self::Error> {
+    fn try_update_from_metric_value(
+        &mut self,
+        other: Option<MetricValue>,
+    ) -> Result<(), Self::Error> {
         *self = match other {
-            Some(value) => Some(T::try_from_template_metric_value(Some(value)).map_err(|_|())?),
+            Some(value) => Some(T::try_from_template_metric_value(Some(value)).map_err(|_| ())?),
             None => None,
         };
         Ok(())

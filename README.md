@@ -1,6 +1,6 @@
 # srad
 
-`srad` is a [Sparkplug](https://sparkplug.eclipse.org/) edge node and application development framework in Rust.
+`srad` is a [Sparkplug](https://sparkplug.eclipse.org/) library and development framework in Rust.
 
 [![CI](https://github.com/dpazj/srad/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/dpazj/srad/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Documentation](https://docs.rs/srad/badge.svg)][docs]
@@ -20,6 +20,14 @@ Additional information for this crate can be found in the [docs][docs].
 ## Overview
 
 `srad` aims to make it easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.
+
+Features include:
+
+- **Data Type Support** - Support for Sparkplug data types including Array types, Property Sets and Templates
+  - Template Derive macros provide code generation for template implementations
+- **Compliance-focused APIs** - APIs designed to prevent non-conformance of the specification
+- **Async Node and Application development frameworks** - Ready-to-use frameworks built using `tokio`, providing out-the-box compatibility, scalable implementations, and support for Node/Application specific features
+- **MQTT Client Agnostic** - Flexible architecture providing the ability to choose the best MQTT implementation for your use case
 
 ## Getting Started
 
@@ -75,6 +83,7 @@ More examples can be found in the [examples](./examples) and in the [docs][docs]
 - [`srad-client`](./srad-client/README.md): Trait and type definitions for implementing clients to interact with Sparkplug.  
 - [`srad-client-rumqtt`](./srad-client-rumqtt/README.md): Client implementation using [rumqtt](https://github.com/bytebeamio/rumqtt).
 - [`srad-types`](./srad-types/README.md): Utility and Protobuf generated types.
+- [`srad-macros`](./srad-macros/README.md): Derive macro implementation for Templates
 - [`codegen`](./codegen): Generates types from protobuf files in [`protos`](./protos).
 - [`examples`](./examples): Example Edge Node and application implementations.
 
