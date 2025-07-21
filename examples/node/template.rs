@@ -51,7 +51,7 @@ impl MetricManager for TemplateManager {
         let mut data = self.0.lock().unwrap();
         data.point_token = Some(
             bi.register_template_metric(BirthMetricDetails::new_template_metric(
-                "Template",
+                "PointInstance",
                 data.point.clone(),
             ))
             .unwrap(),
