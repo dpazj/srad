@@ -1,6 +1,6 @@
 [package]
 name = "srad-types"
-version = "0.2.2"
+version = "0.3.0"
 description = "Sparkplug types and utilities"
 readme = "README.md"
 keywords = ["sparkplug", "sparkplug-b", "mqtt", "iot", "async"]
@@ -20,4 +20,4 @@ paste = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-srad-macros = { path = "../srad-macros", version = "0.2.2" }
+srad-macros = { path = "../srad-macros", version = "0.3.0" }
