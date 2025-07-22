@@ -1,6 +1,9 @@
 [package]
 name = "srad-macros"
 version = "0.3.0"
+description = "srad macros"
+readme = "README.md"
+categories = ["embedded", "network-programming", "asynchronous"]
 edition.workspace = true
 homepage.workspace = true
 repository.workspace = true
