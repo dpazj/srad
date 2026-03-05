@@ -124,11 +124,10 @@ async fn main() {
                     y: rng.gen(),
                     z: rng.gen(),
                 };
-                if let Some(token) = &inner.point_token {
-                    Some(token.create_publish_template_metric(inner.point.clone()))
-                } else {
-                    None
-                }
+                inner
+                    .point_token
+                    .as_ref()
+                    .map(|token| token.create_publish_template_metric(inner.point.clone()))
             };
 
             if let Some(publish) = publish {

@@ -9,7 +9,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::future::join_all;
-use srad_types::{traits, MetricId};
+use srad_types::{traits, MetaData, MetricId, PropertySet};
 use std::{
     collections::HashMap,
     future::Future,
@@ -36,6 +36,42 @@ struct MetricData<T, H> {
 }
 
 pub struct SimpleManagerPublishMetric(Option<PublishMetric>);
+
+impl SimpleManagerPublishMetric {
+    /// Sets a custom timestamp for the metric.
+    ///
+    /// By default, the current system time is used.
+    pub fn with_timestamp(self, timestamp: u64) -> Self {
+        SimpleManagerPublishMetric(self.0.map(|m| m.timestamp(timestamp)))
+    }
+
+    /// Marks the metric as transient or persistent.
+    ///
+    /// Transient metrics are typically not stored permanently. By default metrics are not transient.
+    pub fn with_transient(self, is_transient: bool) -> Self {
+        SimpleManagerPublishMetric(self.0.map(|m| m.transient(is_transient)))
+    }
+
+    /// Marks the metric as a historical metric that does not represent a current value.
+    ///
+    /// By default, metrics are not historical.
+    pub fn with_historical(self, is_historical: bool) -> Self {
+        SimpleManagerPublishMetric(self.0.map(|m| m.historical(is_historical)))
+    }
+
+    /// Sets custom metadata for the metric.
+    ///
+    /// By default, the result from [MetricValue::publish_metadata][srad_types::traits::MetricValue::publish_metadata]  will be used.
+    pub fn with_metadata(self, metadata: MetaData) -> Self {
+        SimpleManagerPublishMetric(self.0.map(|m| m.metadata(metadata)))
+    }
+
+    /// Sets custom properties for the metric.
+    pub fn with_properties<P: Into<PropertySet>>(self, properties: P) -> Self {
+        SimpleManagerPublishMetric(self.0.map(|m| m.properties(properties)))
+    }
+}
+
 #[derive(Clone)]
 pub struct SimpleManagerMetric<T, H> {
     data: Arc<Mutex<MetricData<T, H>>>,
