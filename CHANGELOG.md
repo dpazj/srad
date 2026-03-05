@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.1
+
+- Update dependencies
+
+### EoN
+
+- Expose `simple_manager` as a module, containing `SimpleMetricManager` implementation
+
 ## 0.4.0
 
 ### EoN

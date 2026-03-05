@@ -1,6 +1,9 @@
 use srad::{
     client_rumqtt as rumqtt,
-    eon::{EoNBuilder, NoMetricManager, SimpleMetricBuilder, SimpleMetricManager},
+    eon::{
+        simple_manager::{SimpleMetricBuilder, SimpleMetricManager},
+        EoNBuilder, NoMetricManager,
+    },
 };
 use std::time::Duration;
 

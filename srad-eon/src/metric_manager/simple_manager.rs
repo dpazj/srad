@@ -215,7 +215,7 @@ struct SimpleMetricManagerInner<H> {
 /// command callbacks and metric publishing.
 /// # Example
 /// ```no_run
-/// use srad_eon::{SimpleMetricManager, SimpleMetricBuilder};
+/// use srad_eon::simple_manager::{SimpleMetricManager, SimpleMetricBuilder};
 /// # use srad_eon::DeviceHandle;
 ///
 /// # fn create_device_with_manager(manager: &SimpleMetricManager<DeviceHandle>) {
