@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1
+
+- Update dependencies
+
+### EoN
+
+- Expose `simple_manager` as a module, containing `SimpleMetricManager` implementation
+
+## 0.4.0
+
+### EoN
+
+- Add ability to configure `SimpleManagerPublishMetric` metric fields
+
 ## [0.3.0]
 
 - Added Template support

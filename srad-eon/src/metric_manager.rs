@@ -1,2 +1,2 @@
 pub mod manager;
-pub mod simple;
+pub mod simple_manager;
