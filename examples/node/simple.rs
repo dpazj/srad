@@ -40,17 +40,12 @@ async fn main() {
         .register_metric(SimpleMetricBuilder::new("Device Counter", 0_i8))
         .unwrap();
 
-    const FIXED_TIMESTAMP: u64 = 1234567;
     dev1_metrics
         .register_metric(
             SimpleMetricBuilder::new("Writeable UInt64", 0_u64).with_cmd_handler(
                 |manager, metric, value| async move {
                     _ = manager
-                        .publish_metric(
-                            metric
-                                .update(|x| *x = value.unwrap_or(0))
-                                .with_timestamp(FIXED_TIMESTAMP),
-                        )
+                        .publish_metric(metric.update(|x| *x = value.unwrap_or(0)))
                         .await;
                 },
             ),
