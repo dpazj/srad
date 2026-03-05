@@ -4,7 +4,7 @@ publish = false
 edition = "2021"
 
 [dev-dependencies]
-srad = { path = "../srad", version = "0.4.0" }
+srad = { path = "../srad", version = "0.4.1" }
 log = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true } 
