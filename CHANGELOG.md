@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+### EoN
+
+- Add ability to configure `SimpleManagerPublishMetric` metric fields
+
 ## [0.3.0]
 
 - Added Template support
