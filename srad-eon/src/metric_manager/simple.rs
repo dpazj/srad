@@ -9,7 +9,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::future::join_all;
-use srad_types::{MetaData, MetricId, PropertySet, traits};
+use srad_types::{traits, MetaData, MetricId, PropertySet};
 use std::{
     collections::HashMap,
     future::Future,
@@ -38,7 +38,6 @@ struct MetricData<T, H> {
 pub struct SimpleManagerPublishMetric(Option<PublishMetric>);
 
 impl SimpleManagerPublishMetric {
-
     /// Sets a custom timestamp for the metric.
     ///
     /// By default, the current system time is used.
@@ -71,11 +70,7 @@ impl SimpleManagerPublishMetric {
     pub fn with_properties<P: Into<PropertySet>>(self, properties: P) -> Self {
         SimpleManagerPublishMetric(self.0.map(|m| m.properties(properties)))
     }
- 
-
 }
-
-
 
 #[derive(Clone)]
 pub struct SimpleManagerMetric<T, H> {
