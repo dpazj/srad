@@ -2,7 +2,7 @@
 
 ## 0.4.1
 
-- Update dependencies
+- Update all dependencies
 
 ### EoN
 
