@@ -17,8 +17,11 @@ use thiserror::Error;
 
 #[derive(Clone, Copy)]
 pub enum AliasConfig {
+    ///No alias used for the metric
     None,
+    ///Generates a unique alias for the metric
     Generate,
+    ///Custom alias configuration. Must be unique in the context of a Node
     Custom(u64),
 }
 
