@@ -19,7 +19,7 @@ use thiserror::Error;
 pub enum AliasConfig {
     None,
     Generate,
-    Custom(u64)
+    Custom(u64),
 }
 
 #[derive(Error, Debug)]
@@ -35,7 +35,7 @@ pub enum BirthMetricError {
     #[error("The provided template uses a definition that has not been registered with the node.")]
     UnregisteredTemplate,
     #[error("The provided alias was not unique")]
-    AliasNotUnique
+    AliasNotUnique,
 }
 
 /// Details about a metric to be included in a birth message
@@ -219,10 +219,10 @@ impl BirthInitializer {
                     }
                 };
                 MetricId::Alias(alias)
-            },
+            }
             AliasConfig::Custom(alias) => {
                 if self.metric_aliases.contains(alias) {
-                    return Err(BirthMetricError::AliasNotUnique)
+                    return Err(BirthMetricError::AliasNotUnique);
                 }
                 MetricId::Alias(*alias)
             }

@@ -27,7 +27,11 @@ use tokio::{
 };
 
 use crate::{
-    BirthInitializer, BirthMetricDetails, BirthType, DeviceHandle, DeviceMetricManager, EoNBuilder, MessageMetrics, MetricPublisher, PublishError, PublishMetric, StateError, birth::{AliasConfig, BirthObjectType}, device::{DeviceMap, DeviceRegistrationError}, metric_manager::manager::DynNodeMetricManager
+    birth::{AliasConfig, BirthObjectType},
+    device::{DeviceMap, DeviceRegistrationError},
+    metric_manager::manager::DynNodeMetricManager,
+    BirthInitializer, BirthMetricDetails, BirthType, DeviceHandle, DeviceMetricManager, EoNBuilder,
+    MessageMetrics, MetricPublisher, PublishError, PublishMetric, StateError,
 };
 
 pub(crate) struct EoNConfig {
