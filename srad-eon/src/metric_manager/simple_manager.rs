@@ -1,6 +1,6 @@
 use super::manager::{DeviceMetricManager, MetricManager, NodeMetricManager};
 use crate::{
-    birth::{BirthInitializer, BirthMetricDetails},
+    birth::{AliasConfig, BirthInitializer, BirthMetricDetails},
     device::DeviceHandle,
     metric::{
         MessageMetric, MessageMetrics, MetricPublisher, MetricToken, PublishError, PublishMetric,
@@ -32,7 +32,7 @@ struct MetricData<T, H> {
     value: T,
     token: Option<MetricToken<T>>,
     cb: Option<CmdCallback<T, H>>,
-    use_alias: bool,
+    alias_config: AliasConfig,
 }
 
 pub struct SimpleManagerPublishMetric(Option<PublishMetric>);
@@ -114,7 +114,8 @@ where
         let val = metric.value.clone();
         let token = bi
             .register_metric(
-                BirthMetricDetails::new_with_initial_value(name, val).use_alias(metric.use_alias),
+                BirthMetricDetails::new_with_initial_value(name, val)
+                    .with_alias_config(metric.alias_config),
             )
             .unwrap();
         let id = token.id.clone();
@@ -154,7 +155,7 @@ where
 pub struct SimpleMetricBuilder<T, H> {
     name: String,
     initial_value: T,
-    use_alias: bool,
+    alias_config: AliasConfig,
     cmd_cb: Option<CmdCallback<T, H>>,
 }
 
@@ -167,7 +168,7 @@ where
         Self {
             name: name.into(),
             initial_value: value,
-            use_alias: true,
+            alias_config: AliasConfig::Generate,
             cmd_cb: None,
         }
     }
@@ -197,8 +198,19 @@ where
     }
 
     /// Set if the metric should use an alias. Defaults to true.
+    #[deprecated(note = "Use `with_alias_config` instead")]
     pub fn use_alias(mut self, use_alias: bool) -> Self {
-        self.use_alias = use_alias;
+        if use_alias {
+            self.alias_config = AliasConfig::Generate;
+        } else {
+            self.alias_config = AliasConfig::None;
+        }
+        self
+    }
+
+    /// alias configuration alias
+    pub fn with_alias_config(mut self, alias_config: AliasConfig) -> Self {
+        self.alias_config = alias_config;
         self
     }
 }
@@ -285,7 +297,7 @@ where
                 value: builder.initial_value,
                 token: None,
                 cb: builder.cmd_cb,
-                use_alias: builder.use_alias,
+                alias_config: builder.alias_config,
             })),
         };
         let metric_insert = Arc::new(metric.clone());

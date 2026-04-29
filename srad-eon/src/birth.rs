@@ -15,6 +15,16 @@ use crate::{device::DeviceId, metric::MetricToken, node::TemplateRegistry};
 
 use thiserror::Error;
 
+#[derive(Clone, Copy)]
+pub enum AliasConfig {
+    ///No alias used for the metric
+    None,
+    ///Generates a unique alias for the metric
+    Generate,
+    ///Custom alias configuration. Must be unique in the context of a Node
+    Custom(u64),
+}
+
 #[derive(Error, Debug)]
 pub enum BirthMetricError {
     #[error("Duplicate metric")]
@@ -27,12 +37,14 @@ pub enum BirthMetricError {
     ValueNotProvided,
     #[error("The provided template uses a definition that has not been registered with the node.")]
     UnregisteredTemplate,
+    #[error("The provided alias was not unique")]
+    AliasNotUnique,
 }
 
 /// Details about a metric to be included in a birth message
 pub struct BirthMetricDetails<T> {
     name: String,
-    use_alias: bool,
+    alias: AliasConfig,
     datatype: DataType,
     initial_value: Option<T>,
     metadata: Option<MetaData>,
@@ -44,7 +56,7 @@ impl<T> BirthMetricDetails<T> {
     fn new(name: String, initial_value: Option<T>, datatype: DataType) -> Self {
         Self {
             name,
-            use_alias: true,
+            alias: AliasConfig::Generate,
             datatype,
             initial_value,
             metadata: None,
@@ -53,8 +65,18 @@ impl<T> BirthMetricDetails<T> {
         }
     }
 
+    #[deprecated(note = "Use `with_alias_config` instead")]
     pub fn use_alias(mut self, use_alias: bool) -> Self {
-        self.use_alias = use_alias;
+        if use_alias {
+            self.alias = AliasConfig::Generate;
+        } else {
+            self.alias = AliasConfig::None;
+        }
+        self
+    }
+
+    pub fn with_alias_config(mut self, alias: AliasConfig) -> Self {
+        self.alias = alias;
         self
     }
 
@@ -184,27 +206,31 @@ impl BirthInitializer {
     fn create_metric_token<T>(
         &mut self,
         name: &String,
-        use_alias: bool,
+        alias_config: &AliasConfig,
     ) -> Result<MetricToken<T>, BirthMetricError> {
-        let metric = name.into();
-
-        if self.metric_names.contains(&metric) {
+        if self.metric_names.contains(name) {
             return Err(BirthMetricError::DuplicateMetric);
         }
 
-        let id = match use_alias {
-            true => {
+        let id = match alias_config {
+            AliasConfig::None => MetricId::Name(name.clone()),
+            AliasConfig::Generate => {
                 let alias = match &self.inserter_type {
-                    BirthObjectType::Node => self.generate_alias(AliasType::Node, &metric),
+                    BirthObjectType::Node => self.generate_alias(AliasType::Node, name),
                     BirthObjectType::Device(id) => {
-                        self.generate_alias(AliasType::Device { id: *id }, &metric)
+                        self.generate_alias(AliasType::Device { id: *id }, name)
                     }
                 };
                 MetricId::Alias(alias)
             }
-            false => MetricId::Name(metric.clone()),
+            AliasConfig::Custom(alias) => {
+                if self.metric_aliases.contains(alias) {
+                    return Err(BirthMetricError::AliasNotUnique);
+                }
+                MetricId::Alias(*alias)
+            }
         };
-        self.metric_names.insert(metric);
+        self.metric_names.insert(name.clone());
         Ok(MetricToken::new(id))
     }
 
@@ -241,7 +267,7 @@ impl BirthInitializer {
             debug_assert!(false, "Cannot register Template datatypes through this api");
             return Err(BirthMetricError::UnsupportedDatatype);
         }
-        let tok = self.create_metric_token(&details.name, details.use_alias)?;
+        let tok = self.create_metric_token(&details.name, &details.alias)?;
         let value = details.initial_value.take().map(T::into);
         let mut metric = details.into_metric_value(value);
         if let MetricId::Alias(alias) = &tok.id {
@@ -279,7 +305,7 @@ impl BirthInitializer {
             return Err(BirthMetricError::UnregisteredTemplate);
         }
 
-        let tok = self.create_metric_token(&details.name, details.use_alias)?;
+        let tok = self.create_metric_token(&details.name, &details.alias)?;
         let mut metric: Metric = details.into_metric_value(Some(template_instance.into()));
         if let MetricId::Alias(alias) = &tok.id {
             metric.set_alias(*alias);
