@@ -20,7 +20,7 @@ mod metric_manager;
 mod node;
 use thiserror::Error;
 
-pub use birth::{BirthInitializer, BirthMetricDetails};
+pub use birth::{BirthInitializer, BirthMetricDetails, AliasConfig};
 pub use builder::EoNBuilder;
 pub use device::DeviceHandle;
 pub use metric::*;
@@ -43,3 +43,4 @@ pub enum StateError {
     #[error("The node or device is not birthed.")]
     UnBirthed,
 }
+
