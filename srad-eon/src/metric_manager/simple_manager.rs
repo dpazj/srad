@@ -208,8 +208,8 @@ where
     }
 
     /// Provide a custom alias. Must be unique in the context of the EoN Node
-    pub fn with_custom_alias(mut self, alias: u64) -> Self {
-        self.alias_config = AliasConfig::Custom(alias);
+    pub fn with_alias_config(mut self, alias_config: AliasConfig) -> Self {
+        self.alias_config = alias_config;
         self
     }
 }
