@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use rand::Rng;
+use rand::{RngExt};
 use srad::{
     client_rumqtt as rumqtt,
     eon::{
@@ -117,12 +117,12 @@ async fn main() {
     tokio::spawn(async move {
         loop {
             let publish = {
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 let mut inner = manager.0.lock().unwrap();
                 inner.point = Point {
-                    x: rng.gen(),
-                    y: rng.gen(),
-                    z: rng.gen(),
+                    x: rng.random(),
+                    y: rng.random(),
+                    z: rng.random(),
                 };
                 inner
                     .point_token
