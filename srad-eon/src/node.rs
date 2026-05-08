@@ -27,7 +27,7 @@ use tokio::{
 };
 
 use crate::{
-    birth::BirthObjectType,
+    birth::{AliasConfig, BirthObjectType},
     device::{DeviceMap, DeviceRegistrationError},
     metric_manager::manager::DynNodeMetricManager,
     BirthInitializer, BirthMetricDetails, BirthType, DeviceHandle, DeviceMetricManager, EoNBuilder,
@@ -426,13 +426,13 @@ impl Node {
         birth_initializer
             .register_metric(
                 BirthMetricDetails::new_with_initial_value(constants::BDSEQ, bdseq)
-                    .use_alias(false),
+                    .with_alias_config(AliasConfig::None),
             )
             .unwrap();
         birth_initializer
             .register_metric(
                 BirthMetricDetails::new_with_initial_value(constants::NODE_CONTROL_REBIRTH, false)
-                    .use_alias(false),
+                    .with_alias_config(AliasConfig::None),
             )
             .unwrap();
 

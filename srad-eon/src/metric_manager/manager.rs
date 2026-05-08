@@ -18,7 +18,7 @@ pub type DynDeviceMetricManager = dyn DeviceMetricManager + Send + Sync + 'stati
 /// # Examples
 ///
 /// ```
-/// use srad_eon::{MetricManager, BirthInitializer, BirthMetricDetails};
+/// use srad_eon::{MetricManager, BirthInitializer, BirthMetricDetails, AliasConfig};
 ///
 /// struct MyMetricManager {
 ///   counter: i32
@@ -27,7 +27,8 @@ pub type DynDeviceMetricManager = dyn DeviceMetricManager + Send + Sync + 'stati
 /// impl MetricManager for MyMetricManager {
 ///     fn initialise_birth(&self, bi: &mut BirthInitializer) {
 ///         // Register metrics
-///         bi.register_metric(BirthMetricDetails::new_with_initial_value("my_counter",  self.counter).use_alias(true));
+///         bi.register_metric(BirthMetricDetails::new_with_initial_value("my_counter",  self.counter)
+///             .with_alias_config(AliasConfig::Generate));
 ///     }
 /// }
 pub trait MetricManager {
