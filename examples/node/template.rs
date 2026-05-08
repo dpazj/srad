@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use rand::{RngExt};
+use rand::RngExt;
 use srad::{
     client_rumqtt as rumqtt,
     eon::{
