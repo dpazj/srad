@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+### EoN
+
+- Add `AliasConfig` to enable custom aliases
+
 ## 0.4.1
 
 - Update all dependencies
