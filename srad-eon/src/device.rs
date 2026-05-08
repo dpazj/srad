@@ -30,6 +30,11 @@ pub struct DeviceHandle {
 }
 
 impl DeviceHandle {
+    //Get the unique id for the device
+    pub fn device_id(&self) -> DeviceId {
+        self.state.id
+    }
+
     /// Enabled the device
     ///
     /// Will attempt to birth the device. If the node is not online, the device will be birthed when it is next online.

@@ -19,9 +19,13 @@ use thiserror::Error;
 pub enum AliasConfig {
     ///No alias used for the metric
     None,
-    ///Generates a unique alias for the metric
+    ///Generates a unique alias for the metric. The alias for the metric is guaranteed to be unique
+    ///within the context of the Node. This is the recommended setting for Alias configurations.
     Generate,
-    ///Custom alias configuration. Must be unique in the context of a Node
+    ///Custom alias configuration. Must be unique in the context of a Node.
+    ///The uniqueness of this value is not enforced and generated aliases may collide.
+    ///Therefore, it is recommended that all aliases for the node are either generated or custom,
+    ///not a mix of both.
     Custom(u64),
 }
 
@@ -63,16 +67,6 @@ impl<T> BirthMetricDetails<T> {
             properties: None,
             timestamp: timestamp(),
         }
-    }
-
-    #[deprecated(note = "Use `with_alias_config` instead")]
-    pub fn use_alias(mut self, use_alias: bool) -> Self {
-        if use_alias {
-            self.alias = AliasConfig::Generate;
-        } else {
-            self.alias = AliasConfig::None;
-        }
-        self
     }
 
     pub fn with_alias_config(mut self, alias: AliasConfig) -> Self {

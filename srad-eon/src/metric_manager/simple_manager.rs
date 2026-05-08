@@ -197,18 +197,7 @@ where
         self
     }
 
-    /// Set if the metric should use an alias. Defaults to true.
-    #[deprecated(note = "Use `with_alias_config` instead")]
-    pub fn use_alias(mut self, use_alias: bool) -> Self {
-        if use_alias {
-            self.alias_config = AliasConfig::Generate;
-        } else {
-            self.alias_config = AliasConfig::None;
-        }
-        self
-    }
-
-    /// alias configuration alias
+    /// Manual alias configuration
     pub fn with_alias_config(mut self, alias_config: AliasConfig) -> Self {
         self.alias_config = alias_config;
         self
