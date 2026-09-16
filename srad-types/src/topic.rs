@@ -59,7 +59,7 @@ impl NodeTopic {
             NodeMessage::NBirth => (QoS::AtMostOnce, false),
             NodeMessage::NData => (QoS::AtMostOnce, false),
             NodeMessage::NCmd => (QoS::AtMostOnce, false),
-            NodeMessage::NDeath => (QoS::AtLeastOnce, false),
+            NodeMessage::NDeath => (QoS::AtMostOnce, false),
         }
     }
 }
@@ -85,10 +85,10 @@ impl DeviceTopic {
 
     pub fn get_publish_quality_retain(&self) -> (QoS, bool) {
         match self.message_type {
-            DeviceMessage::DBirth => (QoS::AtLeastOnce, false),
+            DeviceMessage::DBirth => (QoS::AtMostOnce, false),
             DeviceMessage::DData => (QoS::AtMostOnce, false),
             DeviceMessage::DCmd => (QoS::AtMostOnce, false),
-            DeviceMessage::DDeath => (QoS::AtLeastOnce, false),
+            DeviceMessage::DDeath => (QoS::AtMostOnce, false),
         }
     }
 }
@@ -187,4 +187,29 @@ pub fn state_host_topic(host_id: &str) -> String {
 
 pub fn state_sub_topic() -> String {
     state_host_topic("#")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DeviceMessage, DeviceTopic, NodeMessage, NodeTopic, QoS};
+
+    #[test]
+    fn node_messages_use_qos_zero_without_retain() {
+        for message_type in [NodeMessage::NBirth, NodeMessage::NData, NodeMessage::NDeath] {
+            let topic = NodeTopic::new("group", message_type, "node");
+            assert_eq!(topic.get_publish_quality_retain(), (QoS::AtMostOnce, false));
+        }
+    }
+
+    #[test]
+    fn device_messages_use_qos_zero_without_retain() {
+        for message_type in [
+            DeviceMessage::DBirth,
+            DeviceMessage::DData,
+            DeviceMessage::DDeath,
+        ] {
+            let topic = DeviceTopic::new("group", message_type, "node", "device");
+            assert_eq!(topic.get_publish_quality_retain(), (QoS::AtMostOnce, false));
+        }
+    }
 }

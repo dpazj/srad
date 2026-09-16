@@ -53,7 +53,7 @@ pub trait MetricPublisher {
         &self,
         mut metrics: Vec<PublishMetric>,
     ) -> impl std::future::Future<Output = Result<(), PublishError>> + Send {
-        metrics.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        metrics.sort_by_key(|a| a.timestamp);
         self.publish_metrics_unsorted(metrics)
     }
 
@@ -76,7 +76,7 @@ pub trait MetricPublisher {
         &self,
         mut metrics: Vec<PublishMetric>,
     ) -> impl std::future::Future<Output = Result<(), PublishError>> + Send {
-        metrics.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        metrics.sort_by_key(|a| a.timestamp);
         self.publish_metrics_unsorted(metrics)
     }
 }

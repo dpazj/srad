@@ -130,12 +130,11 @@ pub struct LastWill {
 impl LastWill {
     pub fn new_node(group: &str, node_id: &str, payload: Payload) -> Self {
         let topic = NodeTopic::new(group, NodeMessageType::NDeath, node_id);
-        let (qos, retain) = topic.get_publish_quality_retain();
         Self {
-            retain,
-            qos,
-            payload: payload.into(),
             topic: topic.topic,
+            retain: true,
+            qos: QoS::AtLeastOnce,
+            payload: payload.into(),
         }
     }
 
