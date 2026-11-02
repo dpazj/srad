@@ -66,8 +66,7 @@ fn u8_to_proto(val: u8) -> u32 {
     val as u32
 }
 fn u16_to_proto(val: u16) -> u32 {
-    let b = val.to_le_bytes();
-    u32::from_le_bytes([b[0], b[1], 0, 0])
+    val as u32
 }
 fn u32_to_proto(val: u32) -> u32 {
     val
@@ -76,18 +75,16 @@ fn u64_to_proto(val: u64) -> u64 {
     val
 }
 fn i8_to_proto(val: i8) -> u32 {
-    let b = val.to_le_bytes();
-    u32::from_le_bytes([b[0], 0, 0, 0])
+    val as i32 as u32
 }
 fn i16_to_proto(val: i16) -> u32 {
-    let b = val.to_le_bytes();
-    u32::from_le_bytes([b[0], b[1], 0, 0])
+    val as i32 as u32
 }
 fn i32_to_proto(val: i32) -> u32 {
-    u32::from_le_bytes(val.to_le_bytes())
+    val as u32
 }
 fn i64_to_proto(val: i64) -> u64 {
-    u64::from_le_bytes(val.to_le_bytes())
+    val as u64
 }
 fn f32_to_proto(val: f32) -> f32 {
     val
@@ -118,18 +115,16 @@ fn proto_to_u64(val: u64) -> u64 {
     val
 }
 fn proto_to_i8(val: u32) -> i8 {
-    let bytes = val.to_le_bytes();
-    i8::from_le_bytes([bytes[0]])
+    val as u8 as i8
 }
 fn proto_to_i16(val: u32) -> i16 {
-    let bytes = val.to_le_bytes();
-    i16::from_le_bytes([bytes[0], bytes[1]])
+    val as u16 as i16
 }
 fn proto_to_i32(val: u32) -> i32 {
-    i32::from_le_bytes(val.to_le_bytes())
+    val as i32
 }
 fn proto_to_i64(val: u64) -> i64 {
-    i64::from_le_bytes(val.to_le_bytes())
+    val as i64
 }
 fn proto_to_f32(val: f32) -> f32 {
     val
@@ -758,6 +753,90 @@ mod tests {
         #[test]
         fn i16() {
             test_numeric_mix_max_to_proto_value_and_back!(i16, IntValue);
+        }
+
+        #[test]
+        fn i8_sign_extends_encoding() {
+            assert_eq!(i8_to_proto(i8::MIN), 0xFFFF_FF80);
+            assert_eq!(i8_to_proto(-8), 0xFFFF_FFF8);
+            assert_eq!(i8_to_proto(-1), 0xFFFF_FFFF);
+            assert_eq!(i8_to_proto(0), 0);
+            assert_eq!(i8_to_proto(i8::MAX), 0x0000_007F);
+        }
+
+        #[test]
+        fn i16_sign_extends_encoding() {
+            assert_eq!(i16_to_proto(i16::MIN), 0xFFFF_8000);
+            assert_eq!(i16_to_proto(-8), 0xFFFF_FFF8);
+            assert_eq!(i16_to_proto(-1), 0xFFFF_FFFF);
+            assert_eq!(i16_to_proto(0), 0);
+            assert_eq!(i16_to_proto(i16::MAX), 0x0000_7FFF);
+        }
+
+        #[test]
+        fn i8_decodes_both_extension_forms() {
+            assert_eq!(proto_to_i8(0x0000_0080), i8::MIN);
+            assert_eq!(proto_to_i8(0xFFFF_FF80), i8::MIN);
+            assert_eq!(proto_to_i8(0x0000_00F8), -8);
+            assert_eq!(proto_to_i8(0xFFFF_FFF8), -8);
+            assert_eq!(proto_to_i8(0x0000_00FF), -1);
+            assert_eq!(proto_to_i8(0xFFFF_FFFF), -1);
+            assert_eq!(proto_to_i8(0), 0);
+            assert_eq!(proto_to_i8(0x0000_007F), i8::MAX);
+        }
+
+        #[test]
+        fn i16_decodes_both_extension_forms() {
+            assert_eq!(proto_to_i16(0x0000_8000), i16::MIN);
+            assert_eq!(proto_to_i16(0xFFFF_8000), i16::MIN);
+            assert_eq!(proto_to_i16(0x0000_FFF8), -8);
+            assert_eq!(proto_to_i16(0xFFFF_FFF8), -8);
+            assert_eq!(proto_to_i16(0x0000_FFFF), -1);
+            assert_eq!(proto_to_i16(0xFFFF_FFFF), -1);
+            assert_eq!(proto_to_i16(0), 0);
+            assert_eq!(proto_to_i16(0x0000_7FFF), i16::MAX);
+        }
+
+        #[test]
+        fn i8_and_i16_narrow_invalid_values() {
+            assert_eq!(proto_to_i8(0x0000_0100), 0);
+            assert_eq!(proto_to_i8(0x0000_FFF8), -8);
+            assert_eq!(proto_to_i8(0xFFFF_FF7F), 127);
+            assert_eq!(proto_to_i8(0x7FFF_FFFF), -1);
+            assert_eq!(proto_to_i8(0x8000_0000), 0);
+            assert_eq!(proto_to_i16(0x0001_0000), 0);
+            assert_eq!(proto_to_i16(0xFFFF_7FFF), 32767);
+            assert_eq!(proto_to_i16(0x7FFF_FFFF), -1);
+            assert_eq!(proto_to_i16(0x8000_0000), 0);
+        }
+
+        #[test]
+        fn signed_int_conversions_accept_both_extension_forms() {
+            assert_eq!(
+                i8::try_from(MetricValue(metric::Value::IntValue(0x0000_00F8))).unwrap(),
+                -8
+            );
+            assert_eq!(
+                i8::try_from(MetricValue(metric::Value::IntValue(0xFFFF_FFF8))).unwrap(),
+                -8
+            );
+            assert_eq!(
+                i8::try_from(MetricValue(metric::Value::IntValue(0x0000_0100))).unwrap(),
+                0
+            );
+
+            assert_eq!(
+                i16::try_from(MetricValue(metric::Value::IntValue(0x0000_FFF8))).unwrap(),
+                -8
+            );
+            assert_eq!(
+                i16::try_from(MetricValue(metric::Value::IntValue(0xFFFF_FFF8))).unwrap(),
+                -8
+            );
+            assert_eq!(
+                i16::try_from(MetricValue(metric::Value::IntValue(0x0001_0000))).unwrap(),
+                0
+            );
         }
 
         #[test]
