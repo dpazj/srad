@@ -4,13 +4,9 @@
 
 ### Types
 
-- Add `DataSet`, `DataSetColumn`, `TypedDataSet` and `DataSetRow` derive support
-- `DataSetRow` derive supports `#[dataset(rename = "...")]`,
-  `#[dataset(datatype = "...")]` and `#[dataset(skip)]`
-- `DataSetRow` derive supports `Option<T>` columns (absent values map to `None`)
-- `DataSet` provides read accessors and iterators
-- `TypedDataSet` stores typed rows, supports iteration and `FromIterator`
-- `TypedDataSet::new` is infallible and `TypedDataSet` implements `Default`
+- Add `DataSet`, `DataSetColumn`, `TypedDataSet` and `DataSetRow` derive support,
+  including `#[dataset(rename = "...")]`, `#[dataset(datatype = "...")]`,
+  `#[dataset(skip)]` and `Option<T>` columns
 - **breaking change** `MetricValueKind::DataSet` now contains a `DataSet`
 - **breaking change** `HasDataType` now requires `DEFAULT_DATATYPE` and
   `SUPPORTED_DATATYPES` consts; the `default_datatype()` and `supported_datatypes()`
