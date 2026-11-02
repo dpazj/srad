@@ -4,7 +4,7 @@
 
 ### Types
 
-- Add `DataSet`, `TypedDataSet` and `DataSetRow` derive support
+- Add `DataSet`, `DataSetColumn`, `TypedDataSet` and `DataSetRow` derive support
 - **breaking change** `HasDataType` now requires a `DEFAULT_DATATYPE` const
 
 ## 0.5.0

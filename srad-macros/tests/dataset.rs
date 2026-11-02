@@ -1,6 +1,6 @@
 use srad::types::{
     payload::{data_set::data_set_value::Value, DataType},
-    DataSetRow, MetricValue, TypedDataSet,
+    DataSetColumn, DataSetRow, MetricValue, TypedDataSet,
 };
 
 #[derive(DataSetRow, Clone, Debug, PartialEq)]
@@ -12,8 +12,13 @@ struct Row {
 
 #[test]
 fn derive_defines_const_columns() {
-    assert_eq!(Row::COLUMNS, &["X", "y"]);
-    assert_eq!(Row::COLUMN_TYPES, &[DataType::Int32, DataType::Double]);
+    assert_eq!(
+        Row::COLUMNS,
+        &[
+            DataSetColumn::new("X", DataType::Int32),
+            DataSetColumn::new("y", DataType::Double),
+        ]
+    );
     assert_eq!(Row::COLUMN_COUNT, 2);
 }
 

@@ -149,10 +149,12 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
 
     Ok(quote! {
         impl #impl_generics ::srad::types::DataSetRow for #type_name #ty_generics #where_clause {
-            const COLUMNS: &'static [&'static str] = &[#(#names),*];
-            const COLUMN_TYPES: &'static [::srad::types::payload::DataType] = &[
+            const COLUMNS: &'static [::srad::types::DataSetColumn] = &[
                 #(
-                    <#types as ::srad::types::traits::HasDataType>::DEFAULT_DATATYPE
+                    ::srad::types::DataSetColumn::new(
+                        #names,
+                        <#types as ::srad::types::traits::HasDataType>::DEFAULT_DATATYPE,
+                    )
                 ),*
             ];
 
@@ -183,7 +185,7 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
                     #(
                         #idents: ::srad::types::data_set_value_try_into::<#types>(
                             elements.next().expect("row length checked"),
-                            Self::COLUMN_TYPES[#indices],
+                            Self::COLUMNS[#indices].datatype,
                             #indices,
                         )?,
                     )*
