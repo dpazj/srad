@@ -103,6 +103,8 @@ impl PropertySet {
 }
 
 impl traits::HasDataType for PropertySet {
+    const DEFAULT_DATATYPE: payload::DataType = payload::DataType::PropertySet;
+
     fn supported_datatypes() -> &'static [payload::DataType] {
         static SUPPORTED_TYPES: [payload::DataType; 1] = [payload::DataType::PropertySet];
         &SUPPORTED_TYPES
@@ -189,6 +191,8 @@ impl TryFrom<payload::PropertySetList> for PropertySetList {
 }
 
 impl traits::HasDataType for PropertySetList {
+    const DEFAULT_DATATYPE: payload::DataType = payload::DataType::PropertySetList;
+
     fn supported_datatypes() -> &'static [payload::DataType] {
         static SUPPORTED_TYPES: [payload::DataType; 1] = [payload::DataType::PropertySetList];
         &SUPPORTED_TYPES

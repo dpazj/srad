@@ -2,16 +2,14 @@ use crate::{metadata::MetaData, payload::DataType, value};
 
 /// Trait used to query the Sparkplug datatype(s) that an implementing type supports
 pub trait HasDataType {
+    const DEFAULT_DATATYPE: DataType;
+
     /// Get all the Sparkplug [crate::payload::DataType]'s the type supports
     fn supported_datatypes() -> &'static [DataType];
 
     /// Default [crate::payload::DataType] the type maps to
     fn default_datatype() -> DataType {
-        let supported = Self::supported_datatypes();
-        if supported.is_empty() {
-            panic!("supported_datatypes result has to contain at least one element")
-        }
-        supported[0]
+        Self::DEFAULT_DATATYPE
     }
 }
 
@@ -19,12 +17,10 @@ impl<T> HasDataType for Option<T>
 where
     T: HasDataType,
 {
+    const DEFAULT_DATATYPE: DataType = T::DEFAULT_DATATYPE;
+
     fn supported_datatypes() -> &'static [DataType] {
         T::supported_datatypes()
-    }
-
-    fn default_datatype() -> DataType {
-        T::default_datatype()
     }
 }
 

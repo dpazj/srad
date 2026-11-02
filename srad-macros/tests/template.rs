@@ -1,6 +1,7 @@
 use srad::types::{
-    payload::DataType, DataSet, DataSetValue, Template, TemplateDefinition, TemplateError,
-    TemplateInstance, TemplateMetadata, TemplateMetric, TemplateParameter, TypedDataSet,
+    payload::DataType, DataSet, DataSetRow, DataSetValue, Template, TemplateDefinition,
+    TemplateError, TemplateInstance, TemplateMetadata, TemplateMetric, TemplateParameter,
+    TypedDataSet,
 };
 
 #[derive(Template, Clone, Default)]
@@ -323,10 +324,16 @@ pub fn test_dataset_field() {
     assert_eq!(DatasetTemplate::try_from(instance).unwrap(), template);
 }
 
+#[derive(DataSetRow, Clone, PartialEq, Debug)]
+struct TypedDatasetRow {
+    a: i32,
+    b: f64,
+}
+
 #[derive(Template, Clone, PartialEq, Debug)]
 struct TypedDatasetTemplate {
-    #[template(default = TypedDataSet::<(i32, f64)>::new(["a", "b"]).unwrap())]
-    data: TypedDataSet<(i32, f64)>,
+    #[template(default = TypedDataSet::<TypedDatasetRow>::new().unwrap())]
+    data: TypedDataSet<TypedDatasetRow>,
 }
 
 impl TemplateMetadata for TypedDatasetTemplate {
@@ -337,8 +344,8 @@ impl TemplateMetadata for TypedDatasetTemplate {
 
 #[test]
 pub fn test_typed_dataset_field() {
-    let mut data = TypedDataSet::<(i32, f64)>::new(["a", "b"]).unwrap();
-    data.add_row((1, 2.5));
+    let mut data = TypedDataSet::<TypedDatasetRow>::new().unwrap();
+    data.add_row(TypedDatasetRow { a: 1, b: 2.5 });
 
     let template = TypedDatasetTemplate { data };
     let instance = template.template_instance();

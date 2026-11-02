@@ -4,7 +4,7 @@ use srad::{
     client_rumqtt as rumqtt,
     eon::{BirthMetricDetails, EoNBuilder, MetricManager, NodeMetricManager},
     types::{
-        payload::DataType, DataSet, DataSetValue, DateTime, Template, TemplateMetadata,
+        payload::DataType, DataSet, DataSetRow, DataSetValue, DateTime, Template, TemplateMetadata,
         TypedDataSet,
     },
 };
@@ -24,6 +24,16 @@ impl TemplateMetadata for Point {
     }
 }
 
+#[derive(DataSetRow, Clone, Debug, PartialEq)]
+struct TypedRow {
+    #[dataset(rename = "Time")]
+    time: i32,
+    #[dataset(rename = "Value")]
+    value: f64,
+    #[dataset(rename = "Label")]
+    label: String,
+}
+
 struct Data {
     boolean: bool,
     int8: i8,
@@ -41,7 +51,7 @@ struct Data {
     text: String,
     //uuid
     dataset: DataSet,
-    typed_dataset: TypedDataSet<(i32, f64, String)>,
+    typed_dataset: TypedDataSet<TypedRow>,
     bytes: Vec<u8>,
     //file
     template: Point,
@@ -94,9 +104,12 @@ impl DatatypesManager {
                 dataset
             },
             typed_dataset: {
-                let mut dataset =
-                    TypedDataSet::<(i32, f64, String)>::new(["Time", "Value", "Label"]).unwrap();
-                dataset.add_row((1, 1.5, "one".into()));
+                let mut dataset = TypedDataSet::<TypedRow>::new().unwrap();
+                dataset.add_row(TypedRow {
+                    time: 1,
+                    value: 1.5,
+                    label: "one".into(),
+                });
                 dataset
             },
             bytes: vec![0xde, 0xad, 0xbe, 0xef],

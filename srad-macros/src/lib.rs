@@ -51,6 +51,149 @@ fn parse_builder_attributes(attrs: &[Attribute]) -> syn::Result<TemplateFieldAtt
     Ok(field_attrs)
 }
 
+#[derive(Default)]
+struct DataSetFieldAttributes {
+    rename: Option<String>,
+}
+
+fn parse_dataset_attributes(attrs: &[Attribute]) -> syn::Result<DataSetFieldAttributes> {
+    let mut field_attrs = DataSetFieldAttributes::default();
+
+    for attr in attrs {
+        if !attr.path().is_ident("dataset") {
+            continue;
+        }
+
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("rename") {
+                let value = meta.value()?;
+                let lit_string: syn::LitStr = value.parse()?;
+                field_attrs.rename = Some(lit_string.value());
+                return Ok(());
+            }
+
+            Err(meta.error("Unrecognised dataset attribute"))
+        })?;
+    }
+
+    Ok(field_attrs)
+}
+
+fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
+    let generics = input.generics.clone();
+    let data_struct = match input.data {
+        Data::Struct(variant_data) => variant_data,
+        Data::Enum(DataEnum { enum_token, .. }) => {
+            return Err(Error::new_spanned(
+                enum_token,
+                "DataSetRow can not be derived for an Enum",
+            ))
+        }
+        Data::Union(DataUnion { union_token, .. }) => {
+            return Err(Error::new_spanned(
+                union_token,
+                "DataSetRow can not be derived for a Union",
+            ))
+        }
+    };
+
+    let fields = match data_struct.fields {
+        syn::Fields::Named(fields_named) => fields_named,
+        syn::Fields::Unnamed(fields_unnamed) => {
+            return Err(Error::new_spanned(
+                fields_unnamed,
+                "DataSetRow can not be derived for a tuple struct",
+            ))
+        }
+        syn::Fields::Unit => {
+            return Err(Error::new_spanned(
+                &data_struct.fields,
+                "DataSetRow does not support unit structs",
+            ))
+        }
+    };
+
+    let mut unique_names = HashSet::with_capacity(fields.named.len());
+    let mut names = Vec::with_capacity(fields.named.len());
+    let mut idents = Vec::with_capacity(fields.named.len());
+    let mut types = Vec::with_capacity(fields.named.len());
+    let mut indices = Vec::with_capacity(fields.named.len());
+
+    for (index, field) in fields.named.iter().enumerate() {
+        let attrs = parse_dataset_attributes(&field.attrs)?;
+        let field_ident = field.ident.as_ref().unwrap();
+        let name = attrs.rename.unwrap_or_else(|| field_ident.to_string());
+
+        if !unique_names.insert(name.clone()) {
+            return Err(Error::new_spanned(
+                field_ident,
+                format!("Duplicate column name provided - {name}"),
+            ));
+        }
+
+        names.push(syn::LitStr::new(&name, field_ident.span()));
+        idents.push(field_ident.clone());
+        types.push(field.ty.clone());
+        indices.push(index);
+    }
+
+    if names.is_empty() {
+        return Err(Error::new_spanned(
+            fields,
+            "At least one field must be provided",
+        ));
+    }
+
+    let type_name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    Ok(quote! {
+        impl #impl_generics ::srad::types::DataSetRow for #type_name #ty_generics #where_clause {
+            const COLUMNS: &'static [&'static str] = &[#(#names),*];
+            const COLUMN_TYPES: &'static [::srad::types::payload::DataType] = &[
+                #(
+                    <#types as ::srad::types::traits::HasDataType>::DEFAULT_DATATYPE
+                ),*
+            ];
+
+            fn into_row(self) -> ::srad::types::payload::data_set::Row {
+                ::srad::types::payload::data_set::Row {
+                    elements: vec![
+                        #(
+                            ::srad::types::payload::data_set::DataSetValue {
+                                value: Some(::srad::types::data_set_value_from(self.#idents)),
+                            }
+                        ),*
+                    ],
+                }
+            }
+
+            fn try_from_row(
+                row: ::srad::types::payload::data_set::Row,
+            ) -> ::core::result::Result<Self, ::srad::types::DataSetError> {
+                if row.elements.len() != Self::COLUMN_COUNT {
+                    return Err(::srad::types::DataSetError::RowLengthMismatch {
+                        expected: Self::COLUMN_COUNT,
+                        actual: row.elements.len(),
+                    });
+                }
+
+                let mut elements = row.elements.into_iter();
+                Ok(Self {
+                    #(
+                        #idents: ::srad::types::data_set_value_try_into::<#types>(
+                            elements.next().expect("row length checked"),
+                            Self::COLUMN_TYPES[#indices],
+                            #indices,
+                        )?,
+                    )*
+                })
+            }
+        }
+    }
+    .into())
+}
+
 fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     let data_struct = match input.data {
         Data::Struct(variant_data) => variant_data,
@@ -571,6 +714,18 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
 pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match try_template(input) {
+        Ok(tokens) => tokens,
+        Err(err) => err.into_compile_error().into(),
+    }
+}
+
+/// Derives `DataSetRow` for a struct with named fields.
+///
+/// Field names become column names. Use `#[dataset(rename = "name")]` to override a name.
+#[proc_macro_derive(DataSetRow, attributes(dataset))]
+pub fn data_set_row_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    match try_data_set_row(input) {
         Ok(tokens) => tokens,
         Err(err) => err.into_compile_error().into(),
     }

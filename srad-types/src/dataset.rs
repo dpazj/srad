@@ -14,7 +14,8 @@ use crate::{
 
 /// Low-level Sparkplug DataSet wrapper.
 ///
-/// Does not validate column or row consistency.
+/// Does not validate column or row consistency. Prefer [`TypedDataSet`], which provides
+/// typed rows and validated columns and values.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DataSet(pub payload::DataSet);
 
@@ -77,6 +78,8 @@ impl From<payload::DataSet> for DataSet {
 }
 
 impl HasDataType for DataSet {
+    const DEFAULT_DATATYPE: DataType = DataType::DataSet;
+
     fn supported_datatypes() -> &'static [DataType] {
         static SUPPORTED_TYPES: [DataType; 1] = [DataType::DataSet];
         &SUPPORTED_TYPES
@@ -133,6 +136,12 @@ pub enum DataSetError {
         expected: DataType,
         actual: u32,
     },
+    #[error("column {index} has name {actual:?} but expected {expected:?}")]
+    ColumnNameMismatch {
+        index: usize,
+        expected: &'static str,
+        actual: String,
+    },
     #[error("expected {expected} row elements but got {actual}")]
     RowLengthMismatch { expected: usize, actual: usize },
     #[error("row element {index} has an unexpected datatype, expected {expected:?}")]
@@ -147,20 +156,19 @@ pub enum DataSetError {
 
 /// Defines the columns and row conversion for a [`TypedDataSet`].
 pub trait DataSetRow: Sized {
-    const COLUMN_COUNT: usize;
-
-    fn column_types() -> Vec<DataType>;
+    const COLUMNS: &'static [&'static str];
+    const COLUMN_TYPES: &'static [DataType];
+    const COLUMN_COUNT: usize = Self::COLUMNS.len();
 
     fn into_row(self) -> data_set::Row;
 
     fn try_from_row(row: data_set::Row) -> Result<Self, DataSetError>;
 
     fn validate_row(row: &data_set::Row) -> Result<(), DataSetError> {
-        let types = Self::column_types();
-        if types.len() != Self::COLUMN_COUNT {
+        if Self::COLUMN_TYPES.len() != Self::COLUMN_COUNT {
             return Err(DataSetError::ColumnCountMismatch {
                 expected: Self::COLUMN_COUNT,
-                actual: types.len(),
+                actual: Self::COLUMN_TYPES.len(),
             });
         }
         if row.elements.len() != Self::COLUMN_COUNT {
@@ -174,10 +182,10 @@ pub trait DataSetRow: Sized {
                 .value
                 .as_ref()
                 .ok_or(DataSetError::ElementValueMissing { index })?;
-            if !datatype_matches(types[index], value) {
+            if !datatype_matches(Self::COLUMN_TYPES[index], value) {
                 return Err(DataSetError::ElementTypeMismatch {
                     index,
-                    expected: types[index],
+                    expected: Self::COLUMN_TYPES[index],
                 });
             }
         }
@@ -213,21 +221,16 @@ impl<R: DataSetRow> std::fmt::Debug for TypedDataSet<R> {
 }
 
 impl<R: DataSetRow> TypedDataSet<R> {
-    pub fn new<C, S>(columns: C) -> Result<Self, DataSetError>
-    where
-        C: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        let columns: Vec<String> = columns.into_iter().map(Into::into).collect();
-        if columns.len() != R::COLUMN_COUNT {
+    pub fn new() -> Result<Self, DataSetError> {
+        if R::COLUMN_TYPES.len() != R::COLUMN_COUNT {
             return Err(DataSetError::ColumnCountMismatch {
                 expected: R::COLUMN_COUNT,
-                actual: columns.len(),
+                actual: R::COLUMN_TYPES.len(),
             });
         }
 
         let mut inner = DataSet::new();
-        inner.init(columns, R::column_types());
+        inner.init(R::COLUMNS.iter().copied(), R::COLUMN_TYPES.iter().copied());
         Ok(Self {
             inner,
             _row: PhantomData,
@@ -266,11 +269,10 @@ impl<R: DataSetRow> TryFrom<DataSet> for TypedDataSet<R> {
     type Error = DataSetError;
 
     fn try_from(value: DataSet) -> Result<Self, Self::Error> {
-        let types = R::column_types();
-        if types.len() != R::COLUMN_COUNT {
+        if R::COLUMN_TYPES.len() != R::COLUMN_COUNT {
             return Err(DataSetError::ColumnCountMismatch {
                 expected: R::COLUMN_COUNT,
-                actual: types.len(),
+                actual: R::COLUMN_TYPES.len(),
             });
         }
         let actual_columns = value.0.num_of_columns.unwrap_or_default() as usize;
@@ -292,11 +294,26 @@ impl<R: DataSetRow> TryFrom<DataSet> for TypedDataSet<R> {
                 actual: value.0.types.len(),
             });
         }
+        for (index, (actual, expected)) in value
+            .0
+            .columns
+            .iter()
+            .zip(R::COLUMNS.iter().copied())
+            .enumerate()
+        {
+            if actual.as_str() != expected {
+                return Err(DataSetError::ColumnNameMismatch {
+                    index,
+                    expected,
+                    actual: actual.clone(),
+                });
+            }
+        }
         for (index, actual) in value.0.types.iter().enumerate() {
-            if *actual != types[index] as u32 {
+            if *actual != R::COLUMN_TYPES[index] as u32 {
                 return Err(DataSetError::ColumnTypeMismatch {
                     index,
-                    expected: types[index],
+                    expected: R::COLUMN_TYPES[index],
                     actual: *actual,
                 });
             }
@@ -349,6 +366,8 @@ impl<R: DataSetRow> TryFrom<MetricValue> for TypedDataSet<R> {
 }
 
 impl<R: DataSetRow> HasDataType for TypedDataSet<R> {
+    const DEFAULT_DATATYPE: DataType = DataType::DataSet;
+
     fn supported_datatypes() -> &'static [DataType] {
         static SUPPORTED_TYPES: [DataType; 1] = [DataType::DataSet];
         &SUPPORTED_TYPES
@@ -400,7 +419,8 @@ fn datatype_matches(datatype: DataType, value: &data_set_value::Value) -> bool {
     }
 }
 
-fn data_set_value_from<T>(value: T) -> data_set_value::Value
+#[doc(hidden)]
+pub fn data_set_value_from<T>(value: T) -> data_set_value::Value
 where
     T: traits::DataSetValue,
 {
@@ -408,7 +428,8 @@ where
     value.0
 }
 
-fn data_set_value_try_into<T>(
+#[doc(hidden)]
+pub fn data_set_value_try_into<T>(
     element: data_set::DataSetValue,
     expected: DataType,
     index: usize,
@@ -425,71 +446,112 @@ where
     Ok(T::try_from(value::DataSetValue(value))?)
 }
 
-macro_rules! impl_data_set_row {
-    ($count:expr; $($index:tt : $ty:ident),+) => {
-        impl<$($ty),+> DataSetRow for ($($ty,)+)
-        where
-            $($ty: traits::DataSetValue + TryFrom<value::DataSetValue, Error = FromValueTypeError>),+
-        {
-            const COLUMN_COUNT: usize = $count;
-
-            fn column_types() -> Vec<DataType> {
-                vec![$(<$ty as HasDataType>::default_datatype()),+]
-            }
-
-            fn into_row(self) -> data_set::Row {
-                data_set::Row {
-                    elements: vec![
-                        $(
-                            data_set::DataSetValue {
-                                value: Some(data_set_value_from(self.$index)),
-                            }
-                        ),+
-                    ],
-                }
-            }
-
-            fn try_from_row(row: data_set::Row) -> Result<Self, DataSetError> {
-                if row.elements.len() != Self::COLUMN_COUNT {
-                    return Err(DataSetError::RowLengthMismatch {
-                        expected: Self::COLUMN_COUNT,
-                        actual: row.elements.len(),
-                    });
-                }
-
-                let types = Self::column_types();
-                let mut elements = row.elements.into_iter();
-                Ok((
-                    $(
-                        data_set_value_try_into::<$ty>(
-                            elements.next().expect("row length checked"),
-                            types[$index],
-                            $index,
-                        )?,
-                    )+
-                ))
-            }
-        }
-    };
-}
-
-impl_data_set_row!(1; 0: A);
-impl_data_set_row!(2; 0: A, 1: B);
-impl_data_set_row!(3; 0: A, 1: B, 2: C);
-impl_data_set_row!(4; 0: A, 1: B, 2: C, 3: D);
-impl_data_set_row!(5; 0: A, 1: B, 2: C, 3: D, 4: E);
-impl_data_set_row!(6; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F);
-impl_data_set_row!(7; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G);
-impl_data_set_row!(8; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H);
-impl_data_set_row!(9; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I);
-impl_data_set_row!(10; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I, 9: J);
-impl_data_set_row!(11; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I, 9: J, 10: K);
-impl_data_set_row!(12; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I, 9: J, 10: K, 11: L);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{payload::data_set::data_set_value::Value, DateTime};
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct TestRow {
+        a: i32,
+        b: f64,
+    }
+
+    impl DataSetRow for TestRow {
+        const COLUMNS: &'static [&'static str] = &["a", "b"];
+        const COLUMN_TYPES: &'static [DataType] = &[DataType::Int32, DataType::Double];
+
+        fn into_row(self) -> data_set::Row {
+            data_set::Row {
+                elements: vec![
+                    data_set::DataSetValue {
+                        value: Some(data_set_value_from(self.a)),
+                    },
+                    data_set::DataSetValue {
+                        value: Some(data_set_value_from(self.b)),
+                    },
+                ],
+            }
+        }
+
+        fn try_from_row(row: data_set::Row) -> Result<Self, DataSetError> {
+            if row.elements.len() != Self::COLUMN_COUNT {
+                return Err(DataSetError::RowLengthMismatch {
+                    expected: Self::COLUMN_COUNT,
+                    actual: row.elements.len(),
+                });
+            }
+            let mut elements = row.elements.into_iter();
+            Ok(Self {
+                a: data_set_value_try_into::<i32>(
+                    elements.next().expect("row length checked"),
+                    Self::COLUMN_TYPES[0],
+                    0,
+                )?,
+                b: data_set_value_try_into::<f64>(
+                    elements.next().expect("row length checked"),
+                    Self::COLUMN_TYPES[1],
+                    1,
+                )?,
+            })
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct TestRow3 {
+        a: i32,
+        b: f64,
+        c: String,
+    }
+
+    impl DataSetRow for TestRow3 {
+        const COLUMNS: &'static [&'static str] = &["a", "b", "c"];
+        const COLUMN_TYPES: &'static [DataType] =
+            &[DataType::Int32, DataType::Double, DataType::String];
+
+        fn into_row(self) -> data_set::Row {
+            data_set::Row {
+                elements: vec![
+                    data_set::DataSetValue {
+                        value: Some(data_set_value_from(self.a)),
+                    },
+                    data_set::DataSetValue {
+                        value: Some(data_set_value_from(self.b)),
+                    },
+                    data_set::DataSetValue {
+                        value: Some(data_set_value_from(self.c)),
+                    },
+                ],
+            }
+        }
+
+        fn try_from_row(row: data_set::Row) -> Result<Self, DataSetError> {
+            if row.elements.len() != Self::COLUMN_COUNT {
+                return Err(DataSetError::RowLengthMismatch {
+                    expected: Self::COLUMN_COUNT,
+                    actual: row.elements.len(),
+                });
+            }
+            let mut elements = row.elements.into_iter();
+            Ok(Self {
+                a: data_set_value_try_into::<i32>(
+                    elements.next().expect("row length checked"),
+                    Self::COLUMN_TYPES[0],
+                    0,
+                )?,
+                b: data_set_value_try_into::<f64>(
+                    elements.next().expect("row length checked"),
+                    Self::COLUMN_TYPES[1],
+                    1,
+                )?,
+                c: data_set_value_try_into::<String>(
+                    elements.next().expect("row length checked"),
+                    Self::COLUMN_TYPES[2],
+                    2,
+                )?,
+            })
+        }
+    }
 
     fn data_set() -> DataSet {
         let mut data_set = DataSet::new();
@@ -530,20 +592,24 @@ mod tests {
     }
 
     #[test]
-    fn typed_new_checks_column_count() {
-        assert!(matches!(
-            TypedDataSet::<(i32, f64)>::new(["a"]),
-            Err(DataSetError::ColumnCountMismatch {
-                expected: 2,
-                actual: 1
-            })
-        ));
+    fn typed_new_sets_schema() {
+        let data_set = TypedDataSet::<TestRow>::new().unwrap();
+        assert_eq!(data_set.as_proto().num_of_columns, Some(2));
+        assert_eq!(data_set.as_proto().columns, vec!["a", "b"]);
+        assert_eq!(
+            data_set.as_proto().types,
+            vec![DataType::Int32 as u32, DataType::Double as u32]
+        );
     }
 
     #[test]
     fn typed_add_row_builds_elements() {
-        let mut data_set = TypedDataSet::<(i32, f64, String)>::new(["a", "b", "c"]).unwrap();
-        data_set.add_row((1, 2.5, "three".into()));
+        let mut data_set = TypedDataSet::<TestRow3>::new().unwrap();
+        data_set.add_row(TestRow3 {
+            a: 1,
+            b: 2.5,
+            c: "three".into(),
+        });
 
         let proto = data_set.as_proto();
         assert_eq!(proto.num_of_columns, Some(3));
@@ -572,7 +638,7 @@ mod tests {
 
     #[test]
     fn typed_try_add_row_validates() {
-        let mut data_set = TypedDataSet::<(i32, f64)>::new(["a", "b"]).unwrap();
+        let mut data_set = TypedDataSet::<TestRow>::new().unwrap();
 
         let wrong_length = data_set::Row {
             elements: vec![data_set::DataSetValue {
@@ -608,12 +674,12 @@ mod tests {
 
     #[test]
     fn typed_metric_value_round_trip() {
-        let mut data_set = TypedDataSet::<(i32, f64)>::new(["a", "b"]).unwrap();
-        data_set.add_row((1, 2.5));
+        let mut data_set = TypedDataSet::<TestRow>::new().unwrap();
+        data_set.add_row(TestRow { a: 1, b: 2.5 });
 
         let metric_value: MetricValue = data_set.clone().into();
         assert_eq!(
-            TypedDataSet::<(i32, f64)>::try_from(metric_value).unwrap(),
+            TypedDataSet::<TestRow>::try_from(metric_value).unwrap(),
             data_set
         );
     }
@@ -623,15 +689,26 @@ mod tests {
         let mut data_set = DataSet::new();
         data_set.init(["a", "b"], [DataType::Int32, DataType::Double]);
 
-        assert!(TypedDataSet::<(i32, f64)>::try_from(data_set.clone()).is_ok());
+        assert!(TypedDataSet::<TestRow>::try_from(data_set.clone()).is_ok());
 
         let mut wrong_types = data_set.clone();
         wrong_types.0.types = vec![DataType::Int32 as u32, DataType::Float as u32];
         assert!(matches!(
-            TypedDataSet::<(i32, f64)>::try_from(wrong_types),
+            TypedDataSet::<TestRow>::try_from(wrong_types),
             Err(DataSetError::ColumnTypeMismatch {
                 index: 1,
                 expected: DataType::Double,
+                ..
+            })
+        ));
+
+        let mut wrong_names = data_set.clone();
+        wrong_names.0.columns = vec!["a".into(), "c".into()];
+        assert!(matches!(
+            TypedDataSet::<TestRow>::try_from(wrong_names),
+            Err(DataSetError::ColumnNameMismatch {
+                index: 1,
+                expected: "b",
                 ..
             })
         ));
@@ -643,7 +720,7 @@ mod tests {
             }],
         });
         assert!(matches!(
-            TypedDataSet::<(i32, f64)>::try_from(wrong_row),
+            TypedDataSet::<TestRow>::try_from(wrong_row),
             Err(DataSetError::RowLengthMismatch { .. })
         ));
     }

@@ -328,10 +328,12 @@ macro_rules! array_length {
 }
 
 macro_rules! impl_has_datatype {
-  ($type:ty, [$($datatypes:expr),* $(,)?]) => {
+  ($type:ty, [$first:expr $(, $rest:expr)* $(,)?]) => {
     impl traits::HasDataType for $type {
+      const DEFAULT_DATATYPE: DataType = $first;
+
       fn supported_datatypes() -> &'static[DataType] {
-        static SUPPORTED_TYPES: [DataType; array_length!([$($datatypes),*])] = [$($datatypes),*];
+        static SUPPORTED_TYPES: [DataType; array_length!([$first $(, $rest)*])] = [$first $(, $rest)*];
         &SUPPORTED_TYPES
       }
     }

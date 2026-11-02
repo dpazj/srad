@@ -21,6 +21,8 @@ impl TryFrom<i32> for Quality {
 }
 
 impl traits::HasDataType for Quality {
+    const DEFAULT_DATATYPE: DataType = DataType::Int32;
+
     fn supported_datatypes() -> &'static [DataType] {
         static SUPPORTED_TYPES: [DataType; 1] = [DataType::Int32];
         &SUPPORTED_TYPES

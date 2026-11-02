@@ -251,6 +251,8 @@ pub struct TemplateDefinition {
 }
 
 impl HasDataType for TemplateDefinition {
+    const DEFAULT_DATATYPE: DataType = DataType::Template;
+
     fn supported_datatypes() -> &'static [DataType] {
         static SUPPORTED_TYPES: [DataType; 1] = [DataType::Template];
         &SUPPORTED_TYPES
@@ -316,6 +318,8 @@ pub struct TemplateInstance {
 }
 
 impl HasDataType for TemplateInstance {
+    const DEFAULT_DATATYPE: DataType = DataType::Template;
+
     fn supported_datatypes() -> &'static [DataType] {
         static SUPPORTED_TYPES: [DataType; 1] = [DataType::Template];
         &SUPPORTED_TYPES
@@ -461,6 +465,8 @@ impl<T> HasDataType for T
 where
     T: Template,
 {
+    const DEFAULT_DATATYPE: DataType = DataType::Template;
+
     fn supported_datatypes() -> &'static [DataType] {
         static SUPPORTED_TYPES: [DataType; 1] = [DataType::Template];
         &SUPPORTED_TYPES
