@@ -20,6 +20,7 @@ jobs:
       - docs
       - codegen
       - test
+      - msrv
     steps:
       - run: exit 0
 
@@ -94,4 +95,19 @@ jobs:
 
       - name: test
         run: cargo test 
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - uses: dtolnay/rust-toolchain@1.85.0
+      - name: install protoc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: protoc@${{ env.PROTOC_VERSION }}
+
+      - name: test
+        run: cargo test --workspace
      
