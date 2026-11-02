@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use crate::payload::{
     data_set::data_set_value, metric, property_value, template::parameter, DataType,
 };
-use crate::{payload, traits, TemplateValue};
+use crate::{payload, traits, DataSet, TemplateValue};
 
 use paste::paste;
 use thiserror::Error;
@@ -612,7 +612,7 @@ pub enum MetricValueKind {
     DateTime(DateTime),
     Text(String),
     Uuid(String),
-    DataSet(payload::DataSet),
+    DataSet(DataSet),
     Bytes(Vec<u8>),
     File(Vec<u8>),
     Template(TemplateValue),
@@ -665,7 +665,7 @@ impl MetricValueKind {
             DataType::Uuid => MetricValueKind::Uuid(String::try_from(value)?),
             DataType::DataSet => {
                 if let payload::metric::Value::DatasetValue(ds) = value.0 {
-                    MetricValueKind::DataSet(ds)
+                    MetricValueKind::DataSet(DataSet::from(ds))
                 } else {
                     return Err(FromMetricValueError::ValueDecodeError(
                         FromValueTypeError::InvalidVariantType,
@@ -1061,6 +1061,22 @@ mod tests {
                 vec,
                 proto_to_datetime_vec(datetime_vec_to_proto(vec.clone())).unwrap()
             );
+        }
+    }
+
+    #[test]
+    fn metric_value_kind_dataset_uses_wrapper() {
+        let mut data_set = DataSet::new();
+        data_set
+            .init(["a"], [DataType::Int32])
+            .add_row_values([1_i32]);
+
+        let value: MetricValue = data_set.clone().into();
+        let kind = MetricValueKind::try_from_metric_value(DataType::DataSet, value).unwrap();
+
+        match kind {
+            MetricValueKind::DataSet(kind_data_set) => assert_eq!(kind_data_set, data_set),
+            _ => panic!("expected DataSet variant"),
         }
     }
 }
