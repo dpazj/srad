@@ -128,7 +128,8 @@ fn create_rebirth_message(group_id: &str, node_id: &str) -> NodeMessage {
                 seq: None,
                 uuid: None,
                 body: None,
-            },
+            }
+            .into(),
             kind: srad_client::MessageKind::Cmd,
         },
     }

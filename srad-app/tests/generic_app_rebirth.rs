@@ -72,7 +72,7 @@ async fn reorder_rebirths() {
             group_id: "group1".to_string(),
             node_id: "node1".to_string(),
             message: Message {
-                payload: utils::payloads::new_nbirth_payload(Some(vec![metric_a])),
+                payload: utils::payloads::new_nbirth_payload(Some(vec![metric_a])).into(),
                 kind: srad_client::MessageKind::Birth,
             },
         }))
@@ -91,7 +91,7 @@ async fn reorder_rebirths() {
             group_id: "group1".to_string(),
             node_id: "node1".to_string(),
             message: Message {
-                payload: utils::payloads::new_data_payload(2, vec![metric_a_1]),
+                payload: utils::payloads::new_data_payload(2, vec![metric_a_1]).into(),
                 kind: srad_client::MessageKind::Data,
             },
         }))

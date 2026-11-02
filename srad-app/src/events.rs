@@ -1,4 +1,4 @@
-use srad_client::{DeviceMessage, NodeMessage};
+use srad_client::{DeviceMessage, Message, NodeMessage};
 use srad_types::{payload::Payload, MetricId};
 
 use crate::{
@@ -21,6 +21,8 @@ pub enum PayloadError {
     MissingTimestamp,
     #[error("Metric error: {0}")]
     MetricError(#[from] PayloadMetricError),
+    #[error("Unable to decode payload: {0}")]
+    DecodePayload(#[from] srad_client::MessageError),
 }
 
 #[derive(Debug)]
@@ -55,6 +57,43 @@ pub enum NodeEvent {
     Birth(NBirth),
     Death(NDeath),
     Data(NData),
+    Raw(Message),
+}
+
+/// The decoded form of a [NodeEvent].
+#[derive(Debug)]
+pub enum DecodedNodeEvent {
+    Birth(NBirth),
+    Death(NDeath),
+    Data(NData),
+}
+
+impl From<DecodedNodeEvent> for NodeEvent {
+    fn from(event: DecodedNodeEvent) -> Self {
+        match event {
+            DecodedNodeEvent::Birth(v) => Self::Birth(v),
+            DecodedNodeEvent::Death(v) => Self::Death(v),
+            DecodedNodeEvent::Data(v) => Self::Data(v),
+        }
+    }
+}
+
+impl NodeEvent {
+    pub fn from_message(message: Message) -> Result<Option<DecodedNodeEvent>, PayloadError> {
+        let Message { payload, kind } = message;
+        match kind {
+            srad_client::MessageKind::Birth => Ok(Some(DecodedNodeEvent::Birth(NBirth::try_from(
+                payload.decode()?,
+            )?))),
+            srad_client::MessageKind::Death => Ok(Some(DecodedNodeEvent::Death(NDeath::try_from(
+                payload.decode()?,
+            )?))),
+            srad_client::MessageKind::Data => Ok(Some(DecodedNodeEvent::Data(NData::try_from(
+                payload.decode()?,
+            )?))),
+            srad_client::MessageKind::Cmd | srad_client::MessageKind::Other(_) => Ok(None),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -67,40 +106,38 @@ impl TryFrom<NodeMessage> for AppNodeEvent {
     type Error = MessageTryFromError;
 
     fn try_from(value: NodeMessage) -> Result<Self, Self::Error> {
+        let NodeMessage {
+            group_id,
+            node_id,
+            message,
+        } = value;
         let id = NodeIdentifier {
-            group: value.group_id,
-            node: value.node_id,
+            group: group_id,
+            node: node_id,
         };
 
-        let event = match value.message.kind {
-            srad_client::MessageKind::Birth => match NBirth::try_from(value.message.payload) {
-                Ok(v) => NodeEvent::Birth(v),
-                Err(e) => {
-                    return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
-                        id, e,
-                    )))
+        if message.payload.is_encoded() {
+            return match &message.kind {
+                srad_client::MessageKind::Cmd | srad_client::MessageKind::Other(_) => {
+                    Err(MessageTryFromError::UnsupportedVerb)
                 }
-            },
-            srad_client::MessageKind::Death => match NDeath::try_from(value.message.payload) {
-                Ok(v) => NodeEvent::Death(v),
-                Err(e) => {
-                    return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
-                        id, e,
-                    )))
-                }
-            },
-            srad_client::MessageKind::Cmd => return Err(MessageTryFromError::UnsupportedVerb),
-            srad_client::MessageKind::Data => match NData::try_from(value.message.payload) {
-                Ok(v) => NodeEvent::Data(v),
-                Err(e) => {
-                    return Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
-                        id, e,
-                    )))
-                }
-            },
-            srad_client::MessageKind::Other(_) => return Err(MessageTryFromError::UnsupportedVerb),
-        };
-        Ok(AppNodeEvent { id, event })
+                _ => Ok(AppNodeEvent {
+                    id,
+                    event: NodeEvent::Raw(message),
+                }),
+            };
+        }
+
+        match NodeEvent::from_message(message) {
+            Ok(Some(event)) => Ok(AppNodeEvent {
+                id,
+                event: event.into(),
+            }),
+            Ok(None) => Err(MessageTryFromError::UnsupportedVerb),
+            Err(e) => Err(MessageTryFromError::PayloadError(PayloadErrorDetails::new(
+                id, e,
+            ))),
+        }
     }
 }
 
@@ -109,6 +146,43 @@ pub enum DeviceEvent {
     Birth(DBirth),
     Death(DDeath),
     Data(DData),
+    Raw(Message),
+}
+
+/// The decoded form of a [DeviceEvent].
+#[derive(Debug)]
+pub enum DecodedDeviceEvent {
+    Birth(DBirth),
+    Death(DDeath),
+    Data(DData),
+}
+
+impl From<DecodedDeviceEvent> for DeviceEvent {
+    fn from(event: DecodedDeviceEvent) -> Self {
+        match event {
+            DecodedDeviceEvent::Birth(v) => Self::Birth(v),
+            DecodedDeviceEvent::Death(v) => Self::Death(v),
+            DecodedDeviceEvent::Data(v) => Self::Data(v),
+        }
+    }
+}
+
+impl DeviceEvent {
+    pub fn from_message(message: Message) -> Result<Option<DecodedDeviceEvent>, PayloadError> {
+        let Message { payload, kind } = message;
+        match kind {
+            srad_client::MessageKind::Birth => Ok(Some(DecodedDeviceEvent::Birth(
+                DBirth::try_from(payload.decode()?)?,
+            ))),
+            srad_client::MessageKind::Death => Ok(Some(DecodedDeviceEvent::Death(
+                DDeath::try_from(payload.decode()?)?,
+            ))),
+            srad_client::MessageKind::Data => Ok(Some(DecodedDeviceEvent::Data(DData::try_from(
+                payload.decode()?,
+            )?))),
+            srad_client::MessageKind::Cmd | srad_client::MessageKind::Other(_) => Ok(None),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -122,41 +196,42 @@ impl TryFrom<DeviceMessage> for AppDeviceEvent {
     type Error = MessageTryFromError;
 
     fn try_from(value: DeviceMessage) -> Result<Self, Self::Error> {
+        let DeviceMessage {
+            group_id,
+            node_id,
+            device_id,
+            message,
+        } = value;
         let id = NodeIdentifier {
-            group: value.group_id,
-            node: value.node_id,
+            group: group_id,
+            node: node_id,
         };
-        let name = value.device_id;
+        let name = device_id;
 
-        let event = match value.message.kind {
-            srad_client::MessageKind::Birth => match DBirth::try_from(value.message.payload) {
-                Ok(v) => DeviceEvent::Birth(v),
-                Err(e) => {
-                    return Err(MessageTryFromError::PayloadError(
-                        PayloadErrorDetails::new(id, e).with_device(name),
-                    ))
+        if message.payload.is_encoded() {
+            return match &message.kind {
+                srad_client::MessageKind::Cmd | srad_client::MessageKind::Other(_) => {
+                    Err(MessageTryFromError::UnsupportedVerb)
                 }
-            },
-            srad_client::MessageKind::Death => match DDeath::try_from(value.message.payload) {
-                Ok(v) => DeviceEvent::Death(v),
-                Err(e) => {
-                    return Err(MessageTryFromError::PayloadError(
-                        PayloadErrorDetails::new(id, e).with_device(name),
-                    ))
-                }
-            },
-            srad_client::MessageKind::Cmd => return Err(MessageTryFromError::UnsupportedVerb),
-            srad_client::MessageKind::Data => match DData::try_from(value.message.payload) {
-                Ok(v) => DeviceEvent::Data(v),
-                Err(e) => {
-                    return Err(MessageTryFromError::PayloadError(
-                        PayloadErrorDetails::new(id, e).with_device(name),
-                    ))
-                }
-            },
-            srad_client::MessageKind::Other(_) => return Err(MessageTryFromError::UnsupportedVerb),
-        };
-        Ok(AppDeviceEvent { id, name, event })
+                _ => Ok(AppDeviceEvent {
+                    id,
+                    name,
+                    event: DeviceEvent::Raw(message),
+                }),
+            };
+        }
+
+        match DeviceEvent::from_message(message) {
+            Ok(Some(event)) => Ok(AppDeviceEvent {
+                id,
+                name,
+                event: event.into(),
+            }),
+            Ok(None) => Err(MessageTryFromError::UnsupportedVerb),
+            Err(e) => Err(MessageTryFromError::PayloadError(
+                PayloadErrorDetails::new(id, e).with_device(name),
+            )),
+        }
     }
 }
 

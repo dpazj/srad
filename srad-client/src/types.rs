@@ -1,6 +1,7 @@
 use std::string::FromUtf8Error;
 
-use prost::DecodeError;
+pub use bytes::Bytes;
+use prost::{DecodeError, Message as ProstMessage};
 use srad_types::{
     payload::Payload,
     topic::{state_host_topic, NodeMessage as NodeMessageType, NodeTopic, QoS},
@@ -39,11 +40,59 @@ pub enum MessageKind {
     Other(String),
 }
 
+/// A Sparkplug payload which may still be encoded.
+#[derive(Debug, PartialEq)]
+pub enum MessagePayload {
+    /// Protobuf encoded payload.
+    Encoded(Bytes),
+    /// Decoded payload.
+    Decoded(Payload),
+}
+
+impl MessagePayload {
+    pub fn is_encoded(&self) -> bool {
+        matches!(self, Self::Encoded(_))
+    }
+
+    pub fn decode(self) -> Result<Payload, MessageError> {
+        match self {
+            Self::Encoded(bytes) => {
+                Payload::decode(bytes).map_err(MessageError::DecodePayloadError)
+            }
+            Self::Decoded(payload) => Ok(payload),
+        }
+    }
+}
+
+impl From<Payload> for MessagePayload {
+    fn from(payload: Payload) -> Self {
+        Self::Decoded(payload)
+    }
+}
+
+impl From<Bytes> for MessagePayload {
+    fn from(bytes: Bytes) -> Self {
+        Self::Encoded(bytes)
+    }
+}
+
+impl From<Vec<u8>> for MessagePayload {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::Encoded(bytes.into())
+    }
+}
+
 /// A Message struct containing payload and the type of topic it was received on
 #[derive(Debug, PartialEq)]
 pub struct Message {
-    pub payload: Payload,
+    pub payload: MessagePayload,
     pub kind: MessageKind,
+}
+
+impl Message {
+    pub fn decode(self) -> Result<Payload, MessageError> {
+        self.payload.decode()
+    }
 }
 
 /// An enum representing the different type message published on a STATE topic.
@@ -113,8 +162,8 @@ pub enum Event {
     },
     InvalidPublish {
         reason: MessageError,
-        topic: Vec<u8>,
-        payload: Vec<u8>,
+        topic: Bytes,
+        payload: Bytes,
     },
 }
 
