@@ -5,6 +5,7 @@
 ### Types
 
 - Add `DataSet`, `DataSetColumn`, `TypedDataSet` and `DataSetRow` derive support
+- `TypedDataSet::new` is infallible and `TypedDataSet` implements `Default`
 - **breaking change** `MetricValueKind::DataSet` now contains a `DataSet`
 - **breaking change** `HasDataType` now requires a `DEFAULT_DATATYPE` const
 

@@ -104,7 +104,7 @@ impl DatatypesManager {
                 dataset
             },
             typed_dataset: {
-                let mut dataset = TypedDataSet::<TypedRow>::new().unwrap();
+                let mut dataset = TypedDataSet::<TypedRow>::new();
                 dataset.add_row(TypedRow {
                     time: 1,
                     value: 1.5,

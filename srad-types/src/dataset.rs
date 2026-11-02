@@ -227,17 +227,24 @@ impl<R: DataSetRow> std::fmt::Debug for TypedDataSet<R> {
     }
 }
 
+impl<R: DataSetRow> Default for TypedDataSet<R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<R: DataSetRow> TypedDataSet<R> {
-    pub fn new() -> Result<Self, DataSetError> {
+    /// Creates an empty dataset with the schema defined by [`DataSetRow::COLUMNS`].
+    pub fn new() -> Self {
         let mut inner = DataSet::new();
         inner.init(
             R::COLUMNS.iter().map(|column| column.name),
             R::COLUMNS.iter().map(|column| column.datatype),
         );
-        Ok(Self {
+        Self {
             inner,
             _row: PhantomData,
-        })
+        }
     }
 
     pub fn add_row(&mut self, row: R) -> &mut Self {
@@ -391,12 +398,12 @@ fn datatype_matches(datatype: DataType, value: &data_set_value::Value) -> bool {
     use data_set_value::Value;
 
     match datatype {
-        DataType::Int8
-        | DataType::Int16
-        | DataType::Int32
-        | DataType::UInt8
-        | DataType::UInt16
-        | DataType::UInt32 => matches!(value, Value::IntValue(_)),
+        DataType::Int8 => matches!(value, Value::IntValue(v) if int8_fits(*v)),
+        DataType::Int16 => matches!(value, Value::IntValue(v) if int16_fits(*v)),
+        DataType::Int32 => matches!(value, Value::IntValue(_)),
+        DataType::UInt8 => matches!(value, Value::IntValue(v) if *v <= u8::MAX as u32),
+        DataType::UInt16 => matches!(value, Value::IntValue(v) if *v <= u16::MAX as u32),
+        DataType::UInt32 => matches!(value, Value::IntValue(_)),
         DataType::Int64 | DataType::UInt64 | DataType::DateTime => {
             matches!(value, Value::LongValue(_))
         }
@@ -408,6 +415,16 @@ fn datatype_matches(datatype: DataType, value: &data_set_value::Value) -> bool {
         }
         _ => false,
     }
+}
+
+fn int8_fits(value: u32) -> bool {
+    let narrowed = value as u8;
+    value == narrowed as u32 || value == narrowed as i8 as i32 as u32
+}
+
+fn int16_fits(value: u32) -> bool {
+    let narrowed = value as u16;
+    value == narrowed as u32 || value == narrowed as i16 as i32 as u32
 }
 
 #[doc(hidden)]
@@ -588,7 +605,7 @@ mod tests {
 
     #[test]
     fn typed_new_sets_schema() {
-        let data_set = TypedDataSet::<TestRow>::new().unwrap();
+        let data_set = TypedDataSet::<TestRow>::new();
         assert_eq!(data_set.as_proto().num_of_columns, Some(2));
         assert_eq!(data_set.as_proto().columns, vec!["a", "b"]);
         assert_eq!(
@@ -599,7 +616,7 @@ mod tests {
 
     #[test]
     fn typed_add_row_builds_elements() {
-        let mut data_set = TypedDataSet::<TestRow3>::new().unwrap();
+        let mut data_set = TypedDataSet::<TestRow3>::new();
         data_set.add_row(TestRow3 {
             a: 1,
             b: 2.5,
@@ -633,7 +650,7 @@ mod tests {
 
     #[test]
     fn typed_try_add_row_validates() {
-        let mut data_set = TypedDataSet::<TestRow>::new().unwrap();
+        let mut data_set = TypedDataSet::<TestRow>::new();
 
         let wrong_length = data_set::Row {
             elements: vec![data_set::DataSetValue {
@@ -668,8 +685,37 @@ mod tests {
     }
 
     #[test]
+    fn integer_ranges_are_validated() {
+        let element = |value: u32| data_set::DataSetValue {
+            value: Some(Value::IntValue(value)),
+        };
+
+        assert!(matches!(
+            data_set_value_try_into::<i8>(element(256), DataType::Int8, 0),
+            Err(DataSetError::ElementTypeMismatch { .. })
+        ));
+        assert!(matches!(
+            data_set_value_try_into::<u8>(element(u32::MAX), DataType::UInt8, 0),
+            Err(DataSetError::ElementTypeMismatch { .. })
+        ));
+        assert!(matches!(
+            data_set_value_try_into::<i16>(element(0x0001_0000), DataType::Int16, 0),
+            Err(DataSetError::ElementTypeMismatch { .. })
+        ));
+
+        assert_eq!(
+            data_set_value_try_into::<i8>(element(u32::MAX), DataType::Int8, 0).unwrap(),
+            -1
+        );
+        assert_eq!(
+            data_set_value_try_into::<i16>(element(0x0000_FFF8), DataType::Int16, 0).unwrap(),
+            -8
+        );
+    }
+
+    #[test]
     fn typed_metric_value_round_trip() {
-        let mut data_set = TypedDataSet::<TestRow>::new().unwrap();
+        let mut data_set = TypedDataSet::<TestRow>::new();
         data_set.add_row(TestRow { a: 1, b: 2.5 });
 
         let metric_value: MetricValue = data_set.clone().into();

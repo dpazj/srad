@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use quote::{quote, ToTokens};
-use syn::{parse_macro_input, Attribute, Data, DataEnum, DataUnion, DeriveInput, Error};
+use syn::{
+    ext::IdentExt, parse_macro_input, Attribute, Data, DataEnum, DataUnion, DeriveInput, Error,
+};
 
 #[derive(Default)]
 struct TemplateFieldAttributes {
@@ -80,7 +82,7 @@ fn parse_dataset_attributes(attrs: &[Attribute]) -> syn::Result<DataSetFieldAttr
 }
 
 fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
-    let generics = input.generics.clone();
+    let mut generics = input.generics.clone();
     let data_struct = match input.data {
         Data::Struct(variant_data) => variant_data,
         Data::Enum(DataEnum { enum_token, .. }) => {
@@ -122,7 +124,9 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
     for (index, field) in fields.named.iter().enumerate() {
         let attrs = parse_dataset_attributes(&field.attrs)?;
         let field_ident = field.ident.as_ref().unwrap();
-        let name = attrs.rename.unwrap_or_else(|| field_ident.to_string());
+        let name = attrs
+            .rename
+            .unwrap_or_else(|| field_ident.unraw().to_string());
 
         if !unique_names.insert(name.clone()) {
             return Err(Error::new_spanned(
@@ -142,6 +146,20 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
             fields,
             "At least one field must be provided",
         ));
+    }
+
+    {
+        let where_clause = generics.make_where_clause();
+        for ty in &types {
+            where_clause.predicates.push(syn::parse_quote! {
+                #ty: ::srad::types::traits::HasDataType
+                    + ::srad::types::traits::DataSetValue
+                    + ::core::convert::TryFrom<
+                        ::srad::types::DataSetValue,
+                        Error = ::srad::types::FromValueTypeError,
+                    >
+            });
+        }
     }
 
     let type_name = &input.ident;
@@ -257,7 +275,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
         let name = if let Some(rename) = attrs.rename {
             rename
         } else {
-            field.ident.as_ref().unwrap().to_string()
+            field.ident.as_ref().unwrap().unraw().to_string()
         };
 
         let default = if let Some(default) = attrs.default {
@@ -724,6 +742,7 @@ pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 /// Derives `DataSetRow` for a struct with named fields.
 ///
 /// Field names become column names. Use `#[dataset(rename = "name")]` to override a name.
+/// All field types must implement `HasDataType` and `DataSetValue`.
 #[proc_macro_derive(DataSetRow, attributes(dataset))]
 pub fn data_set_row_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

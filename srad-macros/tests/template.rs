@@ -87,6 +87,28 @@ pub fn test_simple() {
     ));
 }
 
+#[derive(Template, Clone, Default)]
+struct RawIdentifier {
+    r#type: i32,
+}
+
+impl TemplateMetadata for RawIdentifier {
+    fn template_name() -> &'static str {
+        "raw_identifier"
+    }
+}
+
+#[test]
+pub fn test_raw_identifier_metric_name() {
+    let definition = RawIdentifier::template_definition();
+    assert_eq!(definition.metrics[0].name.as_deref(), Some("type"));
+
+    let template = RawIdentifier { r#type: 1 };
+    let instance = template.template_instance();
+    assert_eq!(instance.metrics[0].name.as_deref(), Some("type"));
+    assert_eq!(RawIdentifier::try_from(instance).unwrap().r#type, 1);
+}
+
 #[derive(Template)]
 struct NestedTemplate {
     first: i32,
@@ -332,7 +354,6 @@ struct TypedDatasetRow {
 
 #[derive(Template, Clone, PartialEq, Debug)]
 struct TypedDatasetTemplate {
-    #[template(default = TypedDataSet::<TypedDatasetRow>::new().unwrap())]
     data: TypedDataSet<TypedDatasetRow>,
 }
 
@@ -344,7 +365,7 @@ impl TemplateMetadata for TypedDatasetTemplate {
 
 #[test]
 pub fn test_typed_dataset_field() {
-    let mut data = TypedDataSet::<TypedDatasetRow>::new().unwrap();
+    let mut data = TypedDataSet::<TypedDatasetRow>::new();
     data.add_row(TypedDatasetRow { a: 1, b: 2.5 });
 
     let template = TypedDatasetTemplate { data };
