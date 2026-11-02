@@ -77,6 +77,10 @@ More examples can be found in the [examples](./examples) and in the [docs][docs]
 
 [`codegen`](./codegen) uses `protoc` [Protocol Buffers compiler](https://protobuf.dev/downloads/) to generate types.
 
+### Minimum Supported Rust Version
+
+Rust 1.85 or newer is required.
+
 ## Project Layout
 
 - [`srad`](./README.md): Re-exports the `srad-*` crates under one package.
