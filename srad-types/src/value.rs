@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 use crate::payload::{
     data_set::data_set_value, metric, property_value, template::parameter, DataType,
 };
-use crate::{payload, traits, TemplateValue};
+use crate::{payload, traits, DataSet, TemplateValue};
 
 use paste::paste;
 use thiserror::Error;
@@ -319,21 +319,11 @@ macro_rules! impl_to_from_proto_value_type_for_type {
     };
 }
 
-macro_rules! array_length {
-  ([$($element:expr),* $(,)?]) => {
-    {
-      0 $(+ {let _ = $element; 1})*
-    }
-  };
-}
-
 macro_rules! impl_has_datatype {
-  ($type:ty, [$($datatypes:expr),* $(,)?]) => {
+  ($type:ty, [$first:expr $(, $rest:expr)* $(,)?]) => {
     impl traits::HasDataType for $type {
-      fn supported_datatypes() -> &'static[DataType] {
-        static SUPPORTED_TYPES: [DataType; array_length!([$($datatypes),*])] = [$($datatypes),*];
-        &SUPPORTED_TYPES
-      }
+      const DEFAULT_DATATYPE: DataType = $first;
+      const SUPPORTED_DATATYPES: &'static [DataType] = &[$first $(, $rest)*];
     }
   };
 }
@@ -467,7 +457,7 @@ impl_basic_type!(
 );
 impl_basic_type!(
     String,
-    [DataType::String, DataType::Text],
+    [DataType::String, DataType::Text, DataType::Uuid],
     metric::Value::StringValue,
     property_value::Value::StringValue,
     data_set_value::Value::StringValue,
@@ -610,7 +600,7 @@ pub enum MetricValueKind {
     DateTime(DateTime),
     Text(String),
     Uuid(String),
-    DataSet(payload::DataSet),
+    DataSet(DataSet),
     Bytes(Vec<u8>),
     File(Vec<u8>),
     Template(TemplateValue),
@@ -663,7 +653,7 @@ impl MetricValueKind {
             DataType::Uuid => MetricValueKind::Uuid(String::try_from(value)?),
             DataType::DataSet => {
                 if let payload::metric::Value::DatasetValue(ds) = value.0 {
-                    MetricValueKind::DataSet(ds)
+                    MetricValueKind::DataSet(DataSet::from(ds))
                 } else {
                     return Err(FromMetricValueError::ValueDecodeError(
                         FromValueTypeError::InvalidVariantType,
@@ -914,31 +904,31 @@ mod tests {
 
         #[test]
         fn metric_value_default_datatypes() {
-            assert_eq!(bool::default_datatype(), DataType::Boolean);
-            assert_eq!(i8::default_datatype(), DataType::Int8);
-            assert_eq!(i16::default_datatype(), DataType::Int16);
-            assert_eq!(i32::default_datatype(), DataType::Int32);
-            assert_eq!(i64::default_datatype(), DataType::Int64);
-            assert_eq!(u8::default_datatype(), DataType::UInt8);
-            assert_eq!(u16::default_datatype(), DataType::UInt16);
-            assert_eq!(u32::default_datatype(), DataType::UInt32);
-            assert_eq!(u64::default_datatype(), DataType::UInt64);
-            assert_eq!(f32::default_datatype(), DataType::Float);
-            assert_eq!(f64::default_datatype(), DataType::Double);
-            assert_eq!(String::default_datatype(), DataType::String);
-            assert_eq!(DateTime::default_datatype(), DataType::DateTime);
-            assert_eq!(Vec::<bool>::default_datatype(), DataType::BooleanArray);
-            assert_eq!(Vec::<i8>::default_datatype(), DataType::Int8Array);
-            assert_eq!(Vec::<i16>::default_datatype(), DataType::Int16Array);
-            assert_eq!(Vec::<i32>::default_datatype(), DataType::Int32Array);
-            assert_eq!(Vec::<i64>::default_datatype(), DataType::Int64Array);
-            assert_eq!(Vec::<u8>::default_datatype(), DataType::UInt8Array);
-            assert_eq!(Vec::<u16>::default_datatype(), DataType::UInt16Array);
-            assert_eq!(Vec::<u32>::default_datatype(), DataType::UInt32Array);
-            assert_eq!(Vec::<u64>::default_datatype(), DataType::UInt64Array);
-            assert_eq!(Vec::<f32>::default_datatype(), DataType::FloatArray);
-            assert_eq!(Vec::<f64>::default_datatype(), DataType::DoubleArray);
-            assert_eq!(Vec::<String>::default_datatype(), DataType::StringArray);
+            assert_eq!(bool::DEFAULT_DATATYPE, DataType::Boolean);
+            assert_eq!(i8::DEFAULT_DATATYPE, DataType::Int8);
+            assert_eq!(i16::DEFAULT_DATATYPE, DataType::Int16);
+            assert_eq!(i32::DEFAULT_DATATYPE, DataType::Int32);
+            assert_eq!(i64::DEFAULT_DATATYPE, DataType::Int64);
+            assert_eq!(u8::DEFAULT_DATATYPE, DataType::UInt8);
+            assert_eq!(u16::DEFAULT_DATATYPE, DataType::UInt16);
+            assert_eq!(u32::DEFAULT_DATATYPE, DataType::UInt32);
+            assert_eq!(u64::DEFAULT_DATATYPE, DataType::UInt64);
+            assert_eq!(f32::DEFAULT_DATATYPE, DataType::Float);
+            assert_eq!(f64::DEFAULT_DATATYPE, DataType::Double);
+            assert_eq!(String::DEFAULT_DATATYPE, DataType::String);
+            assert_eq!(DateTime::DEFAULT_DATATYPE, DataType::DateTime);
+            assert_eq!(Vec::<bool>::DEFAULT_DATATYPE, DataType::BooleanArray);
+            assert_eq!(Vec::<i8>::DEFAULT_DATATYPE, DataType::Int8Array);
+            assert_eq!(Vec::<i16>::DEFAULT_DATATYPE, DataType::Int16Array);
+            assert_eq!(Vec::<i32>::DEFAULT_DATATYPE, DataType::Int32Array);
+            assert_eq!(Vec::<i64>::DEFAULT_DATATYPE, DataType::Int64Array);
+            assert_eq!(Vec::<u8>::DEFAULT_DATATYPE, DataType::UInt8Array);
+            assert_eq!(Vec::<u16>::DEFAULT_DATATYPE, DataType::UInt16Array);
+            assert_eq!(Vec::<u32>::DEFAULT_DATATYPE, DataType::UInt32Array);
+            assert_eq!(Vec::<u64>::DEFAULT_DATATYPE, DataType::UInt64Array);
+            assert_eq!(Vec::<f32>::DEFAULT_DATATYPE, DataType::FloatArray);
+            assert_eq!(Vec::<f64>::DEFAULT_DATATYPE, DataType::DoubleArray);
+            assert_eq!(Vec::<String>::DEFAULT_DATATYPE, DataType::StringArray);
         }
     }
 
@@ -1059,6 +1049,22 @@ mod tests {
                 vec,
                 proto_to_datetime_vec(datetime_vec_to_proto(vec.clone())).unwrap()
             );
+        }
+    }
+
+    #[test]
+    fn metric_value_kind_dataset_uses_wrapper() {
+        let mut data_set = DataSet::new();
+        data_set
+            .init(["a"], [DataType::Int32])
+            .add_row_values([1_i32]);
+
+        let value: MetricValue = data_set.clone().into();
+        let kind = MetricValueKind::try_from_metric_value(DataType::DataSet, value).unwrap();
+
+        match kind {
+            MetricValueKind::DataSet(kind_data_set) => assert_eq!(kind_data_set, data_set),
+            _ => panic!("expected DataSet variant"),
         }
     }
 }

@@ -5,7 +5,6 @@
 **Features**
 
 - Full datatype support
-  - Datasets
 - Multi part metric support
 - Wait for states
 - Multi broker support
@@ -72,4 +71,3 @@
 - impl to value types for reference to types ?
 - compile time checks HasDatatype default type is provided in supported type
   - also checks in places where user overrides default type
-- dataset support

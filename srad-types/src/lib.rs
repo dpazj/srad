@@ -1,5 +1,7 @@
 pub mod constants;
 
+mod dataset;
+
 mod generated {
     pub(crate) mod sparkplug_payload;
 }
@@ -18,6 +20,7 @@ mod metadata;
 mod quality;
 mod value;
 
+pub use dataset::*;
 pub use metadata::*;
 pub use property_set::*;
 pub use quality::*;

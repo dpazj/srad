@@ -109,7 +109,7 @@ where
     T: traits::MetricValue,
 {
     pub fn new_with_initial_value<S: Into<String>>(name: S, initial_value: T) -> Self {
-        Self::new(name.into(), Some(initial_value), T::default_datatype())
+        Self::new(name.into(), Some(initial_value), T::DEFAULT_DATATYPE)
     }
 
     fn new_with_explicit_datatype(
@@ -117,7 +117,7 @@ where
         datatype: DataType,
         initial_value: Option<T>,
     ) -> Result<Self, BirthMetricError> {
-        if !T::supported_datatypes().contains(&datatype) {
+        if !T::SUPPORTED_DATATYPES.contains(&datatype) {
             return Err(BirthMetricError::MetricValueDatatypeMismatch);
         }
         Ok(Self::new(name, initial_value, datatype))

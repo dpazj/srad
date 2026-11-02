@@ -95,7 +95,7 @@ impl PropertySet {
         }
         let pv = PropertyValue {
             value: v.map(V::into),
-            datatype: Some(V::default_datatype()),
+            datatype: Some(V::DEFAULT_DATATYPE),
         };
         self.0.insert(key, pv);
         Ok(())
@@ -103,10 +103,8 @@ impl PropertySet {
 }
 
 impl traits::HasDataType for PropertySet {
-    fn supported_datatypes() -> &'static [payload::DataType] {
-        static SUPPORTED_TYPES: [payload::DataType; 1] = [payload::DataType::PropertySet];
-        &SUPPORTED_TYPES
-    }
+    const DEFAULT_DATATYPE: payload::DataType = payload::DataType::PropertySet;
+    const SUPPORTED_DATATYPES: &'static [payload::DataType] = &[payload::DataType::PropertySet];
 }
 
 impl TryFrom<PropertyValueValue> for PropertySet {
@@ -189,10 +187,8 @@ impl TryFrom<payload::PropertySetList> for PropertySetList {
 }
 
 impl traits::HasDataType for PropertySetList {
-    fn supported_datatypes() -> &'static [payload::DataType] {
-        static SUPPORTED_TYPES: [payload::DataType; 1] = [payload::DataType::PropertySetList];
-        &SUPPORTED_TYPES
-    }
+    const DEFAULT_DATATYPE: payload::DataType = payload::DataType::PropertySetList;
+    const SUPPORTED_DATATYPES: &'static [payload::DataType] = &[payload::DataType::PropertySetList];
 }
 
 impl TryFrom<PropertyValueValue> for PropertySetList {

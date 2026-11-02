@@ -1,6 +1,7 @@
 use srad::types::{
-    Template, TemplateDefinition, TemplateError, TemplateInstance, TemplateMetadata,
-    TemplateMetric, TemplateParameter,
+    payload::DataType, DataSet, DataSetRow, DataSetValue, Template, TemplateDefinition,
+    TemplateError, TemplateInstance, TemplateMetadata, TemplateMetric, TemplateParameter,
+    TypedDataSet,
 };
 
 #[derive(Template, Clone, Default)]
@@ -84,6 +85,28 @@ pub fn test_simple() {
         Simple::try_from(unknown_param),
         Err(TemplateError::UnknownParameter(_))
     ));
+}
+
+#[derive(Template, Clone, Default)]
+struct RawIdentifier {
+    r#type: i32,
+}
+
+impl TemplateMetadata for RawIdentifier {
+    fn template_name() -> &'static str {
+        "raw_identifier"
+    }
+}
+
+#[test]
+pub fn test_raw_identifier_metric_name() {
+    let definition = RawIdentifier::template_definition();
+    assert_eq!(definition.metrics[0].name.as_deref(), Some("type"));
+
+    let template = RawIdentifier { r#type: 1 };
+    let instance = template.template_instance();
+    assert_eq!(instance.metrics[0].name.as_deref(), Some("type"));
+    assert_eq!(RawIdentifier::try_from(instance).unwrap().r#type, 1);
 }
 
 #[derive(Template)]
@@ -299,4 +322,53 @@ pub fn test_parameter() {
             ),],
         }
     );
+}
+
+#[derive(Template, Clone, PartialEq, Debug)]
+struct DatasetTemplate {
+    data: DataSet,
+}
+
+impl TemplateMetadata for DatasetTemplate {
+    fn template_name() -> &'static str {
+        "dataset"
+    }
+}
+
+#[test]
+pub fn test_dataset_field() {
+    let mut data = DataSet::new();
+    data.init(["a", "b"], [DataType::Int32, DataType::Double])
+        .add_row_values([DataSetValue::from(1_i32), DataSetValue::from(2.5_f64)]);
+
+    let template = DatasetTemplate { data };
+    let instance = template.template_instance();
+    assert_eq!(DatasetTemplate::try_from(instance).unwrap(), template);
+}
+
+#[derive(DataSetRow, Clone, PartialEq, Debug)]
+struct TypedDatasetRow {
+    a: i32,
+    b: f64,
+}
+
+#[derive(Template, Clone, PartialEq, Debug)]
+struct TypedDatasetTemplate {
+    data: TypedDataSet<TypedDatasetRow>,
+}
+
+impl TemplateMetadata for TypedDatasetTemplate {
+    fn template_name() -> &'static str {
+        "typed_dataset"
+    }
+}
+
+#[test]
+pub fn test_typed_dataset_field() {
+    let mut data = TypedDataSet::<TypedDatasetRow>::new();
+    data.add_row(TypedDatasetRow { a: 1, b: 2.5 });
+
+    let template = TypedDatasetTemplate { data };
+    let instance = template.template_instance();
+    assert_eq!(TypedDatasetTemplate::try_from(instance).unwrap(), template);
 }
