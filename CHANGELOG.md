@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Types
+
+- Add `DataSet` and typed `TypedDataSet` support
+
 ## 0.5.0
 
 ### EoN

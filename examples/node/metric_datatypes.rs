@@ -3,7 +3,10 @@ use std::sync::Mutex;
 use srad::{
     client_rumqtt as rumqtt,
     eon::{BirthMetricDetails, EoNBuilder, MetricManager, NodeMetricManager},
-    types::{payload::DataType, DateTime, Template, TemplateMetadata},
+    types::{
+        payload::DataType, DataSet, DataSetValue, DateTime, Template, TemplateMetadata,
+        TypedDataSet,
+    },
 };
 
 use log::LevelFilter;
@@ -37,7 +40,8 @@ struct Data {
     datetime: DateTime,
     text: String,
     //uuid
-    //dataset
+    dataset: DataSet,
+    typed_dataset: TypedDataSet<(i32, f64, String)>,
     bytes: Vec<u8>,
     //file
     template: Point,
@@ -75,6 +79,26 @@ impl DatatypesManager {
             string: "Hello, World!".into(),
             datetime: DateTime::new(0),
             text: "Some Text".into(),
+            dataset: {
+                let mut dataset = DataSet::new();
+                dataset
+                    .init(
+                        ["Time", "Value", "Label"],
+                        [DataType::Int32, DataType::Double, DataType::String],
+                    )
+                    .add_row_values([
+                        DataSetValue::from(1_i32),
+                        DataSetValue::from(1.5_f64),
+                        DataSetValue::from("one".to_string()),
+                    ]);
+                dataset
+            },
+            typed_dataset: {
+                let mut dataset =
+                    TypedDataSet::<(i32, f64, String)>::new(["Time", "Value", "Label"]).unwrap();
+                dataset.add_row((1, 1.5, "one".into()));
+                dataset
+            },
             bytes: vec![0xde, 0xad, 0xbe, 0xef],
             template: Point::default(),
             bool_array: vec![
@@ -166,6 +190,16 @@ impl MetricManager for DatatypesManager {
             )
             .unwrap(),
         )
+        .unwrap();
+        bi.register_metric(BirthMetricDetails::new_with_initial_value(
+            "DataSet",
+            data.dataset.clone(),
+        ))
+        .unwrap();
+        bi.register_metric(BirthMetricDetails::new_with_initial_value(
+            "TypedDataSet",
+            data.typed_dataset.clone(),
+        ))
         .unwrap();
         bi.register_template_metric(BirthMetricDetails::new_template_metric(
             "Template",

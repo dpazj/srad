@@ -1,6 +1,6 @@
 use srad::types::{
-    Template, TemplateDefinition, TemplateError, TemplateInstance, TemplateMetadata,
-    TemplateMetric, TemplateParameter,
+    payload::DataType, DataSet, DataSetValue, Template, TemplateDefinition, TemplateError,
+    TemplateInstance, TemplateMetadata, TemplateMetric, TemplateParameter, TypedDataSet,
 };
 
 #[derive(Template, Clone, Default)]
@@ -299,4 +299,48 @@ pub fn test_parameter() {
             ),],
         }
     );
+}
+
+#[derive(Template, Clone, PartialEq, Debug)]
+struct DatasetTemplate {
+    data: DataSet,
+}
+
+impl TemplateMetadata for DatasetTemplate {
+    fn template_name() -> &'static str {
+        "dataset"
+    }
+}
+
+#[test]
+pub fn test_dataset_field() {
+    let mut data = DataSet::new();
+    data.init(["a", "b"], [DataType::Int32, DataType::Double])
+        .add_row_values([DataSetValue::from(1_i32), DataSetValue::from(2.5_f64)]);
+
+    let template = DatasetTemplate { data };
+    let instance = template.template_instance();
+    assert_eq!(DatasetTemplate::try_from(instance).unwrap(), template);
+}
+
+#[derive(Template, Clone, PartialEq, Debug)]
+struct TypedDatasetTemplate {
+    #[template(default = TypedDataSet::<(i32, f64)>::new(["a", "b"]).unwrap())]
+    data: TypedDataSet<(i32, f64)>,
+}
+
+impl TemplateMetadata for TypedDatasetTemplate {
+    fn template_name() -> &'static str {
+        "typed_dataset"
+    }
+}
+
+#[test]
+pub fn test_typed_dataset_field() {
+    let mut data = TypedDataSet::<(i32, f64)>::new(["a", "b"]).unwrap();
+    data.add_row((1, 2.5));
+
+    let template = TypedDatasetTemplate { data };
+    let instance = template.template_instance();
+    assert_eq!(TypedDatasetTemplate::try_from(instance).unwrap(), template);
 }
