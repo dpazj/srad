@@ -14,15 +14,20 @@
 - Add `DataTypeError`, `QualityError`, `PropertyValueError` and `PropertySetError`
 - Add `TemplateError::MissingValue` and `TemplateError::ValueConversion`
 - **breaking change** `PropertySet::insert`, `DataType::try_from`, `Quality::try_from` and the property set/template conversions now return typed errors instead of `()`
+- Fix publish QoS for lifecycle messages: Node Death, Device Birth and Device Death now use QoS 0
+- Sign-extend negative `Int8` and `Int16` values to 32 bits when encoding for compatibility with Tahu and other Sparkplug implementations; decoding accepts both sign-extended and width-sized forms
 
 ### Client
 
+- Add support for deferred payload decoding: `MessagePayload` stores either encoded `Bytes` or a decoded `Payload`, `Message::decode` decodes on demand, and `topic_and_payload_to_event_deferred` defers decoding
+- **breaking change** `Message.payload` is now a `MessagePayload`, and `Event::InvalidPublish` carries `Bytes`
 - Add `ClientError` and return it from all `Client` methods
 - **breaking change** `Client` implementations must return `ClientError`
 
 ### App
 
 - `AppClient` publish methods now return `ClientError`
+- Add `NodeEvent::Raw` and `DeviceEvent::Raw` so the generic application can decode deferred payloads in per-node tasks
 - Add `BdseqError` and preserve BDSEQ decoding details in `PayloadError`
 - **breaking change** `PayloadError::InvalidBdseq` now carries a `BdseqError`
 
