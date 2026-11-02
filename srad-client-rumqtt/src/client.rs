@@ -15,7 +15,9 @@ use srad_types::{
     topic::{DeviceTopic, StateTopic, TopicFilter},
 };
 
-use srad_client::{topic_and_payload_to_event, Event, LastWill, StatePayload};
+use srad_client::{
+    topic_and_payload_to_event, topic_and_payload_to_event_deferred, Event, LastWill, StatePayload,
+};
 
 fn qos_to_mqtt_qos(qos: srad_types::topic::QoS) -> QoS {
     match qos {
@@ -172,19 +174,44 @@ enum ConnectionState {
     Connected,
 }
 
+/// Controls when node and device payloads are decoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PayloadDecoding {
+    /// Leave payloads encoded for the consumer to decode.
+    #[default]
+    Deferred,
+    /// Decode payloads in the event loop.
+    Eager,
+}
+
 /// An [srad_client::EventLoop] implementation using [rumqttc]
 pub struct EventLoop {
     state: ConnectionState,
+    decoding: PayloadDecoding,
     el: RuEventLoop,
 }
 
 impl EventLoop {
-    /// Create a new `Eventloop`.
+    /// Create a new `Eventloop` which defers payload decoding.
     ///
     /// `options` are the mqtt options to create the rumqtt client with. Some options will be overwritten to ensure Sparkplug compliance.
     ///
     /// `cap` specifies the capacity of the bounded async channel for the client handle.
     pub fn new(options: MqttOptions, cap: usize) -> (Self, Client) {
+        Self::new_with_decoding(options, cap, PayloadDecoding::Deferred)
+    }
+
+    /// Create a new `Eventloop` which decodes payloads eagerly.
+    pub fn new_eager(options: MqttOptions, cap: usize) -> (Self, Client) {
+        Self::new_with_decoding(options, cap, PayloadDecoding::Eager)
+    }
+
+    /// Create a new `Eventloop` with the specified [PayloadDecoding].
+    pub fn new_with_decoding(
+        options: MqttOptions,
+        cap: usize,
+        decoding: PayloadDecoding,
+    ) -> (Self, Client) {
         let mut options = options;
         let mut connection_properties = match options.connect_properties() {
             Some(p) => p,
@@ -201,6 +228,7 @@ impl EventLoop {
         (
             EventLoop {
                 el: eventloop,
+                decoding,
                 state: ConnectionState::Disconnected,
             },
             Client { client },
@@ -222,10 +250,14 @@ impl EventLoop {
                         Some(Event::Offline)
                     }
                     rumqttc::v5::Event::Incoming(Packet::Publish(publish)) => {
-                        Some(topic_and_payload_to_event(
-                            publish.topic.to_vec(),
-                            publish.payload.to_vec(),
-                        ))
+                        Some(match self.decoding {
+                            PayloadDecoding::Deferred => {
+                                topic_and_payload_to_event_deferred(publish.topic, publish.payload)
+                            }
+                            PayloadDecoding::Eager => {
+                                topic_and_payload_to_event(publish.topic, publish.payload)
+                            }
+                        })
                     }
                     rumqttc::v5::Event::Outgoing(Outgoing::Disconnect) => {
                         self.state = ConnectionState::ManualDisconnected;

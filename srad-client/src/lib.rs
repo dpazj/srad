@@ -13,7 +13,7 @@ mod utils;
 
 pub use traits::{Client, DynClient, DynEventLoop, EventLoop};
 pub use types::*;
-pub use utils::topic_and_payload_to_event;
+pub use utils::{topic_and_payload_to_event, topic_and_payload_to_event_deferred};
 
 /// A basic [EventLoop] and [Client] implementation based on channels
 ///

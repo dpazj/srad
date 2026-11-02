@@ -6,11 +6,14 @@ use std::{
 };
 
 use log::{debug, info, trace, warn};
-use srad_client::{Client, EventLoop};
+use srad_client::{Client, EventLoop, MessageKind};
 use srad_types::{utils::timestamp, MetricId};
 
 use crate::{
-    events::{DBirth, DData, DDeath, DeviceEvent, NBirth, NData, NDeath, NodeEvent},
+    events::{
+        DBirth, DData, DDeath, DecodedDeviceEvent, DecodedNodeEvent, DeviceEvent, NBirth, NData,
+        NDeath, NodeEvent,
+    },
     resequencer::{self, Resequencer},
     AppClient, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier,
     SubscriptionConfig,
@@ -555,8 +558,75 @@ impl Node {
         }
     }
 
+    async fn handle_raw_node_message(&mut self, message: srad_client::Message) {
+        match NodeEvent::from_message(message) {
+            Ok(Some(DecodedNodeEvent::Birth(birth))) => self.handle_birth(birth).await,
+            Ok(Some(DecodedNodeEvent::Death(death))) => {
+                self.handle_death(death.bdseq, timestamp()).await
+            }
+            Ok(Some(DecodedNodeEvent::Data(data))) => {
+                self.handle_resequenceable_message_wrapper(
+                    data.seq,
+                    data.timestamp,
+                    ResequenceableEvent::NData(data),
+                )
+                .await
+            }
+            Ok(None) => {}
+            Err(e) => {
+                debug!("Node = ({:?}) received invalid payload: {:?}", self.id, e);
+                self.issue_rebirth(RebirthReason::InvalidPayload).await
+            }
+        }
+    }
+
+    async fn handle_raw_device_message(
+        &mut self,
+        device_name: String,
+        message: srad_client::Message,
+    ) {
+        match DeviceEvent::from_message(message) {
+            Ok(Some(DecodedDeviceEvent::Birth(birth))) => {
+                self.handle_resequenceable_message_wrapper(
+                    birth.seq,
+                    birth.timestamp,
+                    ResequenceableEvent::DBirth(device_name, birth),
+                )
+                .await
+            }
+            Ok(Some(DecodedDeviceEvent::Death(death))) => {
+                self.handle_resequenceable_message_wrapper(
+                    death.seq,
+                    death.timestamp,
+                    ResequenceableEvent::DDeath(device_name),
+                )
+                .await
+            }
+            Ok(Some(DecodedDeviceEvent::Data(data))) => {
+                self.handle_resequenceable_message_wrapper(
+                    data.seq,
+                    data.timestamp,
+                    ResequenceableEvent::DData(device_name, data),
+                )
+                .await
+            }
+            Ok(None) => {}
+            Err(e) => {
+                debug!(
+                    "Node = ({:?}) received invalid payload from Device = ({device_name}), error = {:?}",
+                    self.id, e
+                );
+                self.issue_rebirth(RebirthReason::InvalidPayload).await
+            }
+        }
+    }
+
     async fn handle_message(&mut self, msg: Message) {
         match msg {
+            Message::Raw(message) => self.handle_raw_node_message(message).await,
+            Message::RawDevice(device, message) => {
+                self.handle_raw_device_message(device, message).await
+            }
             Message::NBirth(nbirth) => self.handle_birth(nbirth).await,
             Message::NDeath(ndeath, timestamp) => self.handle_death(ndeath.bdseq, timestamp).await,
             Message::NData(ndata) => {
@@ -612,6 +682,8 @@ impl Node {
 
 #[derive(Debug)]
 enum Message {
+    Raw(srad_client::Message),
+    RawDevice(String, srad_client::Message),
     NBirth(NBirth),
     NData(NData),
     NDeath(NDeath, u64),
@@ -862,6 +934,20 @@ impl Application {
                         };
                         node.send_message(Message::NData(ndata)).await
                     }
+                    NodeEvent::Raw(message) => {
+                        let node = match &message.kind {
+                            MessageKind::Birth => self.get_or_create_node(id),
+                            MessageKind::Death => match self.state.nodes.get(&id) {
+                                Some(node) => node.clone(),
+                                None => return true,
+                            },
+                            _ => match self.get_node_or_issue_rebirth(id).await {
+                                Some(node) => node,
+                                None => return true,
+                            },
+                        };
+                        node.send_message(Message::Raw(message)).await
+                    }
                 }
             }
             AppEvent::Device(device_event) => {
@@ -882,6 +968,10 @@ impl Application {
                     }
                     DeviceEvent::Data(ddata) => {
                         node.send_message(Message::DData(device_name, ddata)).await
+                    }
+                    DeviceEvent::Raw(message) => {
+                        node.send_message(Message::RawDevice(device_name, message))
+                            .await
                     }
                 }
             }

@@ -16,6 +16,7 @@ channel-client = []
 
 [dependencies]
 srad-types = { path = "../srad-types", version = "0.3.1" }
+bytes = { workspace = true }
 prost = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }

@@ -253,9 +253,18 @@ impl Device {
     }
 
     async fn handle_sparkplug_message(&self, message: Message, handle: DeviceHandle) {
-        let payload = message.payload;
         let message_kind = message.kind;
         if MessageKind::Cmd == message_kind {
+            let payload = match message.payload.decode() {
+                Ok(payload) => payload,
+                Err(e) => {
+                    warn!(
+                        "Got invalid CMD payload for device - ignoring. Device = {} error={e}",
+                        self.state.name
+                    );
+                    return;
+                }
+            };
             let message_metrics = match payload.try_into() {
                 Ok(metrics) => metrics,
                 Err(_) => {

@@ -535,10 +535,19 @@ impl Node {
     }
 
     async fn on_sparkplug_message(&mut self, message: Message, handle: NodeHandle) {
-        let payload = message.payload;
         let message_kind = message.kind;
 
         if message_kind == MessageKind::Cmd {
+            let payload = match message.payload.decode() {
+                Ok(payload) => payload,
+                Err(e) => {
+                    warn!(
+                        "Received invalid CMD payload - ignoring. node={} error={e}",
+                        self.state.edge_node_id
+                    );
+                    return;
+                }
+            };
             let mut rebirth = false;
             for x in &payload.metrics {
                 if x.alias.is_some() {
