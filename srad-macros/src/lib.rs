@@ -742,7 +742,15 @@ pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 /// Derives `DataSetRow` for a struct with named fields.
 ///
 /// Field names become column names. Use `#[dataset(rename = "name")]` to override a name.
-/// All field types must implement `HasDataType` and `DataSetValue`.
+///
+/// Every field type must implement:
+///
+/// - `::srad::types::traits::HasDataType` — its `DEFAULT_DATATYPE` is used as the column datatype.
+/// - `::srad::types::traits::DataSetValue` — used to encode and decode row values.
+///   This already implies `Into<::srad::types::DataSetValue>` and
+///   `TryFrom<::srad::types::DataSetValue>`.
+/// - `TryFrom<::srad::types::DataSetValue, Error = ::srad::types::FromValueTypeError>` — fixes
+///   the error type used by the generated `try_from_row` implementation.
 #[proc_macro_derive(DataSetRow, attributes(dataset))]
 pub fn data_set_row_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

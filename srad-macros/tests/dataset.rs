@@ -40,9 +40,10 @@ fn typed_data_set_round_trip() {
     let mut data_set = TypedDataSet::<Row>::new();
     data_set.add_row(Row { x: 1, y: 2.5 });
 
-    assert_eq!(data_set.as_proto().columns, vec!["X", "y"]);
+    let proto = data_set.to_proto();
+    assert_eq!(proto.columns, vec!["X", "y"]);
     assert_eq!(
-        data_set.as_proto().types,
+        proto.types,
         vec![DataType::Int32 as u32, DataType::Double as u32]
     );
 

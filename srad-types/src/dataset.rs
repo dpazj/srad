@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use thiserror::Error;
 
 use crate::{
@@ -69,12 +67,62 @@ impl DataSet {
         self.add_row(data_set::Row { elements })
     }
 
+    pub fn num_of_columns(&self) -> Option<u64> {
+        self.0.num_of_columns
+    }
+
+    pub fn columns(&self) -> &[String] {
+        &self.0.columns
+    }
+
+    pub fn types(&self) -> &[u32] {
+        &self.0.types
+    }
+
+    pub fn rows(&self) -> &[data_set::Row] {
+        &self.0.rows
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &data_set::Row> {
+        self.0.rows.iter()
+    }
+
+    pub fn get_row(&self, index: usize) -> Option<&data_set::Row> {
+        self.0.rows.get(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.rows.is_empty()
+    }
+
     pub fn as_proto(&self) -> &payload::DataSet {
         &self.0
     }
 
     pub fn into_proto(self) -> payload::DataSet {
         self.0
+    }
+}
+
+impl<'a> IntoIterator for &'a DataSet {
+    type Item = &'a data_set::Row;
+    type IntoIter = std::slice::Iter<'a, data_set::Row>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.rows.iter()
+    }
+}
+
+impl IntoIterator for DataSet {
+    type Item = data_set::Row;
+    type IntoIter = std::vec::IntoIter<data_set::Row>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.rows.into_iter()
     }
 }
 
@@ -175,103 +223,134 @@ pub trait DataSetRow: Sized {
     fn into_row(self) -> data_set::Row;
 
     fn try_from_row(row: data_set::Row) -> Result<Self, DataSetError>;
-
-    fn validate_row(row: &data_set::Row) -> Result<(), DataSetError> {
-        if row.elements.len() != Self::COLUMN_COUNT {
-            return Err(DataSetError::RowLengthMismatch {
-                expected: Self::COLUMN_COUNT,
-                actual: row.elements.len(),
-            });
-        }
-        for (index, element) in row.elements.iter().enumerate() {
-            let value = element
-                .value
-                .as_ref()
-                .ok_or(DataSetError::ElementValueMissing { index })?;
-            let column = Self::COLUMNS[index];
-            if !datatype_matches(column.datatype, value) {
-                return Err(DataSetError::ElementTypeMismatch {
-                    index,
-                    expected: column.datatype,
-                });
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Typed Sparkplug DataSet wrapper.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedDataSet<R: DataSetRow> {
-    inner: DataSet,
-    _row: PhantomData<fn() -> R>,
-}
-
-impl<R: DataSetRow> Clone for TypedDataSet<R> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            _row: PhantomData,
-        }
-    }
-}
-
-impl<R: DataSetRow> PartialEq for TypedDataSet<R> {
-    fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
-    }
-}
-
-impl<R: DataSetRow> std::fmt::Debug for TypedDataSet<R> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("TypedDataSet").field(&self.inner).finish()
-    }
+    rows: Vec<R>,
 }
 
 impl<R: DataSetRow> Default for TypedDataSet<R> {
     fn default() -> Self {
-        Self::new()
+        Self { rows: Vec::new() }
     }
 }
 
 impl<R: DataSetRow> TypedDataSet<R> {
     /// Creates an empty dataset with the schema defined by [`DataSetRow::COLUMNS`].
     pub fn new() -> Self {
-        let mut inner = DataSet::new();
-        inner.init(
-            R::COLUMNS.iter().map(|column| column.name),
-            R::COLUMNS.iter().map(|column| column.datatype),
-        );
+        Self::default()
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            inner,
-            _row: PhantomData,
+            rows: Vec::with_capacity(capacity),
         }
     }
 
     pub fn add_row(&mut self, row: R) -> &mut Self {
-        self.inner.add_row(row.into_row());
+        self.rows.push(row);
         self
     }
 
     pub fn try_add_row(&mut self, row: data_set::Row) -> Result<&mut Self, DataSetError> {
-        R::validate_row(&row)?;
-        self.inner.add_row(row);
+        self.rows.push(R::try_from_row(row)?);
         Ok(self)
     }
 
-    pub fn as_data_set(&self) -> &DataSet {
-        &self.inner
+    pub fn rows(&self) -> &[R] {
+        &self.rows
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &R> {
+        self.rows.iter()
+    }
+
+    pub fn get(&self, index: usize) -> Option<&R> {
+        self.rows.get(index)
+    }
+
+    pub fn into_rows(self) -> Vec<R> {
+        self.rows
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
     }
 
     pub fn into_data_set(self) -> DataSet {
-        self.inner
-    }
-
-    pub fn as_proto(&self) -> &payload::DataSet {
-        self.inner.as_proto()
+        let mut data_set = DataSet::new();
+        data_set.init(
+            R::COLUMNS.iter().map(|column| column.name),
+            R::COLUMNS.iter().map(|column| column.datatype),
+        );
+        for row in self.rows {
+            data_set.add_row(row.into_row());
+        }
+        data_set
     }
 
     pub fn into_proto(self) -> payload::DataSet {
-        self.inner.into_proto()
+        self.into_data_set().into()
+    }
+}
+
+impl<R: DataSetRow + Clone> TypedDataSet<R> {
+    pub fn to_data_set(&self) -> DataSet {
+        self.clone().into_data_set()
+    }
+
+    pub fn to_proto(&self) -> payload::DataSet {
+        self.to_data_set().into()
+    }
+}
+
+impl<'a, R: DataSetRow> IntoIterator for &'a TypedDataSet<R> {
+    type Item = &'a R;
+    type IntoIter = std::slice::Iter<'a, R>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rows.iter()
+    }
+}
+
+impl<R: DataSetRow> IntoIterator for TypedDataSet<R> {
+    type Item = R;
+    type IntoIter = std::vec::IntoIter<R>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rows.into_iter()
+    }
+}
+
+impl<R: DataSetRow> FromIterator<R> for TypedDataSet<R> {
+    fn from_iter<T: IntoIterator<Item = R>>(iter: T) -> Self {
+        Self {
+            rows: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl<R: DataSetRow> Extend<R> for TypedDataSet<R> {
+    fn extend<T: IntoIterator<Item = R>>(&mut self, iter: T) {
+        self.rows.extend(iter);
+    }
+}
+
+impl<R: DataSetRow> From<Vec<R>> for TypedDataSet<R> {
+    fn from(rows: Vec<R>) -> Self {
+        Self { rows }
+    }
+}
+
+impl<R: DataSetRow, const N: usize> From<[R; N]> for TypedDataSet<R> {
+    fn from(rows: [R; N]) -> Self {
+        Self { rows: rows.into() }
     }
 }
 
@@ -316,14 +395,15 @@ impl<R: DataSetRow> TryFrom<DataSet> for TypedDataSet<R> {
                 });
             }
         }
-        for row in &value.0.rows {
-            R::validate_row(row)?;
-        }
 
-        Ok(Self {
-            inner: value,
-            _row: PhantomData,
-        })
+        let rows = value
+            .0
+            .rows
+            .into_iter()
+            .map(R::try_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self { rows })
     }
 }
 
@@ -337,19 +417,19 @@ impl<R: DataSetRow> TryFrom<payload::DataSet> for TypedDataSet<R> {
 
 impl<R: DataSetRow> From<TypedDataSet<R>> for DataSet {
     fn from(value: TypedDataSet<R>) -> Self {
-        value.inner
+        value.into_data_set()
     }
 }
 
 impl<R: DataSetRow> From<TypedDataSet<R>> for payload::DataSet {
     fn from(value: TypedDataSet<R>) -> Self {
-        value.inner.into()
+        value.into_data_set().into()
     }
 }
 
 impl<R: DataSetRow> From<TypedDataSet<R>> for MetricValue {
     fn from(value: TypedDataSet<R>) -> Self {
-        value.inner.into()
+        value.into_data_set().into()
     }
 }
 
@@ -374,7 +454,7 @@ impl<R: DataSetRow> HasDataType for TypedDataSet<R> {
 
 impl<R: DataSetRow> traits::MetricValue for TypedDataSet<R> {}
 
-impl<R: DataSetRow> TemplateMetricValuePartial for TypedDataSet<R> {
+impl<R: DataSetRow + Clone + PartialEq> TemplateMetricValuePartial for TypedDataSet<R> {
     type Error = ();
 
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>> {
@@ -596,6 +676,27 @@ mod tests {
     }
 
     #[test]
+    fn data_set_read_accessors() {
+        let data_set = data_set();
+        assert_eq!(data_set.num_of_columns(), Some(2));
+        assert_eq!(
+            data_set.columns(),
+            ["time".to_string(), "value".to_string()]
+        );
+        assert_eq!(
+            data_set.types(),
+            [DataType::DateTime as u32, DataType::Double as u32]
+        );
+        assert_eq!(data_set.len(), 1);
+        assert!(!data_set.is_empty());
+        assert_eq!(data_set.rows().len(), 1);
+        assert_eq!(data_set.iter().count(), 1);
+        assert_eq!((&data_set).into_iter().count(), 1);
+        assert!(data_set.get_row(0).is_some());
+        assert!(data_set.get_row(1).is_none());
+    }
+
+    #[test]
     fn metric_value_round_trip() {
         let data_set = data_set();
         let metric_value: MetricValue = data_set.clone().into();
@@ -606,12 +707,51 @@ mod tests {
     #[test]
     fn typed_new_sets_schema() {
         let data_set = TypedDataSet::<TestRow>::new();
-        assert_eq!(data_set.as_proto().num_of_columns, Some(2));
-        assert_eq!(data_set.as_proto().columns, vec!["a", "b"]);
+        assert!(data_set.is_empty());
+
+        let proto = data_set.to_proto();
+        assert_eq!(proto.num_of_columns, Some(2));
+        assert_eq!(proto.columns, vec!["a", "b"]);
         assert_eq!(
-            data_set.as_proto().types,
+            proto.types,
             vec![DataType::Int32 as u32, DataType::Double as u32]
         );
+    }
+
+    #[test]
+    fn typed_read_accessors() {
+        let row = TestRow { a: 1, b: 2.5 };
+        let mut data_set = TypedDataSet::<TestRow>::new();
+        data_set.add_row(row.clone());
+
+        assert_eq!(data_set.len(), 1);
+        assert!(!data_set.is_empty());
+        assert_eq!(data_set.rows(), std::slice::from_ref(&row));
+        assert_eq!(data_set.iter().count(), 1);
+        assert_eq!((&data_set).into_iter().count(), 1);
+        assert_eq!(data_set.get(0), Some(&row));
+        assert_eq!(data_set.get(1), None);
+        assert_eq!(data_set.into_rows(), vec![row]);
+    }
+
+    #[test]
+    fn typed_from_iter() {
+        let rows = vec![TestRow { a: 1, b: 2.5 }, TestRow { a: 2, b: 3.5 }];
+        let data_set: TypedDataSet<TestRow> = rows.clone().into_iter().collect();
+        assert_eq!(data_set.rows(), rows.as_slice());
+
+        let data_set: TypedDataSet<TestRow> = [TestRow { a: 3, b: 4.5 }].into_iter().collect();
+        assert_eq!(data_set.rows(), &[TestRow { a: 3, b: 4.5 }]);
+
+        let data_set = TypedDataSet::from(rows.clone());
+        assert_eq!(data_set.rows(), rows.as_slice());
+
+        let data_set = TypedDataSet::from([TestRow { a: 4, b: 5.5 }]);
+        assert_eq!(data_set.rows(), &[TestRow { a: 4, b: 5.5 }]);
+
+        let mut data_set = TypedDataSet::<TestRow>::new();
+        data_set.extend(rows.clone());
+        assert_eq!(data_set.rows(), rows.as_slice());
     }
 
     #[test]
@@ -623,7 +763,7 @@ mod tests {
             c: "three".into(),
         });
 
-        let proto = data_set.as_proto();
+        let proto = data_set.to_proto();
         assert_eq!(proto.num_of_columns, Some(3));
         assert_eq!(proto.columns, vec!["a", "b", "c"]);
         assert_eq!(
@@ -728,9 +868,15 @@ mod tests {
     #[test]
     fn typed_from_data_set_validates_schema() {
         let mut data_set = DataSet::new();
-        data_set.init(["a", "b"], [DataType::Int32, DataType::Double]);
+        data_set
+            .init(["a", "b"], [DataType::Int32, DataType::Double])
+            .add_row_values([
+                value::DataSetValue::from(1_i32),
+                value::DataSetValue::from(2.5_f64),
+            ]);
 
-        assert!(TypedDataSet::<TestRow>::try_from(data_set.clone()).is_ok());
+        let typed = TypedDataSet::<TestRow>::try_from(data_set.clone()).unwrap();
+        assert_eq!(typed.rows(), &[TestRow { a: 1, b: 2.5 }]);
 
         let mut wrong_types = data_set.clone();
         wrong_types.0.types = vec![DataType::Int32 as u32, DataType::Float as u32];

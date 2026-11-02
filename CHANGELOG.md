@@ -5,6 +5,8 @@
 ### Types
 
 - Add `DataSet`, `DataSetColumn`, `TypedDataSet` and `DataSetRow` derive support
+- `DataSet` provides read accessors and iterators
+- `TypedDataSet` stores typed rows, supports iteration and `FromIterator`
 - `TypedDataSet::new` is infallible and `TypedDataSet` implements `Default`
 - **breaking change** `MetricValueKind::DataSet` now contains a `DataSet`
 - **breaking change** `HasDataType` now requires a `DEFAULT_DATATYPE` const
