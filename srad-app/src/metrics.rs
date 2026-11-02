@@ -1,7 +1,7 @@
 use srad_types::{
     constants::BDSEQ,
     payload::{self, DataType, MetaData, Metric},
-    traits, MetricId, MetricValue, PropertySet,
+    traits, FromValueTypeError, MetricId, MetricValue, PropertySet,
 };
 
 use thiserror::Error;
@@ -22,7 +22,20 @@ pub enum PayloadMetricError {
     InvalidProperties,
 }
 
-pub(crate) fn bdseq_from_payload_metrics(vec: &Vec<Metric>) -> Result<u8, ()> {
+/// Errors that can occur while reading the BDSEQ metric from a payload.
+#[derive(Error, Debug)]
+pub enum BdseqError {
+    #[error("BDSEQ metric is missing")]
+    Missing,
+    #[error("BDSEQ metric has no value")]
+    MissingValue,
+    #[error("BDSEQ metric value is not an integer: {0}")]
+    InvalidType(#[from] FromValueTypeError),
+    #[error("BDSEQ value {0} is outside the u8 range")]
+    OutOfRange(i64),
+}
+
+pub(crate) fn bdseq_from_payload_metrics(vec: &[Metric]) -> Result<u8, BdseqError> {
     for x in vec {
         match &x.name {
             Some(name) => {
@@ -32,24 +45,16 @@ pub(crate) fn bdseq_from_payload_metrics(vec: &Vec<Metric>) -> Result<u8, ()> {
             }
             None => continue,
         }
-        match &x.value {
-            Some(x) => match i64::try_from(MetricValue::from(x.clone())) {
-                Ok(v) => {
-                    if v > u8::MAX as i64 || v < 0 {
-                        return Err(());
-                    }
-                    return Ok(v as u8);
-                }
-                Err(_) => {
-                    return Err(());
-                }
-            },
-            None => {
-                return Err(());
-            }
+        let value = match &x.value {
+            Some(value) => i64::try_from(MetricValue::from(value.clone()))?,
+            None => return Err(BdseqError::MissingValue),
         };
+        if !(0..=u8::MAX as i64).contains(&value) {
+            return Err(BdseqError::OutOfRange(value));
+        }
+        return Ok(value as u8);
     }
-    Err(())
+    Err(BdseqError::Missing)
 }
 
 /// Represents a metric value to be published
@@ -215,4 +220,58 @@ pub(crate) fn get_metric_birth_details_from_birth_metrics(
     }
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use srad_types::payload::metric;
+
+    fn bdseq_metric(value: Option<metric::Value>) -> Metric {
+        let mut metric = Metric::new();
+        metric.set_name(BDSEQ.to_string());
+        if let Some(value) = value {
+            metric.set_value(value);
+        }
+        metric
+    }
+
+    #[test]
+    fn missing_bdseq_is_reported() {
+        let mut other = Metric::new();
+        other.set_name("other".into());
+        assert!(matches!(
+            bdseq_from_payload_metrics(&[other]),
+            Err(BdseqError::Missing)
+        ));
+    }
+
+    #[test]
+    fn missing_bdseq_value_is_reported() {
+        assert!(matches!(
+            bdseq_from_payload_metrics(&[bdseq_metric(None)]),
+            Err(BdseqError::MissingValue)
+        ));
+    }
+
+    #[test]
+    fn non_integer_bdseq_is_reported() {
+        let result = bdseq_from_payload_metrics(&[bdseq_metric(Some(metric::Value::StringValue(
+            "not an integer".into(),
+        )))]);
+        assert!(matches!(result, Err(BdseqError::InvalidType(_))));
+    }
+
+    #[test]
+    fn out_of_range_bdseq_is_reported() {
+        let result =
+            bdseq_from_payload_metrics(&[bdseq_metric(Some(metric::Value::LongValue(256)))]);
+        assert!(matches!(result, Err(BdseqError::OutOfRange(256))));
+    }
+
+    #[test]
+    fn valid_bdseq_is_returned() {
+        let result = bdseq_from_payload_metrics(&[bdseq_metric(Some(metric::Value::LongValue(7)))]);
+        assert_eq!(result.unwrap(), 7);
+    }
 }

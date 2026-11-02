@@ -257,17 +257,13 @@ impl MetricPublisher for NodeHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        match self
-            .client
+        self.client
             .try_publish_node_message(
                 self.state.ndata_topic.clone(),
                 self.publish_metrics_to_payload(self.state.get_next_seq()?, metrics),
             )
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::State(StateError::Offline)),
-        }
+            .await?;
+        Ok(())
     }
 
     async fn publish_metrics_unsorted(
@@ -277,17 +273,13 @@ impl MetricPublisher for NodeHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        match self
-            .client
+        self.client
             .publish_node_message(
                 self.state.ndata_topic.clone(),
                 self.publish_metrics_to_payload(self.state.get_next_seq()?, metrics),
             )
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::State(StateError::Offline)),
-        }
+            .await?;
+        Ok(())
     }
 }
 
@@ -454,7 +446,7 @@ impl Node {
         }
     }
 
-    async fn node_birth(&mut self) -> Result<(), ()> {
+    async fn node_birth(&mut self) -> Result<(), PublishError> {
         /* [tck-id-topics-nbirth-seq-num] The NBIRTH MUST include a sequence number in the payload and it MUST have a value of 0. */
         self.state.start_birth();
 
@@ -468,19 +460,9 @@ impl Node {
 
         let payload = self.generate_birth_payload(bdseq, 0);
         let topic = self.state.birth_topic();
-        match self.client.publish_node_message(topic, payload).await {
-            Ok(_) => {
-                self.state.birth_completed();
-                Ok(())
-            }
-            Err(_) => {
-                error!(
-                    "Publishing node birth message failed. node={}",
-                    self.state.edge_node_id
-                );
-                Err(())
-            }
-        }
+        self.client.publish_node_message(topic, payload).await?;
+        self.state.birth_completed();
+        Ok(())
     }
 
     async fn birth(&mut self, birth_type: BirthType) {
@@ -488,7 +470,11 @@ impl Node {
             "Birthing Node. node={} type={birth_type:?}",
             self.state.edge_node_id
         );
-        if self.node_birth().await.is_err() {
+        if let Err(e) = self.node_birth().await {
+            error!(
+                "Publishing node birth message failed. node={}: {e}",
+                self.state.edge_node_id
+            );
             return;
         }
         self.devices

@@ -514,7 +514,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                             metric.value.map(::srad::types::MetricValue::from)
                         ) {
                             Ok(v) => v,
-                            Err(e) => return Err(::srad::types::TemplateError::InvalidMetricValue(#name.to_string()))
+                            Err(e) => return Err(::srad::types::TemplateError::InvalidMetricValue(format!("{}: {}", #name, e)))
                         }
                     },
                 }
@@ -538,11 +538,11 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 quote! {
                     #name => {
                         let mut tmp = self.#field_ident.clone();
-                        if let Err(_) = ::srad::types::TemplateMetricValuePartial::try_update_from_metric_value(
+                        if let Err(e) = ::srad::types::TemplateMetricValuePartial::try_update_from_metric_value(
                             &mut tmp,
                             metric.value.map(::srad::types::MetricValue::from)
                         ) {
-                            return Err(::srad::types::TemplateError::InvalidMetricValue(#name.to_string()))
+                            return Err(::srad::types::TemplateError::InvalidMetricValue(format!("{}: {}", #name, e)))
                         }
                         #field_ident = Some(tmp);
                     },
@@ -563,7 +563,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
     Ok(quote!{
 
         impl ::srad::types::TemplateMetricValue for #type_name {
-            type Error = ();
+            type Error = ::srad::types::TemplateError;
             fn to_template_metric_value(self) -> Option<::srad::types::MetricValue> {
                 Some(::srad::types::Template::template_instance(&self).into())
             }
@@ -571,18 +571,16 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                 match value {
                     Some(value) => {
                         Self::try_from(
-                            ::srad::types::TemplateInstance::try_from(value)
-                            .map_err(|_|())?
+                            ::srad::types::TemplateInstance::try_from(value)?
                         )
-                        .map_err(|_|())
                     },
-                    None => Err(()),
+                    None => Err(::srad::types::TemplateError::MissingValue),
                 }
             }
         }
 
         impl ::srad::types::TemplateMetricValuePartial for #type_name {
-            type Error = ();
+            type Error = ::srad::types::TemplateError;
             fn metric_value_if_ne(&self, other: &Self) -> Option<Option<::srad::types::MetricValue>> {
                 if let Some(difference_instance) = ::srad::types::PartialTemplate::template_instance_from_difference(self, other)
                 {
@@ -592,10 +590,10 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
             }
             fn try_update_from_metric_value(&mut self, value: Option<::srad::types::MetricValue>) -> Result<(), Self::Error> {
                 let instance = match value {
-                    Some(val) => ::srad::types::TemplateInstance::try_from(val).map_err(|_|())?,
+                    Some(val) => ::srad::types::TemplateInstance::try_from(val)?,
                     None => return Ok(())
                 };
-                ::srad::types::PartialTemplate::update_from_instance(self, instance).map_err(|_|())
+                ::srad::types::PartialTemplate::update_from_instance(self, instance)
             }
         }
 

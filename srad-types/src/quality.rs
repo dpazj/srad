@@ -8,16 +8,23 @@ pub enum Quality {
 }
 
 impl TryFrom<i32> for Quality {
-    type Error = ();
+    type Error = QualityError;
 
     fn try_from(v: i32) -> Result<Self, Self::Error> {
         match v {
             x if x == Quality::Good as i32 => Ok(Quality::Good),
             x if x == Quality::Bad as i32 => Ok(Quality::Bad),
             x if x == Quality::Stale as i32 => Ok(Quality::Stale),
-            _ => Err(()),
+            _ => Err(QualityError::UnknownValue(v)),
         }
     }
+}
+
+/// Errors that can occur while converting a raw quality value.
+#[derive(Debug, thiserror::Error)]
+pub enum QualityError {
+    #[error("unknown quality value: {0}")]
+    UnknownValue(i32),
 }
 
 impl traits::HasDataType for Quality {
@@ -30,12 +37,11 @@ impl TryFrom<PropertyValue> for Quality {
 
     fn try_from(value: PropertyValue) -> Result<Self, Self::Error> {
         let value: i32 = value.try_into()?;
-        match value.try_into() {
-            Ok(value) => Ok(value),
-            Err(_) => Err(FromValueTypeError::InvalidValue(
-                "int value was not a valid quality enum value".to_string(),
-            )),
-        }
+        value.try_into().map_err(|e: QualityError| {
+            FromValueTypeError::InvalidValue(format!(
+                "int value was not a valid quality enum value: {e}"
+            ))
+        })
     }
 }
 
@@ -46,3 +52,16 @@ impl From<Quality> for PropertyValue {
 }
 
 impl traits::PropertyValue for Quality {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_quality_reports_the_value() {
+        assert!(matches!(
+            Quality::try_from(42),
+            Err(QualityError::UnknownValue(42))
+        ));
+    }
+}

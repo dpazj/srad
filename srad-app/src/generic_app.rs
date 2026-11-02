@@ -347,10 +347,13 @@ impl Node {
             "Issuing rebirth for Node = ({:?}), reason = ({:?})",
             self.id, reason
         );
-        _ = self
+        if let Err(e) = self
             .client
             .publish_node_rebirth(&self.id.group, &self.id.node)
-            .await;
+            .await
+        {
+            warn!("Unable to issue rebirth for Node = ({:?}): {e}", self.id);
+        }
     }
 
     fn cancel_reorder_timeout(&mut self) {

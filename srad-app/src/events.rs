@@ -3,7 +3,7 @@ use srad_types::{payload::Payload, MetricId};
 
 use crate::{
     bdseq_from_payload_metrics, get_metric_birth_details_from_birth_metrics,
-    get_metric_id_and_details_from_payload_metrics, MetricBirthDetails, MetricDetails,
+    get_metric_id_and_details_from_payload_metrics, BdseqError, MetricBirthDetails, MetricDetails,
     NodeIdentifier, PayloadMetricError,
 };
 
@@ -16,9 +16,9 @@ pub enum PayloadError {
     #[error("Invalid seq")]
     InvalidSeq,
     #[error("Timestamp not included in payload")]
-    InvalidBdseq,
-    #[error("invalid bdseq")]
     MissingTimestamp,
+    #[error("Invalid bdseq: {0}")]
+    InvalidBdseq(#[from] BdseqError),
     #[error("Metric error: {0}")]
     MetricError(#[from] PayloadMetricError),
     #[error("Unable to decode payload: {0}")]
@@ -260,10 +260,7 @@ impl TryFrom<Payload> for NBirth {
             None => return Err(PayloadError::MissingTimestamp),
         };
 
-        let bdseq = match bdseq_from_payload_metrics(&payload.metrics) {
-            Ok(bdseq) => bdseq,
-            Err(_) => return Err(PayloadError::InvalidBdseq),
-        };
+        let bdseq = bdseq_from_payload_metrics(&payload.metrics)?;
 
         let metrics_details = match get_metric_birth_details_from_birth_metrics(payload.metrics) {
             Ok(details) => details,
@@ -287,10 +284,7 @@ impl TryFrom<Payload> for NDeath {
     type Error = PayloadError;
 
     fn try_from(payload: Payload) -> Result<Self, Self::Error> {
-        let bdseq = match bdseq_from_payload_metrics(&payload.metrics) {
-            Ok(bdseq) => bdseq,
-            Err(_) => return Err(PayloadError::InvalidBdseq),
-        };
+        let bdseq = bdseq_from_payload_metrics(&payload.metrics)?;
         Ok(NDeath { bdseq })
     }
 }

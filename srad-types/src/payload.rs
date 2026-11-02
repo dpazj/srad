@@ -62,7 +62,7 @@ impl From<Payload> for Vec<u8> {
 }
 
 impl TryFrom<u32> for DataType {
-    type Error = ();
+    type Error = DataTypeError;
 
     fn try_from(v: u32) -> Result<Self, Self::Error> {
         match v {
@@ -101,9 +101,16 @@ impl TryFrom<u32> for DataType {
             x if x == DataType::BooleanArray as u32 => Ok(DataType::BooleanArray),
             x if x == DataType::StringArray as u32 => Ok(DataType::StringArray),
             x if x == DataType::DateTimeArray as u32 => Ok(DataType::DateTimeArray),
-            _ => Err(()),
+            _ => Err(DataTypeError::UnknownValue(v)),
         }
     }
+}
+
+/// Errors that can occur while converting a raw Sparkplug datatype value.
+#[derive(Debug, thiserror::Error)]
+pub enum DataTypeError {
+    #[error("unknown data type value: {0}")]
+    UnknownValue(u32),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -129,5 +136,19 @@ impl TryFrom<&[u8]> for StateBirthDeathCertificate {
             Ok(v) => Ok(v),
             Err(e) => Err(e.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalid_datatype_reports_the_value() {
+        let value = u32::MAX;
+        assert!(matches!(
+            DataType::try_from(value),
+            Err(DataTypeError::UnknownValue(v)) if v == value
+        ));
     }
 }

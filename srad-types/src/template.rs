@@ -19,8 +19,9 @@ pub trait TemplateMetricValue {
 impl<T> TemplateMetricValue for T
 where
     T: traits::MetricValue,
+    <T as TryFrom<MetricValue>>::Error: std::fmt::Display,
 {
-    type Error = ();
+    type Error = TemplateError;
 
     fn to_template_metric_value(self) -> Option<MetricValue> {
         Some(T::into(self))
@@ -31,8 +32,10 @@ where
         Self: Sized,
     {
         match value {
-            Some(value) => Self::try_from(value).map_err(|_| ()),
-            None => Err(()),
+            Some(value) => {
+                Self::try_from(value).map_err(|e| TemplateError::InvalidMetricValue(e.to_string()))
+            }
+            None => Err(TemplateError::MissingValue),
         }
     }
 }
@@ -40,8 +43,9 @@ where
 impl<T> TemplateMetricValue for Option<T>
 where
     T: traits::MetricValue,
+    <T as TryFrom<MetricValue>>::Error: std::fmt::Display,
 {
-    type Error = ();
+    type Error = TemplateError;
 
     fn to_template_metric_value(self) -> Option<MetricValue> {
         self.map(T::into)
@@ -53,7 +57,8 @@ where
     {
         match value {
             Some(value) => {
-                let value = value.try_into().map_err(|_| ())?;
+                let value = T::try_from(value)
+                    .map_err(|e| TemplateError::InvalidMetricValue(e.to_string()))?;
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -74,8 +79,9 @@ pub trait TemplateParameterValue {
 impl<T> TemplateParameterValue for T
 where
     T: traits::ParameterValue,
+    <T as TryFrom<ParameterValue>>::Error: std::fmt::Display,
 {
-    type Error = ();
+    type Error = TemplateError;
 
     fn to_template_parameter_value(self) -> Option<ParameterValue> {
         Some(T::into(self))
@@ -86,8 +92,9 @@ where
         Self: Sized,
     {
         match value {
-            Some(value) => Self::try_from(value).map_err(|_| ()),
-            None => Err(()),
+            Some(value) => Self::try_from(value)
+                .map_err(|e| TemplateError::InvalidParameterValue(e.to_string())),
+            None => Err(TemplateError::MissingValue),
         }
     }
 }
@@ -95,8 +102,9 @@ where
 impl<T> TemplateParameterValue for Option<T>
 where
     T: traits::ParameterValue,
+    <T as TryFrom<ParameterValue>>::Error: std::fmt::Display,
 {
-    type Error = ();
+    type Error = TemplateError;
 
     fn to_template_parameter_value(self) -> Option<ParameterValue> {
         self.map(T::into)
@@ -108,7 +116,8 @@ where
     {
         match value {
             Some(value) => {
-                let value = value.try_into().map_err(|_| ())?;
+                let value = T::try_from(value)
+                    .map_err(|e| TemplateError::InvalidParameterValue(e.to_string()))?;
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -131,7 +140,7 @@ macro_rules! impl_template_metric_value_partial {
     ($($ty:ty),* $(,)?) => {
         $(
             impl TemplateMetricValuePartial for $ty {
-                type Error = ();
+                type Error = TemplateError;
                 fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>> {
                     if self == other {
                         return None
@@ -149,13 +158,14 @@ macro_rules! impl_template_metric_value_partial {
     ($($ty:ty),* $(,)?) => {
         $(
             impl TemplateMetricValuePartial for Vec<$ty> {
+                type Error = TemplateError;
                 fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>> {
                     if self == other {
                         return None
                     }
                     Some(Some(self.clone().into()))
                 }
-                fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), ()> {
+                fn try_update_from_metric_value(&mut self, other: Option<MetricValue>) -> Result<(), Self::Error> {
                     *self = <$ty>::try_from_template_metric_value(other)?;
                     Ok(())
                 }
@@ -169,9 +179,13 @@ impl_template_metric_value_partial!(bool, i8, i16, i32, i64, u8, u16, u32, u64, 
 
 impl<T> TemplateMetricValuePartial for Option<T>
 where
-    T: TemplateMetricValuePartial + TemplateMetricValue + Into<MetricValue> + PartialEq + Clone,
+    T: TemplateMetricValuePartial
+        + TemplateMetricValue<Error = TemplateError>
+        + Into<MetricValue>
+        + PartialEq
+        + Clone,
 {
-    type Error = ();
+    type Error = TemplateError;
 
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>> {
         if self == other {
@@ -185,7 +199,7 @@ where
         other: Option<MetricValue>,
     ) -> Result<(), Self::Error> {
         *self = match other {
-            Some(value) => Some(T::try_from_template_metric_value(Some(value)).map_err(|_| ())?),
+            Some(value) => Some(T::try_from_template_metric_value(Some(value))?),
             None => None,
         };
         Ok(())
@@ -436,6 +450,10 @@ pub enum TemplateError {
     InvalidParameterValue(String),
     #[error("Invalid value for metric field {0}")]
     InvalidMetricValue(String),
+    #[error("Missing template value")]
+    MissingValue,
+    #[error(transparent)]
+    ValueConversion(#[from] FromValueTypeError),
 }
 
 /// Trait used to represent a Template

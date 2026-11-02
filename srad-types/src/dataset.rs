@@ -164,7 +164,7 @@ impl TryFrom<MetricValue> for DataSet {
 }
 
 impl TemplateMetricValuePartial for DataSet {
-    type Error = ();
+    type Error = DataSetError;
 
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>> {
         if self == other {
@@ -178,7 +178,7 @@ impl TemplateMetricValuePartial for DataSet {
         &mut self,
         other: Option<MetricValue>,
     ) -> Result<(), Self::Error> {
-        *self = Self::try_from(other.ok_or(())?).map_err(|_| ())?;
+        *self = Self::try_from(other.ok_or(DataSetError::InvalidMetricValue)?)?;
         Ok(())
     }
 }
@@ -449,7 +449,7 @@ impl<R: DataSetRow> HasDataType for TypedDataSet<R> {
 impl<R: DataSetRow> traits::MetricValue for TypedDataSet<R> {}
 
 impl<R: DataSetRow + Clone + PartialEq> TemplateMetricValuePartial for TypedDataSet<R> {
-    type Error = ();
+    type Error = DataSetError;
 
     fn metric_value_if_ne(&self, other: &Self) -> Option<Option<MetricValue>> {
         if self == other {
@@ -463,7 +463,7 @@ impl<R: DataSetRow + Clone + PartialEq> TemplateMetricValuePartial for TypedData
         &mut self,
         other: Option<MetricValue>,
     ) -> Result<(), Self::Error> {
-        *self = Self::try_from(other.ok_or(())?).map_err(|_| ())?;
+        *self = Self::try_from(other.ok_or(DataSetError::InvalidMetricValue)?)?;
         Ok(())
     }
 }
