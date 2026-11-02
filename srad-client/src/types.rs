@@ -181,7 +181,7 @@ impl LastWill {
         let topic = NodeTopic::new(group, NodeMessageType::NDeath, node_id);
         Self {
             topic: topic.topic,
-            retain: true,
+            retain: false,
             qos: QoS::AtLeastOnce,
             payload: payload.into(),
         }
@@ -194,5 +194,24 @@ impl LastWill {
             qos: QoS::AtLeastOnce,
             payload: StatePayload::Offline { timestamp }.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn node_last_will_is_qos_one_and_not_retained() {
+        let will = LastWill::new_node("group", "node", Payload::default());
+        assert_eq!(will.qos, QoS::AtLeastOnce);
+        assert!(!will.retain);
+    }
+
+    #[test]
+    fn app_last_will_is_qos_one_and_retained() {
+        let will = LastWill::new_app("host", 0);
+        assert_eq!(will.qos, QoS::AtLeastOnce);
+        assert!(will.retain);
     }
 }
