@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::{Event, LastWill, StatePayload};
+use crate::{ClientError, Event, LastWill, StatePayload};
 use async_trait::async_trait;
 use srad_types::{
     payload::Payload,
@@ -20,72 +20,70 @@ pub struct ChannelClient {
 
 #[async_trait]
 impl crate::Client for ChannelClient {
-    async fn disconnect(&self) -> Result<(), ()> {
-        match self.tx.send(OutboundMessage::Disconnect) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+    async fn disconnect(&self) -> Result<(), ClientError> {
+        self.tx
+            .send(OutboundMessage::Disconnect)
+            .map_err(|_| ClientError::ChannelClosed)
     }
 
     async fn publish_state_message(
         &self,
         topic: StateTopic,
         payload: StatePayload,
-    ) -> Result<(), ()> {
-        match self
-            .tx
+    ) -> Result<(), ClientError> {
+        self.tx
             .send(OutboundMessage::StateMessage { topic, payload })
-        {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+            .map_err(|_| ClientError::ChannelClosed)
     }
 
     async fn try_publish_state_message(
         &self,
         topic: StateTopic,
         payload: StatePayload,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         self.publish_state_message(topic, payload).await
     }
 
-    async fn publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(), ()> {
-        match self
-            .tx
+    async fn publish_node_message(
+        &self,
+        topic: NodeTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
+        self.tx
             .send(OutboundMessage::NodeMessage { topic, payload })
-        {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+            .map_err(|_| ClientError::ChannelClosed)
     }
 
-    async fn try_publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(), ()> {
+    async fn try_publish_node_message(
+        &self,
+        topic: NodeTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
         self.publish_node_message(topic, payload).await
     }
 
-    async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(), ()> {
-        match self
-            .tx
+    async fn publish_device_message(
+        &self,
+        topic: DeviceTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
+        self.tx
             .send(OutboundMessage::DeviceMessage { topic, payload })
-        {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+            .map_err(|_| ClientError::ChannelClosed)
     }
 
     async fn try_publish_device_message(
         &self,
         topic: DeviceTopic,
         payload: Payload,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         self.publish_device_message(topic, payload).await
     }
 
-    async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ()> {
-        match self.tx.send(OutboundMessage::Subscribe(topics)) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+    async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ClientError> {
+        self.tx
+            .send(OutboundMessage::Subscribe(topics))
+            .map_err(|_| ClientError::ChannelClosed)
     }
 }
 
@@ -185,5 +183,23 @@ impl crate::EventLoop for ChannelEventLoop {
     fn set_last_will(&mut self, will: LastWill) {
         let mut lw = self.last_will.lock().unwrap();
         *lw = Some(will)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Client;
+    use srad_types::topic::NodeMessage;
+
+    #[tokio::test]
+    async fn publish_fails_when_broker_is_dropped() {
+        let (eventloop, client, broker) = ChannelEventLoop::new();
+        drop(eventloop);
+        drop(broker);
+
+        let topic = NodeTopic::new("group", NodeMessage::NData, "node");
+        let result = client.publish_node_message(topic, Payload::default()).await;
+        assert!(matches!(result, Err(ClientError::ChannelClosed)));
     }
 }

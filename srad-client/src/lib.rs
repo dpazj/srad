@@ -7,10 +7,12 @@
 //! - `channel-client`: Enables the channel based [EventLoop] and [Client] implementation. Disabled by default.
 //!
 
+mod error;
 mod traits;
 mod types;
 mod utils;
 
+pub use error::ClientError;
 pub use traits::{Client, DynClient, DynEventLoop, EventLoop};
 pub use types::*;
 pub use utils::{topic_and_payload_to_event, topic_and_payload_to_event_deferred};

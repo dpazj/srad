@@ -5,7 +5,8 @@ use std::{
 
 use log::{debug, info};
 use srad_client::{
-    Client, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage, StatePayload,
+    Client, ClientError, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage,
+    StatePayload,
 };
 use srad_types::{
     constants::NODE_CONTROL_REBIRTH,
@@ -69,7 +70,6 @@ pub struct AppClient {
     state: Arc<AppState>,
 }
 
-#[allow(clippy::result_unit_err)] // mirrors the `Result<(), ()>` API of `srad_client::Client`
 impl AppClient {
     /// Stop all operations, sending a death certificate (application offline message) and disconnect from the broker.
     ///
@@ -95,7 +95,11 @@ impl AppClient {
     }
 
     /// Issue a node rebirth CMD request
-    pub async fn publish_node_rebirth(&self, group_id: &str, node_id: &str) -> Result<(), ()> {
+    pub async fn publish_node_rebirth(
+        &self,
+        group_id: &str,
+        node_id: &str,
+    ) -> Result<(), ClientError> {
         let topic = PublishTopic::new_node_cmd(group_id, node_id);
         let rebirth_cmd = PublishMetric::new(MetricId::Name(NODE_CONTROL_REBIRTH.into()), true);
         self.publish_metrics(topic, vec![rebirth_cmd]).await
@@ -120,7 +124,7 @@ impl AppClient {
         &self,
         topic: PublishTopic,
         metrics: Vec<PublishMetric>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let payload = Self::metrics_to_payload(metrics);
         match topic.0 {
             PublishTopicKind::NodeTopic(topic) => {
@@ -137,7 +141,7 @@ impl AppClient {
         &self,
         topic: PublishTopic,
         metrics: Vec<PublishMetric>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let payload = Self::metrics_to_payload(metrics);
         match topic.0 {
             PublishTopicKind::NodeTopic(topic) => {

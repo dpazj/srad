@@ -11,6 +11,26 @@
 - **breaking change** `HasDataType` now requires `DEFAULT_DATATYPE` and
   `SUPPORTED_DATATYPES` consts; the `default_datatype()` and `supported_datatypes()`
   functions were removed
+- Add `DataTypeError`, `QualityError`, `PropertyValueError` and `PropertySetError`
+- Add `TemplateError::MissingValue` and `TemplateError::ValueConversion`
+- **breaking change** `PropertySet::insert`, `DataType::try_from`, `Quality::try_from` and the property set/template conversions now return typed errors instead of `()`
+
+### Client
+
+- Add `ClientError` and return it from all `Client` methods
+- **breaking change** `Client` implementations must return `ClientError`
+
+### App
+
+- `AppClient` publish methods now return `ClientError`
+- Add `BdseqError` and preserve BDSEQ decoding details in `PayloadError`
+- **breaking change** `PayloadError::InvalidBdseq` now carries a `BdseqError`
+
+### EoN
+
+- Add `PublishError::Client` and stop masking client publish failures as `StateError::Offline`
+- Add `MessageMetricError` and `MessageMetricsError`
+- **breaking change** `MessageMetric` and `MessageMetrics` conversions now return typed errors
 
 ## 0.5.0
 

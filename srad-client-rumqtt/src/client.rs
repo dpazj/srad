@@ -16,7 +16,8 @@ use srad_types::{
 };
 
 use srad_client::{
-    topic_and_payload_to_event, topic_and_payload_to_event_deferred, Event, LastWill, StatePayload,
+    topic_and_payload_to_event, topic_and_payload_to_event_deferred, ClientError, Event, LastWill,
+    StatePayload,
 };
 
 fn qos_to_mqtt_qos(qos: srad_types::topic::QoS) -> QoS {
@@ -28,6 +29,13 @@ fn qos_to_mqtt_qos(qos: srad_types::topic::QoS) -> QoS {
 
 fn topic_filter_to_mqtt_filter(topic_filter: TopicFilter) -> Filter {
     Filter::new(topic_filter.topic, qos_to_mqtt_qos(topic_filter.qos))
+}
+
+fn map_client_error(error: rumqttc::v5::ClientError) -> ClientError {
+    match error {
+        rumqttc::v5::ClientError::Request(_) => ClientError::ChannelClosed,
+        rumqttc::v5::ClientError::TryRequest(_) => ClientError::QueueFull,
+    }
 }
 
 /// A [srad_client::Client] implementation using [rumqttc]
@@ -43,11 +51,11 @@ impl Client {
         qos: QoS,
         retain: bool,
         payload: Vec<u8>,
-    ) -> Result<(), ()> {
-        match self.client.publish(topic, qos, retain, payload).await {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+    ) -> Result<(), ClientError> {
+        self.client
+            .publish(topic, qos, retain, payload)
+            .await
+            .map_err(map_client_error)
     }
 
     fn try_publish(
@@ -56,28 +64,24 @@ impl Client {
         qos: QoS,
         retain: bool,
         payload: Vec<u8>,
-    ) -> Result<(), ()> {
-        match self.client.try_publish(topic, qos, retain, payload) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+    ) -> Result<(), ClientError> {
+        self.client
+            .try_publish(topic, qos, retain, payload)
+            .map_err(map_client_error)
     }
 }
 
 #[async_trait]
 impl srad_client::Client for Client {
-    async fn disconnect(&self) -> Result<(), ()> {
-        match self.client.disconnect().await {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+    async fn disconnect(&self) -> Result<(), ClientError> {
+        self.client.disconnect().await.map_err(map_client_error)
     }
 
     async fn publish_state_message(
         &self,
         topic: StateTopic,
         payload: StatePayload,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let (qos, retain) = payload.get_publish_quality_retain();
         self.publish(
             topic.topic,
@@ -92,7 +96,7 @@ impl srad_client::Client for Client {
         &self,
         topic: StateTopic,
         payload: StatePayload,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let (qos, retain) = payload.get_publish_quality_retain();
         self.try_publish(
             topic.topic,
@@ -106,7 +110,7 @@ impl srad_client::Client for Client {
         &self,
         topic: srad_types::topic::NodeTopic,
         payload: srad_types::payload::Payload,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let (qos, retain) = topic.get_publish_quality_retain();
         self.publish(
             topic.topic,
@@ -121,7 +125,7 @@ impl srad_client::Client for Client {
         &self,
         topic: srad_types::topic::NodeTopic,
         payload: srad_types::payload::Payload,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let (qos, retain) = topic.get_publish_quality_retain();
         self.try_publish(
             topic.topic,
@@ -131,7 +135,11 @@ impl srad_client::Client for Client {
         )
     }
 
-    async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(), ()> {
+    async fn publish_device_message(
+        &self,
+        topic: DeviceTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
         let (qos, retain) = topic.get_publish_quality_retain();
         self.publish(
             topic.topic,
@@ -146,7 +154,7 @@ impl srad_client::Client for Client {
         &self,
         topic: DeviceTopic,
         payload: Payload,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ClientError> {
         let (qos, retain) = topic.get_publish_quality_retain();
         self.try_publish(
             topic.topic,
@@ -156,15 +164,15 @@ impl srad_client::Client for Client {
         )
     }
 
-    async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ()> {
+    async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ClientError> {
         let filters: Vec<Filter> = topics
             .into_iter()
             .map(topic_filter_to_mqtt_filter)
             .collect();
-        match self.client.subscribe_many(filters).await {
-            Ok(_) => Ok(()),
-            Err(_) => Err(()),
-        }
+        self.client
+            .subscribe_many(filters)
+            .await
+            .map_err(map_client_error)
     }
 }
 

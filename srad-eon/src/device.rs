@@ -87,17 +87,13 @@ impl MetricPublisher for DeviceHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        match self
-            .client
+        self.client
             .try_publish_device_message(
                 self.state.ddata_topic.clone(),
                 self.publish_metrics_to_payload(self.check_publish_state_and_get_seq()?, metrics),
             )
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::State(StateError::Offline)),
-        }
+            .await?;
+        Ok(())
     }
 
     async fn publish_metrics_unsorted(
@@ -107,17 +103,13 @@ impl MetricPublisher for DeviceHandle {
         if metrics.is_empty() {
             return Err(PublishError::NoMetrics);
         }
-        match self
-            .client
+        self.client
             .publish_device_message(
                 self.state.ddata_topic.clone(),
                 self.publish_metrics_to_payload(self.check_publish_state_and_get_seq()?, metrics),
             )
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(_) => Err(PublishError::State(StateError::Offline)),
-        }
+            .await?;
+        Ok(())
     }
 }
 

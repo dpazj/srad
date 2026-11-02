@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     constants::QUALITY,
-    payload::{self, property_value},
+    payload::{self, property_value, DataTypeError},
     quality::Quality,
     traits, PropertyValue as PropertyValueValue,
 };
@@ -11,6 +11,32 @@ use crate::{
 struct PropertyValue {
     value: Option<PropertyValueValue>,
     datatype: Option<payload::DataType>,
+}
+
+/// Errors that can occur while converting a raw Sparkplug property value.
+#[derive(Debug, thiserror::Error)]
+pub enum PropertyValueError {
+    #[error("property value has `is_null = false` but no value")]
+    InvalidNullValue,
+    #[error("property value is missing both `value` and `is_null`")]
+    MissingValue,
+    #[error("invalid property datatype: {0}")]
+    InvalidDataType(#[from] DataTypeError),
+}
+
+/// Errors that can occur while working with a [PropertySet] or a property set list.
+#[derive(Debug, thiserror::Error)]
+pub enum PropertySetError {
+    #[error("the `{QUALITY}` property is reserved")]
+    ReservedQuality,
+    #[error("property set key/value count mismatch: {keys} keys, {values} values")]
+    KeyValueCountMismatch { keys: usize, values: usize },
+    #[error(transparent)]
+    InvalidPropertyValue(#[from] PropertyValueError),
+    #[error("metric value is not a PropertySet")]
+    NotAPropertySet,
+    #[error("metric value is not a PropertySetList")]
+    NotAPropertySetList,
 }
 
 impl From<PropertyValue> for payload::PropertyValue {
@@ -30,7 +56,7 @@ impl From<PropertyValue> for payload::PropertyValue {
 }
 
 impl TryFrom<payload::PropertyValue> for PropertyValue {
-    type Error = ();
+    type Error = PropertyValueError;
 
     fn try_from(payload: payload::PropertyValue) -> Result<Self, Self::Error> {
         let value = if let Some(value) = payload.value {
@@ -39,10 +65,10 @@ impl TryFrom<payload::PropertyValue> for PropertyValue {
             if is_null {
                 None
             } else {
-                return Err(());
+                return Err(PropertyValueError::InvalidNullValue);
             }
         } else {
-            return Err(());
+            return Err(PropertyValueError::MissingValue);
         };
 
         let ty = match payload.r#type {
@@ -83,15 +109,14 @@ impl PropertySet {
         Self::new_with_quality(Quality::Good)
     }
 
-    #[allow(clippy::result_unit_err)]
     pub fn insert<K: Into<String>, V: traits::PropertyValue>(
         &mut self,
         k: K,
         v: Option<V>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), PropertySetError> {
         let key = k.into();
         if key == QUALITY {
-            return Err(());
+            return Err(PropertySetError::ReservedQuality);
         }
         let pv = PropertyValue {
             value: v.map(V::into),
@@ -108,14 +133,14 @@ impl traits::HasDataType for PropertySet {
 }
 
 impl TryFrom<PropertyValueValue> for PropertySet {
-    type Error = ();
+    type Error = PropertySetError;
 
     fn try_from(value: PropertyValueValue) -> Result<Self, Self::Error> {
         let value: payload::property_value::Value = value.into();
         if let payload::property_value::Value::PropertysetValue(v) = value {
             Ok(v.try_into()?)
         } else {
-            Err(())
+            Err(PropertySetError::NotAPropertySet)
         }
     }
 }
@@ -142,14 +167,17 @@ impl From<PropertySet> for payload::PropertySet {
 }
 
 impl TryFrom<payload::PropertySet> for PropertySet {
-    type Error = ();
+    type Error = PropertySetError;
 
     fn try_from(value: payload::PropertySet) -> Result<Self, Self::Error> {
         let keys = value.keys;
         let values = value.values;
         let len = keys.len();
         if len != values.len() {
-            return Err(());
+            return Err(PropertySetError::KeyValueCountMismatch {
+                keys: len,
+                values: values.len(),
+            });
         }
 
         let mut hashmap: HashMap<String, PropertyValue> = HashMap::with_capacity(len);
@@ -175,7 +203,7 @@ impl From<PropertySetList> for payload::PropertySetList {
 }
 
 impl TryFrom<payload::PropertySetList> for PropertySetList {
-    type Error = ();
+    type Error = PropertySetError;
 
     fn try_from(value: payload::PropertySetList) -> Result<Self, Self::Error> {
         let mut out = Vec::with_capacity(value.propertyset.len());
@@ -192,14 +220,14 @@ impl traits::HasDataType for PropertySetList {
 }
 
 impl TryFrom<PropertyValueValue> for PropertySetList {
-    type Error = ();
+    type Error = PropertySetError;
 
     fn try_from(value: PropertyValueValue) -> Result<Self, Self::Error> {
         let value: payload::property_value::Value = value.into();
         if let payload::property_value::Value::PropertysetsValue(v) = value {
             Ok(v.try_into()?)
         } else {
-            Err(())
+            Err(PropertySetError::NotAPropertySetList)
         }
     }
 }
@@ -211,3 +239,29 @@ impl From<PropertySetList> for PropertyValueValue {
 }
 
 impl traits::PropertyValue for PropertySetList {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reserved_quality_property_is_rejected() {
+        let mut set = PropertySet::new();
+        assert!(matches!(
+            set.insert(QUALITY, Some(1u32)),
+            Err(PropertySetError::ReservedQuality)
+        ));
+    }
+
+    #[test]
+    fn key_value_count_mismatch_is_reported() {
+        let payload = payload::PropertySet {
+            keys: vec!["key".into()],
+            values: Vec::new(),
+        };
+        assert!(matches!(
+            PropertySet::try_from(payload),
+            Err(PropertySetError::KeyValueCountMismatch { keys: 1, values: 0 })
+        ));
+    }
+}

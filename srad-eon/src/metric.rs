@@ -17,13 +17,9 @@ pub enum PublishError {
     #[error("No metrics provided.")]
     NoMetrics,
     #[error("State Error: {0}.")]
-    State(StateError),
-}
-
-impl From<StateError> for PublishError {
-    fn from(value: StateError) -> Self {
-        PublishError::State(value)
-    }
+    State(#[from] StateError),
+    #[error("Client Error: {0}.")]
+    Client(#[from] srad_client::ClientError),
 }
 
 /// A trait for publishing metrics to the network.
@@ -248,6 +244,24 @@ impl MessageMetrics {
     }
 }
 
+/// Errors that can occur when converting a Sparkplug [Metric] into a [MessageMetric].
+#[derive(Debug, Error)]
+pub enum MessageMetricError {
+    #[error("metric has neither a name nor an alias")]
+    MissingIdentifier,
+    #[error("metric is marked null")]
+    NullMetric,
+    #[error("metric has no value and does not set is_null")]
+    MissingValue,
+}
+
+/// Errors that can occur when converting a Sparkplug payload into [MessageMetrics].
+#[derive(Debug, Error)]
+pub enum MessageMetricsError {
+    #[error("payload is missing a timestamp")]
+    MissingTimestamp,
+}
+
 /// A metric from a message
 pub struct MessageMetric {
     /// The unique identifier of the metric
@@ -258,7 +272,7 @@ pub struct MessageMetric {
 }
 
 impl TryFrom<Metric> for MessageMetric {
-    type Error = ();
+    type Error = MessageMetricError;
 
     fn try_from(value: Metric) -> Result<Self, Self::Error> {
         let id = if let Some(alias) = value.alias {
@@ -266,18 +280,18 @@ impl TryFrom<Metric> for MessageMetric {
         } else if let Some(name) = value.name {
             MetricId::Name(name)
         } else {
-            return Err(());
+            return Err(MessageMetricError::MissingIdentifier);
         };
 
         let metric_value = if value.value.is_some() {
             value.value.map(MetricValue::from)
         } else if let Some(is_null) = value.is_null {
             if is_null {
-                return Err(());
+                return Err(MessageMetricError::NullMetric);
             }
             None
         } else {
-            return Err(());
+            return Err(MessageMetricError::MissingValue);
         };
 
         Ok(MessageMetric {
@@ -301,8 +315,8 @@ impl Iterator for MessageMetricsIterator {
         match metric {
             Some(metric) => match metric.try_into() {
                 Ok(message_metric) => Some(message_metric),
-                Err(_) => {
-                    warn!("Got invalid or badly formed metric - skipping");
+                Err(e) => {
+                    warn!("Got invalid or badly formed metric - skipping: {e}");
                     self.next()
                 }
             },
@@ -324,7 +338,7 @@ impl IntoIterator for MessageMetrics {
 }
 
 impl TryFrom<Payload> for MessageMetrics {
-    type Error = ();
+    type Error = MessageMetricsError;
 
     fn try_from(value: Payload) -> Result<Self, Self::Error> {
         /*
@@ -333,12 +347,54 @@ impl TryFrom<Payload> for MessageMetrics {
         */
         let timestamp = match value.timestamp {
             Some(timestamp) => timestamp,
-            None => return Err(()),
+            None => return Err(MessageMetricsError::MissingTimestamp),
         };
 
         Ok(MessageMetrics {
             timestamp,
             metrics: value.metrics,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metric_without_identifier_is_rejected() {
+        assert!(matches!(
+            MessageMetric::try_from(Metric::new()),
+            Err(MessageMetricError::MissingIdentifier)
+        ));
+    }
+
+    #[test]
+    fn null_metric_is_rejected() {
+        let mut metric = Metric::new();
+        metric.set_name("metric".into());
+        metric.set_null();
+        assert!(matches!(
+            MessageMetric::try_from(metric),
+            Err(MessageMetricError::NullMetric)
+        ));
+    }
+
+    #[test]
+    fn metric_without_value_is_rejected() {
+        let mut metric = Metric::new();
+        metric.set_name("metric".into());
+        assert!(matches!(
+            MessageMetric::try_from(metric),
+            Err(MessageMetricError::MissingValue)
+        ));
+    }
+
+    #[test]
+    fn payload_without_timestamp_is_rejected() {
+        assert!(matches!(
+            MessageMetrics::try_from(Payload::default()),
+            Err(MessageMetricsError::MissingTimestamp)
+        ));
     }
 }

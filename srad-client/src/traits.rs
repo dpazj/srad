@@ -4,13 +4,13 @@ use srad_types::{
     topic::{DeviceTopic, NodeTopic, StateTopic, TopicFilter},
 };
 
-use crate::{Event, LastWill, StatePayload};
+use crate::{ClientError, Event, LastWill, StatePayload};
 
 /// A trait for implementing a type that acts as a Sparkplug Client
 #[async_trait]
 pub trait Client {
     /// Disconnects the client.
-    async fn disconnect(&self) -> Result<(), ()>;
+    async fn disconnect(&self) -> Result<(), ClientError>;
 
     /// Publishes a state message to the specified state topic.
     ///
@@ -19,7 +19,7 @@ pub trait Client {
         &self,
         topic: StateTopic,
         payload: StatePayload,
-    ) -> Result<(), ()>;
+    ) -> Result<(), ClientError>;
 
     /// Attempts to publish a state message to the specified state topic.
     ///
@@ -29,23 +29,35 @@ pub trait Client {
         &self,
         topic: StateTopic,
         payload: StatePayload,
-    ) -> Result<(), ()>;
+    ) -> Result<(), ClientError>;
 
     /// Publishes a message to a node-specific topic.
     ///
     /// This method will yield to the async runtime until the message is accepted by the client
-    async fn publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(), ()>;
+    async fn publish_node_message(
+        &self,
+        topic: NodeTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError>;
 
     /// Attempts to publish a message to a node-specific topic.
     ///
     /// Unlike `publish_node_message`, this method may return early if the client cannot process the message
     /// e.g the message queue is full.
-    async fn try_publish_node_message(&self, topic: NodeTopic, payload: Payload) -> Result<(), ()>;
+    async fn try_publish_node_message(
+        &self,
+        topic: NodeTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError>;
 
     /// Publishes a message to a device-specific topic.
     ///
     /// This method will yield to the async runtime until the message is accepted by the client
-    async fn publish_device_message(&self, topic: DeviceTopic, payload: Payload) -> Result<(), ()>;
+    async fn publish_device_message(
+        &self,
+        topic: DeviceTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError>;
 
     /// Attempts to publish a message to a device-specific topic.
     ///
@@ -55,17 +67,17 @@ pub trait Client {
         &self,
         topic: DeviceTopic,
         payload: Payload,
-    ) -> Result<(), ()>;
+    ) -> Result<(), ClientError>;
 
     /// Subscribes to a single topic.
     ///
     /// This is a convenience method that calls `subscribe_many` with a single topic.
-    async fn subscribe(&self, topic: TopicFilter) -> Result<(), ()> {
+    async fn subscribe(&self, topic: TopicFilter) -> Result<(), ClientError> {
         self.subscribe_many(vec![topic]).await
     }
 
     /// Subscribes to multiple topics in a single operation.
-    async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ()>;
+    async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ClientError>;
 }
 
 pub type DynClient = dyn Client + Send + Sync;
