@@ -31,13 +31,6 @@ fn topic_filter_to_mqtt_filter(topic_filter: TopicFilter) -> Filter {
     Filter::new(topic_filter.topic, qos_to_mqtt_qos(topic_filter.qos))
 }
 
-fn map_client_error(error: rumqttc::v5::ClientError) -> ClientError {
-    match error {
-        rumqttc::v5::ClientError::Request(_) => ClientError::ChannelClosed,
-        rumqttc::v5::ClientError::TryRequest(_) => ClientError::QueueFull,
-    }
-}
-
 /// A [srad_client::Client] implementation using [rumqttc]
 #[derive(Clone)]
 pub struct Client {
@@ -55,7 +48,7 @@ impl Client {
         self.client
             .publish(topic, qos, retain, payload)
             .await
-            .map_err(map_client_error)
+            .map_err(ClientError::new)
     }
 
     fn try_publish(
@@ -67,14 +60,14 @@ impl Client {
     ) -> Result<(), ClientError> {
         self.client
             .try_publish(topic, qos, retain, payload)
-            .map_err(map_client_error)
+            .map_err(ClientError::new)
     }
 }
 
 #[async_trait]
 impl srad_client::Client for Client {
     async fn disconnect(&self) -> Result<(), ClientError> {
-        self.client.disconnect().await.map_err(map_client_error)
+        self.client.disconnect().await.map_err(ClientError::new)
     }
 
     async fn publish_state_message(
@@ -172,7 +165,7 @@ impl srad_client::Client for Client {
         self.client
             .subscribe_many(filters)
             .await
-            .map_err(map_client_error)
+            .map_err(ClientError::new)
     }
 }
 

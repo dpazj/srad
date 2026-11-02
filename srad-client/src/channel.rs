@@ -8,6 +8,10 @@ use srad_types::{
 };
 use tokio::sync::mpsc;
 
+#[derive(Debug, thiserror::Error)]
+#[error("the client request channel is closed")]
+struct ChannelClosed;
+
 /// A [Client](crate::Client) implementation that uses channels for message passing.
 ///
 /// # Examples
@@ -23,7 +27,7 @@ impl crate::Client for ChannelClient {
     async fn disconnect(&self) -> Result<(), ClientError> {
         self.tx
             .send(OutboundMessage::Disconnect)
-            .map_err(|_| ClientError::ChannelClosed)
+            .map_err(|_| ClientError::new(ChannelClosed))
     }
 
     async fn publish_state_message(
@@ -33,7 +37,7 @@ impl crate::Client for ChannelClient {
     ) -> Result<(), ClientError> {
         self.tx
             .send(OutboundMessage::StateMessage { topic, payload })
-            .map_err(|_| ClientError::ChannelClosed)
+            .map_err(|_| ClientError::new(ChannelClosed))
     }
 
     async fn try_publish_state_message(
@@ -51,7 +55,7 @@ impl crate::Client for ChannelClient {
     ) -> Result<(), ClientError> {
         self.tx
             .send(OutboundMessage::NodeMessage { topic, payload })
-            .map_err(|_| ClientError::ChannelClosed)
+            .map_err(|_| ClientError::new(ChannelClosed))
     }
 
     async fn try_publish_node_message(
@@ -69,7 +73,7 @@ impl crate::Client for ChannelClient {
     ) -> Result<(), ClientError> {
         self.tx
             .send(OutboundMessage::DeviceMessage { topic, payload })
-            .map_err(|_| ClientError::ChannelClosed)
+            .map_err(|_| ClientError::new(ChannelClosed))
     }
 
     async fn try_publish_device_message(
@@ -83,7 +87,7 @@ impl crate::Client for ChannelClient {
     async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ClientError> {
         self.tx
             .send(OutboundMessage::Subscribe(topics))
-            .map_err(|_| ClientError::ChannelClosed)
+            .map_err(|_| ClientError::new(ChannelClosed))
     }
 }
 
@@ -199,7 +203,10 @@ mod tests {
         drop(broker);
 
         let topic = NodeTopic::new("group", NodeMessage::NData, "node");
-        let result = client.publish_node_message(topic, Payload::default()).await;
-        assert!(matches!(result, Err(ClientError::ChannelClosed)));
+        let error = client
+            .publish_node_message(topic, Payload::default())
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "the client request channel is closed");
     }
 }
