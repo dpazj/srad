@@ -23,8 +23,10 @@ Additional information for this crate can be found in the [docs][docs].
 
 Features include:
 
-- **Data Type Support** - Support for Sparkplug data types including Array types, Property Sets and Templates
-  - Template Derive macros provide code generation for template implementations
+- **Full Data Type Support** - Support for all Sparkplug data types, including Int8/UInt8/Int16/UInt16/
+  Int32/UInt32/Int64/UInt64, Float/Double, Boolean, String, DateTime, DataSets, Property Sets,
+  Templates and all scalar/DataSet array types
+  - Derive macros for typed `Template` and `DataSet` implementations
 - **Compliance-focused APIs** - APIs designed to prevent non-conformance of the specification
 - **Async Node and Application development frameworks** - Ready-to-use frameworks built using `tokio`, providing out-the-box compatibility, scalable implementations, and support for Node/Application specific features
 - **MQTT Client Agnostic** - Flexible architecture providing the ability to choose the best MQTT implementation for your use case
