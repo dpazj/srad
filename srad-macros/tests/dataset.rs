@@ -80,3 +80,107 @@ fn generic_rows_infer_bounds() {
         row
     );
 }
+
+#[derive(DataSetRow, Clone, Debug, PartialEq)]
+struct TextRow {
+    #[dataset(datatype = "Text")]
+    text: String,
+    #[dataset(datatype = "Uuid")]
+    id: String,
+}
+
+#[test]
+fn datatype_override_sets_column_type() {
+    assert_eq!(TextRow::COLUMNS[0].datatype, DataType::Text);
+    assert_eq!(TextRow::COLUMNS[1].datatype, DataType::Uuid);
+
+    let row = TextRow {
+        text: "hello".into(),
+        id: "some-uuid".into(),
+    };
+    let mut data_set = TypedDataSet::<TextRow>::new();
+    data_set.add_row(row);
+
+    let proto = data_set.to_proto();
+    assert_eq!(
+        proto.types,
+        vec![DataType::Text as u32, DataType::Uuid as u32]
+    );
+    assert_eq!(TypedDataSet::<TextRow>::try_from(proto).unwrap(), data_set);
+}
+
+#[derive(DataSetRow, Clone, Debug, PartialEq)]
+struct OptionalRow {
+    id: i32,
+    value: Option<f64>,
+    #[dataset(datatype = "Text")]
+    label: Option<String>,
+}
+
+#[test]
+fn option_fields_are_columns() {
+    assert_eq!(OptionalRow::COLUMN_COUNT, 3);
+    assert_eq!(OptionalRow::COLUMNS[1].datatype, DataType::Double);
+    assert_eq!(OptionalRow::COLUMNS[2].datatype, DataType::Text);
+
+    let mut data_set = TypedDataSet::<OptionalRow>::new();
+    data_set.add_row(OptionalRow {
+        id: 1,
+        value: Some(1.5),
+        label: None,
+    });
+    data_set.add_row(OptionalRow {
+        id: 2,
+        value: None,
+        label: Some("two".into()),
+    });
+
+    let proto = data_set.to_proto();
+    assert_eq!(
+        proto.rows[0].elements[1].value,
+        Some(Value::DoubleValue(1.5))
+    );
+    assert_eq!(proto.rows[0].elements[2].value, None);
+    assert_eq!(proto.rows[1].elements[1].value, None);
+    assert_eq!(
+        proto.rows[1].elements[2].value,
+        Some(Value::StringValue("two".into()))
+    );
+
+    assert_eq!(
+        TypedDataSet::<OptionalRow>::try_from(proto).unwrap(),
+        data_set
+    );
+}
+
+#[derive(DataSetRow, Clone, Debug, PartialEq)]
+struct SkippedRow {
+    id: i32,
+    #[dataset(skip)]
+    marker: std::marker::PhantomData<u8>,
+    #[dataset(skip)]
+    internal: String,
+}
+
+#[test]
+fn skipped_fields_are_not_columns() {
+    assert_eq!(SkippedRow::COLUMN_COUNT, 1);
+    assert_eq!(SkippedRow::COLUMNS[0].name, "id");
+
+    let row = SkippedRow {
+        id: 7,
+        marker: std::marker::PhantomData,
+        internal: "not encoded".into(),
+    };
+    let proto = row.into_row();
+    assert_eq!(proto.elements.len(), 1);
+
+    assert_eq!(
+        SkippedRow::try_from_row(proto).unwrap(),
+        SkippedRow {
+            id: 7,
+            marker: std::marker::PhantomData,
+            internal: String::new(),
+        }
+    );
+}

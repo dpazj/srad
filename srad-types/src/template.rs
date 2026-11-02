@@ -218,11 +218,7 @@ impl TemplateMetric {
         name: String,
         value: T,
     ) -> Self {
-        Self::new_template_metric_raw(
-            name,
-            T::default_datatype(),
-            value.to_template_metric_value(),
-        )
+        Self::new_template_metric_raw(name, T::DEFAULT_DATATYPE, value.to_template_metric_value())
     }
 }
 
@@ -235,7 +231,7 @@ impl TemplateParameter {
     ) -> Self {
         TemplateParameter {
             name: Some(name),
-            r#type: Some(T::default_datatype() as u32),
+            r#type: Some(T::DEFAULT_DATATYPE as u32),
             value: value
                 .to_template_parameter_value()
                 .map(payload::template::parameter::Value::from),
@@ -252,11 +248,7 @@ pub struct TemplateDefinition {
 
 impl HasDataType for TemplateDefinition {
     const DEFAULT_DATATYPE: DataType = DataType::Template;
-
-    fn supported_datatypes() -> &'static [DataType] {
-        static SUPPORTED_TYPES: [DataType; 1] = [DataType::Template];
-        &SUPPORTED_TYPES
-    }
+    const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::Template];
 }
 
 impl traits::MetricValue for TemplateDefinition {}
@@ -319,11 +311,7 @@ pub struct TemplateInstance {
 
 impl HasDataType for TemplateInstance {
     const DEFAULT_DATATYPE: DataType = DataType::Template;
-
-    fn supported_datatypes() -> &'static [DataType] {
-        static SUPPORTED_TYPES: [DataType; 1] = [DataType::Template];
-        &SUPPORTED_TYPES
-    }
+    const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::Template];
 }
 
 impl traits::MetricValue for TemplateInstance {}
@@ -466,11 +454,7 @@ where
     T: Template,
 {
     const DEFAULT_DATATYPE: DataType = DataType::Template;
-
-    fn supported_datatypes() -> &'static [DataType] {
-        static SUPPORTED_TYPES: [DataType; 1] = [DataType::Template];
-        &SUPPORTED_TYPES
-    }
+    const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::Template];
 }
 
 /// Trait used to represent a Template implementation that supports generating partial template instances

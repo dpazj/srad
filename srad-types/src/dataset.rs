@@ -140,11 +140,7 @@ impl From<payload::DataSet> for DataSet {
 
 impl HasDataType for DataSet {
     const DEFAULT_DATATYPE: DataType = DataType::DataSet;
-
-    fn supported_datatypes() -> &'static [DataType] {
-        static SUPPORTED_TYPES: [DataType; 1] = [DataType::DataSet];
-        &SUPPORTED_TYPES
-    }
+    const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::DataSet];
 }
 
 impl traits::MetricValue for DataSet {}
@@ -191,6 +187,8 @@ impl TemplateMetricValuePartial for DataSet {
 pub enum DataSetError {
     #[error("expected {expected} columns but got {actual}")]
     ColumnCountMismatch { expected: usize, actual: usize },
+    #[error("expected {expected} column types but got {actual}")]
+    TypesCountMismatch { expected: usize, actual: usize },
     #[error("column {index} has datatype {actual} but expected {expected:?}")]
     ColumnTypeMismatch {
         index: usize,
@@ -372,7 +370,7 @@ impl<R: DataSetRow> TryFrom<DataSet> for TypedDataSet<R> {
             });
         }
         if value.0.types.len() != R::COLUMN_COUNT {
-            return Err(DataSetError::ColumnCountMismatch {
+            return Err(DataSetError::TypesCountMismatch {
                 expected: R::COLUMN_COUNT,
                 actual: value.0.types.len(),
             });
@@ -445,11 +443,7 @@ impl<R: DataSetRow> TryFrom<MetricValue> for TypedDataSet<R> {
 
 impl<R: DataSetRow> HasDataType for TypedDataSet<R> {
     const DEFAULT_DATATYPE: DataType = DataType::DataSet;
-
-    fn supported_datatypes() -> &'static [DataType] {
-        static SUPPORTED_TYPES: [DataType; 1] = [DataType::DataSet];
-        &SUPPORTED_TYPES
-    }
+    const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::DataSet];
 }
 
 impl<R: DataSetRow> traits::MetricValue for TypedDataSet<R> {}
@@ -532,6 +526,26 @@ where
         return Err(DataSetError::ElementTypeMismatch { index, expected });
     }
     Ok(T::try_from(value::DataSetValue(value))?)
+}
+
+#[doc(hidden)]
+pub fn data_set_value_try_into_option<T>(
+    element: data_set::DataSetValue,
+    expected: DataType,
+    index: usize,
+) -> Result<Option<T>, DataSetError>
+where
+    T: traits::DataSetValue + TryFrom<value::DataSetValue, Error = FromValueTypeError>,
+{
+    match element.value {
+        None => Ok(None),
+        Some(value) => {
+            if !datatype_matches(expected, &value) {
+                return Err(DataSetError::ElementTypeMismatch { index, expected });
+            }
+            Ok(Some(T::try_from(value::DataSetValue(value))?))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -886,6 +900,16 @@ mod tests {
                 index: 1,
                 expected: DataType::Double,
                 ..
+            })
+        ));
+
+        let mut wrong_types_count = data_set.clone();
+        wrong_types_count.0.types = vec![DataType::Int32 as u32];
+        assert!(matches!(
+            TypedDataSet::<TestRow>::try_from(wrong_types_count),
+            Err(DataSetError::TypesCountMismatch {
+                expected: 2,
+                actual: 1
             })
         ));
 

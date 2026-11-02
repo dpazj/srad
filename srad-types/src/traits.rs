@@ -2,15 +2,31 @@ use crate::{metadata::MetaData, payload::DataType, value};
 
 /// Trait used to query the Sparkplug datatype(s) that an implementing type supports
 pub trait HasDataType {
+    /// Default [crate::payload::DataType] the type maps to
     const DEFAULT_DATATYPE: DataType;
 
-    /// Get all the Sparkplug [crate::payload::DataType]'s the type supports
-    fn supported_datatypes() -> &'static [DataType];
+    /// All Sparkplug [crate::payload::DataType]'s the type supports.
+    ///
+    /// This is an associated const rather than a function so it can be used in const
+    /// contexts, e.g. compile-time validation in derive macros.
+    const SUPPORTED_DATATYPES: &'static [DataType];
+}
 
-    /// Default [crate::payload::DataType] the type maps to
-    fn default_datatype() -> DataType {
-        Self::DEFAULT_DATATYPE
+/// Returns whether `datatype` is contained in `supported`.
+///
+/// [`slice::contains`] is not callable from const contexts, so this is the const-compatible
+/// equivalent used by generated `DataSetRow` implementations.
+#[doc(hidden)]
+pub const fn datatype_is_supported(datatype: DataType, supported: &[DataType]) -> bool {
+    let mut index = 0;
+    while index < supported.len() {
+        // Casting to the discriminant allows comparison without requiring `const PartialEq`.
+        if supported[index] as i32 == datatype as i32 {
+            return true;
+        }
+        index += 1;
     }
+    false
 }
 
 impl<T> HasDataType for Option<T>
@@ -18,10 +34,7 @@ where
     T: HasDataType,
 {
     const DEFAULT_DATATYPE: DataType = T::DEFAULT_DATATYPE;
-
-    fn supported_datatypes() -> &'static [DataType] {
-        T::supported_datatypes()
-    }
+    const SUPPORTED_DATATYPES: &'static [DataType] = T::SUPPORTED_DATATYPES;
 }
 
 /// Trait used to represent that a type can represent a [value::MetricValue]
@@ -53,4 +66,30 @@ pub trait DataSetValue:
 pub trait ParameterValue:
     TryFrom<value::ParameterValue> + Into<value::ParameterValue> + HasDataType
 {
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn option_forwards_datatypes() {
+        assert_eq!(
+            Option::<String>::SUPPORTED_DATATYPES,
+            String::SUPPORTED_DATATYPES
+        );
+        assert_eq!(Option::<String>::DEFAULT_DATATYPE, String::DEFAULT_DATATYPE);
+        assert!(datatype_is_supported(
+            DataType::Text,
+            String::SUPPORTED_DATATYPES
+        ));
+        assert!(datatype_is_supported(
+            DataType::Uuid,
+            String::SUPPORTED_DATATYPES
+        ));
+        assert!(!datatype_is_supported(
+            DataType::Int32,
+            String::SUPPORTED_DATATYPES
+        ));
+    }
 }

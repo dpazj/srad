@@ -56,6 +56,8 @@ fn parse_builder_attributes(attrs: &[Attribute]) -> syn::Result<TemplateFieldAtt
 #[derive(Default)]
 struct DataSetFieldAttributes {
     rename: Option<String>,
+    datatype: Option<syn::Ident>,
+    skip: bool,
 }
 
 fn parse_dataset_attributes(attrs: &[Attribute]) -> syn::Result<DataSetFieldAttributes> {
@@ -74,11 +76,46 @@ fn parse_dataset_attributes(attrs: &[Attribute]) -> syn::Result<DataSetFieldAttr
                 return Ok(());
             }
 
+            if meta.path.is_ident("datatype") {
+                let value = meta.value()?;
+                let lit_string: syn::LitStr = value.parse()?;
+                field_attrs.datatype = Some(lit_string.parse()?);
+                return Ok(());
+            }
+
+            if meta.path.is_ident("skip") {
+                field_attrs.skip = true;
+                return Ok(());
+            }
+
             Err(meta.error("Unrecognised dataset attribute"))
         })?;
     }
 
     Ok(field_attrs)
+}
+
+fn option_inner_type(ty: &syn::Type) -> Option<syn::Type> {
+    let syn::Type::Path(type_path) = ty else {
+        return None;
+    };
+    if type_path.qself.is_some() {
+        return None;
+    }
+    let segment = type_path.path.segments.last()?;
+    if segment.ident != "Option" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    if arguments.args.len() != 1 {
+        return None;
+    }
+    match arguments.args.first()? {
+        syn::GenericArgument::Type(inner) => Some(inner.clone()),
+        _ => None,
+    }
 }
 
 fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
@@ -117,16 +154,42 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
 
     let mut unique_names = HashSet::with_capacity(fields.named.len());
     let mut names = Vec::with_capacity(fields.named.len());
-    let mut idents = Vec::with_capacity(fields.named.len());
-    let mut types = Vec::with_capacity(fields.named.len());
-    let mut indices = Vec::with_capacity(fields.named.len());
+    let mut column_idents = Vec::with_capacity(fields.named.len());
+    let mut column_types = Vec::with_capacity(fields.named.len());
+    let mut column_datatypes = Vec::with_capacity(fields.named.len());
+    let mut encode_exprs = Vec::with_capacity(fields.named.len());
+    let mut decode_exprs = Vec::with_capacity(fields.named.len());
+    let mut skipped_idents = Vec::new();
+    let mut skipped_types = Vec::new();
+    let mut datatype_assertions = Vec::new();
+    // A const assertion cannot be evaluated for a type that depends on a generic parameter,
+    // so overrides on generic rows are validated at decode time instead.
+    let has_type_generics = input.generics.type_params().next().is_some();
 
-    for (index, field) in fields.named.iter().enumerate() {
+    for field in fields.named.iter() {
         let attrs = parse_dataset_attributes(&field.attrs)?;
         let field_ident = field.ident.as_ref().unwrap();
+
+        if attrs.skip {
+            if attrs.rename.is_some() || attrs.datatype.is_some() {
+                return Err(Error::new_spanned(
+                    field_ident,
+                    "Skipped dataset fields can not set rename or datatype",
+                ));
+            }
+            skipped_idents.push(field_ident.clone());
+            skipped_types.push(field.ty.clone());
+            continue;
+        }
+
         let name = attrs
             .rename
             .unwrap_or_else(|| field_ident.unraw().to_string());
+        let field_ty = field.ty.clone();
+        let option_inner = option_inner_type(&field_ty);
+        let is_option = option_inner.is_some();
+        let value_ty = option_inner.unwrap_or_else(|| field_ty.clone());
+        let column_index = column_idents.len();
 
         if !unique_names.insert(name.clone()) {
             return Err(Error::new_spanned(
@@ -135,10 +198,69 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
             ));
         }
 
+        let datatype = attrs.datatype;
+        let datatype_expr = match &datatype {
+            Some(ident) => quote! { ::srad::types::payload::DataType::#ident },
+            None => quote! {
+                <#value_ty as ::srad::types::traits::HasDataType>::DEFAULT_DATATYPE
+            },
+        };
+
+        if datatype.is_some() && !has_type_generics {
+            datatype_assertions.push(quote! {
+                const _: () = ::core::assert!(
+                    ::srad::types::traits::datatype_is_supported(
+                        #datatype_expr,
+                        <#value_ty as ::srad::types::traits::HasDataType>::SUPPORTED_DATATYPES,
+                    ),
+                    "dataset datatype override is not supported by the field type",
+                );
+            });
+        }
+
+        let encode_expr = if is_option {
+            quote! {
+                match self.#field_ident {
+                    ::core::option::Option::Some(value) => {
+                        ::core::option::Option::Some(
+                            ::srad::types::data_set_value_from(value),
+                        )
+                    }
+                    ::core::option::Option::None => ::core::option::Option::None,
+                }
+            }
+        } else {
+            quote! {
+                ::core::option::Option::Some(
+                    ::srad::types::data_set_value_from(self.#field_ident),
+                )
+            }
+        };
+
+        let decode_expr = if is_option {
+            quote! {
+                ::srad::types::data_set_value_try_into_option::<#value_ty>(
+                    elements.next().expect("row length checked"),
+                    Self::COLUMNS[#column_index].datatype,
+                    #column_index,
+                )?
+            }
+        } else {
+            quote! {
+                ::srad::types::data_set_value_try_into::<#value_ty>(
+                    elements.next().expect("row length checked"),
+                    Self::COLUMNS[#column_index].datatype,
+                    #column_index,
+                )?
+            }
+        };
+
         names.push(syn::LitStr::new(&name, field_ident.span()));
-        idents.push(field_ident.clone());
-        types.push(field.ty.clone());
-        indices.push(index);
+        column_idents.push(field_ident.clone());
+        column_types.push(value_ty);
+        column_datatypes.push(datatype_expr);
+        encode_exprs.push(encode_expr);
+        decode_exprs.push(decode_expr);
     }
 
     if names.is_empty() {
@@ -150,7 +272,7 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
 
     {
         let where_clause = generics.make_where_clause();
-        for ty in &types {
+        for ty in &column_types {
             where_clause.predicates.push(syn::parse_quote! {
                 #ty: ::srad::types::traits::HasDataType
                     + ::srad::types::traits::DataSetValue
@@ -158,6 +280,11 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
                         ::srad::types::DataSetValue,
                         Error = ::srad::types::FromValueTypeError,
                     >
+            });
+        }
+        for ty in &skipped_types {
+            where_clause.predicates.push(syn::parse_quote! {
+                #ty: ::core::default::Default
             });
         }
     }
@@ -171,7 +298,7 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
                 #(
                     ::srad::types::DataSetColumn::new(
                         #names,
-                        <#types as ::srad::types::traits::HasDataType>::DEFAULT_DATATYPE,
+                        #column_datatypes,
                     )
                 ),*
             ];
@@ -181,7 +308,7 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
                     elements: vec![
                         #(
                             ::srad::types::payload::data_set::DataSetValue {
-                                value: Some(::srad::types::data_set_value_from(self.#idents)),
+                                value: #encode_exprs,
                             }
                         ),*
                     ],
@@ -201,15 +328,16 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
                 let mut elements = row.elements.into_iter();
                 Ok(Self {
                     #(
-                        #idents: ::srad::types::data_set_value_try_into::<#types>(
-                            elements.next().expect("row length checked"),
-                            Self::COLUMNS[#indices].datatype,
-                            #indices,
-                        )?,
+                        #column_idents: #decode_exprs,
+                    )*
+                    #(
+                        #skipped_idents: ::core::default::Default::default(),
                     )*
                 })
             }
         }
+
+        #(#datatype_assertions)*
     }
     .into())
 }
@@ -398,7 +526,7 @@ fn try_template(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> {
                         metrics.push(
                             ::srad::types::TemplateMetric::new_template_metric_raw(
                                 #name.to_string(),
-                                <#ty as ::srad::types::traits::HasDataType>::default_datatype(),
+                                <#ty as ::srad::types::traits::HasDataType>::DEFAULT_DATATYPE,
                                 value
                             )
                         )
@@ -742,6 +870,20 @@ pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 /// Derives `DataSetRow` for a struct with named fields.
 ///
 /// Field names become column names. Use `#[dataset(rename = "name")]` to override a name.
+///
+/// Use `#[dataset(skip)]` to exclude a field from the DataSet. Skipped fields are not encoded
+/// and are reconstructed with `Default::default()` when decoding, so they must implement
+/// `Default`.
+///
+/// `Option<T>` columns are encoded as an absent value for `None` and decoded as `None` when the
+/// element has no value. The column datatype is derived from `T`. Type aliases to
+/// `Option<T>` are not detected; use `Option<T>` directly on the field.
+///
+/// Use `#[dataset(datatype = "Text")]` to override the column datatype. The datatype must be
+/// listed by the field type's `HasDataType::SUPPORTED_DATATYPES`; this is checked at compile
+/// time for non-generic rows. Encoding and decoding still use the field type's `DataSetValue`
+/// implementation, so only variants encoded by that type are valid (for example `String` can
+/// use `String`, `Text` or `Uuid` because all three are encoded as a string).
 ///
 /// Every field type must implement:
 ///
