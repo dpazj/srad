@@ -221,15 +221,13 @@ async fn rebirth() {
     );
 
     let mut dev_rebirth_topics = vec![];
-    let mut expected_seq = 1;
-    for x in dev_rebirths {
+    for (expected_seq, x) in (1..).zip(dev_rebirths) {
         let (topic, payload) = match x {
             OutboundMessage::DeviceMessage { topic, payload } => (topic, payload),
             _ => panic!(),
         };
         dev_rebirth_topics.push(topic);
         verify_dbirth_payload(payload, expected_seq);
-        expected_seq += 1;
     }
 
     let expected_dev_rebirth_topics = vec![

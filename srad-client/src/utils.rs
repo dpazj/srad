@@ -264,7 +264,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use prost::Message as _;
     use srad_types::{
         payload::{DataType, Metric},
         utils::timestamp,

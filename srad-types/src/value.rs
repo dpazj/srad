@@ -207,10 +207,9 @@ fn bool_vec_to_proto(vec: Vec<bool>) -> Vec<u8> {
         out.push(x);
     }
     /* Pack bools into bytes */
-    let chunks = vec.chunks_exact(8);
-    let remainder = chunks.remainder();
+    let (chunks, remainder) = vec.as_chunks::<8>();
     chunks
-        .into_iter()
+        .iter()
         .for_each(|chunk| out.push(pack_byte_with_bool(chunk)));
     if !remainder.is_empty() {
         out.push(pack_byte_with_bool(remainder))
