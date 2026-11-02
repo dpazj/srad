@@ -15,6 +15,7 @@
 - Add `TemplateError::MissingValue` and `TemplateError::ValueConversion`
 - **breaking change** `PropertySet::insert`, `DataType::try_from`, `Quality::try_from` and the property set/template conversions now return typed errors instead of `()`
 - Fix publish QoS for lifecycle messages: Node Death, Device Birth and Device Death now use QoS 0
+- Sign-extend negative `Int8` and `Int16` values to 32 bits when encoding for compatibility with Tahu and other Sparkplug implementations; decoding accepts both sign-extended and width-sized forms
 
 ### Client
 
