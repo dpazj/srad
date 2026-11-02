@@ -21,7 +21,7 @@
 
 - Add support for deferred payload decoding: `MessagePayload` stores either encoded `Bytes` or a decoded `Payload`, `Message::decode` decodes on demand, and `topic_and_payload_to_event_deferred` defers decoding
 - **breaking change** `Message.payload` is now a `MessagePayload`, and `Event::InvalidPublish` carries `Bytes`
-- Retain the Node Death Last Will message and publish it with QoS 1
+- Retain the Node Death Last Will message (it is still published with QoS 1)
 - Add `ClientError` and return it from all `Client` methods
 - **breaking change** `Client` implementations must return `ClientError`
 
