@@ -69,6 +69,7 @@ pub struct AppClient {
     state: Arc<AppState>,
 }
 
+#[allow(clippy::result_unit_err)] // mirrors the `Result<(), ()>` API of `srad_client::Client`
 impl AppClient {
     /// Stop all operations, sending a death certificate (application offline message) and disconnect from the broker.
     ///
