@@ -10,6 +10,7 @@ homepage.workspace = true
 repository.workspace = true
 license.workspace = true 
 authors.workspace = true
+rust-version.workspace = true
 
 [features]
 default = ["eon", "app", "rumqtt-client"]
