@@ -179,6 +179,8 @@ impl HasDataType for DataSet {
     const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::DataSet];
 }
 
+const _: () = traits::assert_default_datatype_supported::<DataSet>();
+
 impl traits::MetricValue for DataSet {}
 
 impl From<DataSet> for MetricValue {

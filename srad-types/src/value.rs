@@ -360,6 +360,8 @@ macro_rules! impl_has_datatype {
       const DEFAULT_DATATYPE: DataType = $first;
       const SUPPORTED_DATATYPES: &'static [DataType] = &[$first $(, $rest)*];
     }
+
+    const _: () = traits::assert_default_datatype_supported::<$type>();
   };
 }
 

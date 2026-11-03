@@ -33,6 +33,8 @@ impl traits::HasDataType for Quality {
     const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::Int32];
 }
 
+const _: () = traits::assert_default_datatype_supported::<Quality>();
+
 impl TryFrom<PropertyValue> for Quality {
     type Error = FromValueTypeError;
 
