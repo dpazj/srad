@@ -46,6 +46,8 @@
 
 - Use a request channel capacity of 64 in the examples instead of a
   zero-capacity (rendezvous) channel
+- Publish the `tck-node` template instance in the device birth, rather than a
+  parameters-only template, so the TCK's template member assertions execute
 - Add a `tck-node` example that implements the DataSet and template features checked
   by the Sparkplug TCK's `SendComplexDataTest`
 - Configure the `tck-node` example to wait for the TCK's `SCADA_HOST` primary host,
