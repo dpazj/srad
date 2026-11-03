@@ -273,12 +273,11 @@ impl EventLoop {
                     self.state = ConnectionState::Disconnected;
                     Some(Event::Offline)
                 }
-                ConnectionState::Disconnected => {
+                ConnectionState::Disconnected | ConnectionState::ManualDisconnected => {
                     error!("Client error on reconnect attempt: {e}");
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                     None
                 }
-                ConnectionState::ManualDisconnected => None,
             },
         }
     }

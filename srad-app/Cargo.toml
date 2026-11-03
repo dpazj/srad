@@ -21,5 +21,6 @@ log = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 srad-client = { path = "../srad-client", version = "0.4.0", features=["channel-client"] }
 tokio = { workspace = true, features = ["full"] }

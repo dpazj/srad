@@ -4,11 +4,13 @@ use std::{
         atomic::{AtomicBool, AtomicU8, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use log::{debug, error, info, warn};
-use srad_client::{DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind};
+use srad_client::{
+    ClientError, DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind,
+};
 use srad_types::{
     constants::{self, BDSEQ, NODE_CONTROL_REBIRTH},
     payload::{self, metric::Value, DataType, Payload},
@@ -23,7 +25,7 @@ use thiserror::Error;
 use tokio::{
     select,
     sync::{mpsc, oneshot},
-    time::timeout,
+    time::{sleep_until, timeout, Instant as TokioInstant},
 };
 
 use crate::{
@@ -36,6 +38,7 @@ use crate::{
 
 pub(crate) struct EoNConfig {
     node_rebirth_request_cooldown: Duration,
+    retry_delay: Duration,
 }
 
 struct EoNStateInner {
@@ -148,6 +151,17 @@ impl EoNState {
 
 #[derive(Debug)]
 struct EoNShutdown;
+
+/// Errors that prevent an edge node from establishing its session.
+#[derive(Debug, Error)]
+enum SessionError {
+    /// The client failed to subscribe to the topics required by the node.
+    #[error("failed to subscribe to required topics: {0}")]
+    Subscribe(#[source] ClientError),
+    /// The node could not publish its birth message.
+    #[error("failed to publish the node birth message: {0}")]
+    Birth(#[source] PublishError),
+}
 
 /// A handle for interacting with the Edge Node.
 ///
@@ -407,6 +421,11 @@ struct Node {
     node_message_rx: mpsc::UnboundedReceiver<Message>,
     client_state_rx: mpsc::Receiver<ClientStateMessage>,
     rebirth_request_rx: mpsc::Receiver<()>,
+
+    /// Whether the underlying client currently reports an established connection.
+    client_online: bool,
+    /// When the next attempt to establish the node session may be made.
+    retry_at: Option<Instant>,
 }
 
 impl Node {
@@ -465,29 +484,29 @@ impl Node {
         Ok(())
     }
 
-    async fn birth(&mut self, birth_type: BirthType) {
+    async fn birth(&mut self, birth_type: BirthType) -> Result<(), PublishError> {
         info!(
             "Birthing Node. node={} type={birth_type:?}",
             self.state.edge_node_id
         );
-        if let Err(e) = self.node_birth().await {
-            error!(
-                "Publishing node birth message failed. node={}: {e}",
-                self.state.edge_node_id
-            );
-            return;
-        }
+        self.node_birth().await?;
         self.devices
             .lock()
             .unwrap()
             .birth_devices(birth_type, &self.template_registry);
+        Ok(())
     }
 
     async fn rebirth(&mut self) {
         if !self.state.birthed() {
             return;
         }
-        self.birth(BirthType::Rebirth).await;
+        if let Err(e) = self.birth(BirthType::Rebirth).await {
+            error!(
+                "Publishing node rebirth message failed. node={}: {e}",
+                self.state.edge_node_id
+            );
+        }
     }
 
     fn death(&self) {
@@ -496,17 +515,45 @@ impl Node {
         self.devices.lock().unwrap().on_death();
     }
 
-    async fn on_online(&mut self) {
-        if self.state.online_swap(true) {
-            return;
+    async fn on_online(&mut self) -> Result<(), SessionError> {
+        if self.state.is_online() {
+            return Ok(());
         }
 
         info!("Edge node online. node={}", self.state.edge_node_id);
-        let sub_topics = self.state.sub_topics();
 
-        if self.client.subscribe_many(sub_topics).await.is_ok() {
-            self.birth(BirthType::Birth).await
-        };
+        // Subscribe before publishing the birth message so that the node can receive
+        // commands as soon as it is birthed.
+        self.client
+            .subscribe_many(self.state.sub_topics())
+            .await
+            .map_err(SessionError::Subscribe)?;
+        self.state.online_swap(true);
+        if let Err(e) = self.birth(BirthType::Birth).await {
+            //The session was never established, so do not publish a death message.
+            self.state.online_swap(false);
+            return Err(SessionError::Birth(e));
+        }
+        Ok(())
+    }
+
+    /// Attempt to establish the node session, retrying on a delay if it fails.
+    ///
+    /// Failures are treated like a lost connection: the client is disconnected and
+    /// the node tries again once the configured retry delay has elapsed.
+    async fn try_online(&mut self) {
+        if !self.client_online || self.state.is_online() || self.retry_at.is_some() {
+            return;
+        }
+
+        if let Err(e) = self.on_online().await {
+            warn!(
+                "Failed to establish edge node session. node={}: {e}",
+                self.state.edge_node_id
+            );
+            self.retry_at = Some(Instant::now() + self.config.retry_delay);
+            _ = self.client.disconnect().await;
+        }
     }
 
     fn on_offline(&self, will_sender: oneshot::Sender<LastWill>) {
@@ -606,15 +653,26 @@ impl Node {
 
     async fn run(mut self) {
         loop {
+            let retry_at = TokioInstant::from_std(self.retry_at.unwrap_or_else(Instant::now));
             select! {
                 biased;
                 maybe_state_update = self.client_state_rx.recv() => match maybe_state_update {
                     Some (state_update) => match state_update {
-                        ClientStateMessage::Online => self.on_online().await,
-                        ClientStateMessage::Offline(sender) => self.on_offline(sender),
+                        ClientStateMessage::Online => {
+                            self.client_online = true;
+                            self.try_online().await;
+                        },
+                        ClientStateMessage::Offline(sender) => {
+                            self.client_online = false;
+                            self.on_offline(sender);
+                        },
                         ClientStateMessage::Stopped => break
                     },
                     None => break, //EoN has been dropped
+                },
+                _ = sleep_until(retry_at), if self.retry_at.is_some() => {
+                    self.retry_at = None;
+                    self.try_online().await;
                 },
                 Some(_) = self.rebirth_request_rx.recv() => self.rebirth().await,
                 maybe_message = self.node_message_rx.recv() => match maybe_message {
@@ -689,12 +747,15 @@ impl EoN {
             stop_tx,
             config: Arc::new(EoNConfig {
                 node_rebirth_request_cooldown: builder.node_rebirth_request_cooldown,
+                retry_delay: builder.retry_delay,
             }),
             last_node_rebirth_request: Duration::new(0, 0),
             node_message_rx,
             rebirth_request_rx,
             rebirth_request_tx,
             client_state_rx,
+            client_online: false,
+            retry_at: None,
         };
 
         let eon = Self {
@@ -772,7 +833,11 @@ impl EoN {
 
     /// Run the Edge Node
     ///
-    /// Runs the Edge Node until [NodeHandle::cancel()] is called
+    /// Runs the Edge Node until [NodeHandle::cancel()] is called.
+    ///
+    /// If the node cannot establish its session, for example because subscribing to
+    /// the command topics or publishing the birth message fails, it disconnects and
+    /// retries after a delay rather than stopping.
     pub async fn run(mut self) {
         info!("Edge node running. node={}", self.state.edge_node_id);
         self.state.running.store(true, Ordering::SeqCst);

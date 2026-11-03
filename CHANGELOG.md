@@ -34,10 +34,14 @@ Minimum supported Rust version is now 1.85.
 - Add `ClientError` and return it from all `Client` methods
 - **breaking change** `Client` implementations must return `ClientError`
 - Fix the Node Death Last Will being retained: it is now registered with `retain = false`
+- Back off between reconnect attempts after a manual disconnect instead of retrying in a tight loop
 
 ### App
 
 - `AppClient` publish methods now return `ClientError`
+- Publish the application online STATE only after its subscriptions have been established
+- Retry the application session instead of stopping when the subscription or online STATE publish fails. The delay between attempts is configurable with `ApplicationBuilder::with_retry_delay` and defaults to 3 seconds
+- Add `AppEventLoop::set_retry_delay` to configure the delay between session retry attempts
 - Add `NodeEvent::Raw` and `DeviceEvent::Raw` so the generic application can decode deferred payloads in per-node tasks
 - Add `DecodedNodeEvent` and `DecodedDeviceEvent`, returned by `NodeEvent::from_message` and `DeviceEvent::from_message`, for decoding deferred events
 - Add `BdseqError` and preserve BDSEQ decoding details in `PayloadError`
@@ -46,6 +50,7 @@ Minimum supported Rust version is now 1.85.
 ### EoN
 
 - Change EoN lifecycle publishes to QoS 0: NDeath, DBirth and DDeath.
+- Subscribe before publishing the NBIRTH and retry the node session instead of skipping the birth when the subscription or NBIRTH publish fails. The delay between attempts is configurable with `EoNBuilder::with_retry_delay` and defaults to 3 seconds
 - Add `PublishError::Client` and stop masking client publish failures as `StateError::Offline`
 - Add `MessageMetricError` and `MessageMetricsError`
 - **breaking change** `MessageMetric` and `MessageMetrics` conversions now return typed errors
