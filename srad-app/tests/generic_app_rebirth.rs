@@ -45,7 +45,7 @@ async fn reorder_rebirths() {
     .build();
 
     tokio::spawn(async move {
-        application.run().await;
+        let _ = application.run().await;
     });
 
     broker.tx_event.send(srad_client::Event::Online).unwrap();

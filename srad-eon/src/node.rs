@@ -8,7 +8,9 @@ use std::{
 };
 
 use log::{debug, error, info, warn};
-use srad_client::{DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind};
+use srad_client::{
+    ClientError, DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind,
+};
 use srad_types::{
     constants::{self, BDSEQ, NODE_CONTROL_REBIRTH},
     payload::{self, metric::Value, DataType, Payload},
@@ -148,6 +150,17 @@ impl EoNState {
 
 #[derive(Debug)]
 struct EoNShutdown;
+
+/// Errors that can stop an [EoN] run loop.
+#[derive(Debug, Error)]
+pub enum EoNError {
+    /// The client failed to subscribe to the topics required by the node.
+    ///
+    /// The node will not publish a birth message if it cannot subscribe to the
+    /// command topics, as it would then be unable to receive commands.
+    #[error("failed to subscribe to required topics: {0}")]
+    Subscribe(#[from] ClientError),
+}
 
 /// A handle for interacting with the Edge Node.
 ///
@@ -407,6 +420,7 @@ struct Node {
     node_message_rx: mpsc::UnboundedReceiver<Message>,
     client_state_rx: mpsc::Receiver<ClientStateMessage>,
     rebirth_request_rx: mpsc::Receiver<()>,
+    error_tx: mpsc::Sender<ClientError>,
 }
 
 impl Node {
@@ -496,17 +510,19 @@ impl Node {
         self.devices.lock().unwrap().on_death();
     }
 
-    async fn on_online(&mut self) {
-        if self.state.online_swap(true) {
-            return;
+    async fn on_online(&mut self) -> Result<(), ClientError> {
+        if self.state.is_online() {
+            return Ok(());
         }
 
         info!("Edge node online. node={}", self.state.edge_node_id);
-        let sub_topics = self.state.sub_topics();
 
-        if self.client.subscribe_many(sub_topics).await.is_ok() {
-            self.birth(BirthType::Birth).await
-        };
+        // Subscribe before publishing the birth message so that the node can receive
+        // commands as soon as it is birthed.
+        self.client.subscribe_many(self.state.sub_topics()).await?;
+        self.state.online_swap(true);
+        self.birth(BirthType::Birth).await;
+        Ok(())
     }
 
     fn on_offline(&self, will_sender: oneshot::Sender<LastWill>) {
@@ -610,7 +626,17 @@ impl Node {
                 biased;
                 maybe_state_update = self.client_state_rx.recv() => match maybe_state_update {
                     Some (state_update) => match state_update {
-                        ClientStateMessage::Online => self.on_online().await,
+                        ClientStateMessage::Online => {
+                            if let Err(e) = self.on_online().await {
+                                error!(
+                                    "Failed to subscribe to required topics. node={}: {e}",
+                                    self.state.edge_node_id
+                                );
+                                _ = self.client.disconnect().await;
+                                _ = self.error_tx.send(e).await;
+                                break;
+                            }
+                        },
                         ClientStateMessage::Offline(sender) => self.on_offline(sender),
                         ClientStateMessage::Stopped => break
                     },
@@ -642,6 +668,7 @@ pub struct EoN {
     client_state_tx: mpsc::Sender<ClientStateMessage>,
     state: Arc<EoNState>,
     devices: Arc<Mutex<DeviceMap>>,
+    error_rx: mpsc::Receiver<ClientError>,
 }
 
 impl EoN {
@@ -679,6 +706,7 @@ impl EoN {
         let (node_message_tx, node_message_rx) = mpsc::unbounded_channel();
         let (rebirth_request_tx, rebirth_request_rx) = mpsc::channel(1);
         let (client_state_tx, client_state_rx) = mpsc::channel(1);
+        let (error_tx, error_rx) = mpsc::channel(1);
 
         let node = Node {
             metric_manager,
@@ -695,6 +723,7 @@ impl EoN {
             rebirth_request_rx,
             rebirth_request_tx,
             client_state_rx,
+            error_tx,
         };
 
         let eon = Self {
@@ -704,6 +733,7 @@ impl EoN {
             client_state_tx,
             state,
             devices,
+            error_rx,
         };
 
         let handle = node.create_node_handle();
@@ -772,17 +802,25 @@ impl EoN {
 
     /// Run the Edge Node
     ///
-    /// Runs the Edge Node until [NodeHandle::cancel()] is called
-    pub async fn run(mut self) {
+    /// Runs the Edge Node until [NodeHandle::cancel()] is called.
+    ///
+    /// Returns an error if the node cannot establish the subscriptions required for
+    /// its session, in which case it does not publish a birth message.
+    pub async fn run(mut self) -> Result<(), EoNError> {
         info!("Edge node running. node={}", self.state.edge_node_id);
         self.state.running.store(true, Ordering::SeqCst);
 
         self.update_last_will(self.state.create_last_will());
 
+        let mut run_error = None;
         loop {
             select! {
               event = self.eventloop.poll() => self.handle_event(event).await,
               Some(_) = self.stop_rx.recv() => break,
+              Some(client_error) = self.error_rx.recv() => {
+                  run_error = Some(EoNError::Subscribe(client_error));
+                  break;
+              },
             }
         }
 
@@ -796,5 +834,10 @@ impl EoN {
         _ = self.client_state_tx.send(ClientStateMessage::Stopped).await;
         info!("Edge node stopped. node={}", self.state.edge_node_id);
         self.state.running.store(false, Ordering::SeqCst);
+
+        match run_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 }

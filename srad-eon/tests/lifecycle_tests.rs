@@ -32,7 +32,9 @@ async fn node_session() {
         .build()
         .unwrap();
 
-    tokio::spawn(async move { eventloop.run().await });
+    tokio::spawn(async move {
+        let _ = eventloop.run().await;
+    });
 
     // Node goes online
     test_node_online(&mut broker, group_id, node_id, 0).await;
@@ -63,7 +65,9 @@ async fn device_session() {
         .build()
         .unwrap();
 
-    tokio::spawn(async move { eventloop.run().await });
+    tokio::spawn(async move {
+        let _ = eventloop.run().await;
+    });
 
     /* Add device and enable before node is online */
     handle
@@ -150,7 +154,9 @@ async fn rebirth() {
         .build()
         .unwrap();
 
-    tokio::spawn(async move { eventloop.run().await });
+    tokio::spawn(async move {
+        let _ = eventloop.run().await;
+    });
     test_node_online(&mut broker, group_id, node_id, 0).await;
 
     broker

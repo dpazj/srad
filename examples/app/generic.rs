@@ -127,7 +127,9 @@ async fn main() {
     .build();
 
     tokio::spawn(async move {
-        application.run().await;
+        if let Err(e) = application.run().await {
+            println!("Application stopped with error: {e}");
+        }
     });
 
     if let Err(e) = tokio::signal::ctrl_c().await {

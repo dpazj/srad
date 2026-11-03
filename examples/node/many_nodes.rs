@@ -69,6 +69,8 @@ async fn main() {
 
     for (node_handle, run_handle) in node_handles {
         node_handle.cancel().await;
-        run_handle.await.unwrap();
+        if let Err(e) = run_handle.await.unwrap() {
+            println!("Edge node stopped with error: {e}");
+        }
     }
 }

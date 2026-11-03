@@ -23,7 +23,14 @@ async fn main() {
     });
 
     loop {
-        match application.poll().await {
+        let event = match application.poll().await {
+            Ok(event) => event,
+            Err(e) => {
+                log::error!("Application stopped with error: {e}");
+                break;
+            }
+        };
+        match event {
             srad::app::AppEvent::Online => info!("App online"),
             srad::app::AppEvent::Offline => info!("App offline"),
             srad::app::AppEvent::Node(node_event) => info!("Node event {node_event:?}"),

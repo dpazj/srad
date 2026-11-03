@@ -54,7 +54,7 @@ async fn main() {
         .with_metric_manager(NoMetricManager::new())
         .build().unwrap();
 
-    eon.run().await;
+    eon.run().await.unwrap();
 }
 ```
 
@@ -69,7 +69,7 @@ async fn main() {
     let opts = client_rumqtt::MqttOptions::new("foo", "localhost", 1883);
     let (eventloop, client) = client_rumqtt::EventLoop::new(opts, 0);
     let (mut application, client) = ApplicationBuilder::new("foo", eventloop, client, SubscriptionConfig::AllGroups).build();
-    application.run().await
+    application.run().await.unwrap()
 }
 ```
 

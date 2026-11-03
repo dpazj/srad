@@ -76,5 +76,7 @@ async fn main() {
         handle.cancel().await;
     });
 
-    eon.run().await;
+    if let Err(e) = eon.run().await {
+        println!("Edge node stopped with error: {e}");
+    }
 }

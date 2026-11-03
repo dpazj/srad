@@ -19,6 +19,8 @@
 
 ## EoN
 
+- Check the result of publishes and handle failures accordingly
+  - Decide how to handle failed NBIRTH/DBIRTH/DDATA/DDEATH publishes
 - Add a node rebirth cooldown for CMD-triggered rebirths
 - Provide properties in `MessageMetric`
 - Multi-part metric message support for NDATA/DDATA and NCMD/DCMD
@@ -27,6 +29,7 @@
 ## App
 
 - App state change callbacks
+- Check the result of publishes and handle failures accordingly
 - Multi-part metric message support
 
 ## Client

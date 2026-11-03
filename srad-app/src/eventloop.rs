@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use log::{debug, info};
+use log::{debug, error, info};
 use srad_client::{
     Client, ClientError, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage,
     StatePayload,
@@ -21,6 +21,8 @@ use crate::{
     events::{AppDeviceEvent, AppNodeEvent, PayloadErrorDetails},
     metrics::PublishMetric,
 };
+
+use thiserror::Error;
 
 use tokio::{
     select,
@@ -159,6 +161,17 @@ struct AppState {
     published_online_state: AtomicBool,
 }
 
+/// Errors returned while progressing an [AppEventLoop].
+#[derive(Debug, Error)]
+pub enum AppError {
+    /// The client failed to subscribe to the topics required by the application.
+    #[error("failed to subscribe to required topics: {0}")]
+    Subscribe(#[from] ClientError),
+    /// The application could not publish its online STATE message.
+    #[error("failed to publish the application online state: {0}")]
+    PublishOnlineState(#[source] ClientError),
+}
+
 /// A Sparkplug Application EventLoop
 ///
 /// On top of [srad_client::EventLoop] functionality, AppEventLoop provides some specific application functionality:
@@ -225,35 +238,47 @@ impl AppEventLoop {
         ));
     }
 
-    fn handle_online(&mut self) -> Option<AppEvent> {
+    async fn handle_online(&mut self) -> Result<Option<AppEvent>, AppError> {
         if self.online {
-            return None;
+            return Ok(None);
         }
+
         info!("App Online");
-        self.online = true;
-        let client = self.client.client.clone();
         let state_topic = StateTopic::new_host(&self.state.host_id);
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
-        if let SubscriptionConfig::AllGroups = self.subscription_config {
-        } else {
+        if !matches!(self.subscription_config, SubscriptionConfig::AllGroups) {
             //If subscription config == AllGroups, then we get STATE subscriptions for free
             topics.push(TopicFilter::new_with_qos(
                 Topic::State(state_topic.clone()),
                 QoS::AtMostOnce,
             ));
         }
+
+        // Only publish the online state once the subscriptions have been established,
+        // otherwise the application may miss messages while advertising itself online.
+        if let Err(e) = self.client.client.subscribe_many(topics).await {
+            error!("Failed to subscribe to required topics: {e}");
+            _ = self.client.client.disconnect().await;
+            return Err(AppError::Subscribe(e));
+        }
+
         let timestamp = self.will_timestamp;
-        let app_state = self.client.state.clone();
-        task::spawn(async move {
-            _ = client.subscribe_many(topics).await;
-            _ = client
-                .publish_state_message(state_topic, srad_client::StatePayload::Online { timestamp })
-                .await;
-            app_state
-                .published_online_state
-                .store(true, std::sync::atomic::Ordering::SeqCst);
-        });
-        Some(AppEvent::Online)
+        if let Err(e) = self
+            .client
+            .client
+            .publish_state_message(state_topic, StatePayload::Online { timestamp })
+            .await
+        {
+            error!("Failed to publish application online state: {e}");
+            _ = self.client.client.disconnect().await;
+            return Err(AppError::PublishOnlineState(e));
+        }
+
+        self.state
+            .published_online_state
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.online = true;
+        Ok(Some(AppEvent::Online))
     }
 
     fn handle_offline(&mut self) -> Option<AppEvent> {
@@ -291,18 +316,18 @@ impl AppEventLoop {
         }
     }
 
-    fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
+    async fn handle_event(&mut self, event: Event) -> Result<Option<AppEvent>, AppError> {
         match event {
-            Event::Offline => self.handle_offline(),
-            Event::Online => self.handle_online(),
-            Event::Node(message) => match Self::handle_node_message(message) {
+            Event::Offline => Ok(self.handle_offline()),
+            Event::Online => self.handle_online().await,
+            Event::Node(message) => Ok(match Self::handle_node_message(message) {
                 Ok(event) => event,
                 Err(e) => Some(AppEvent::InvalidPayload(e)),
-            },
-            Event::Device(message) => match Self::handle_device_message(message) {
+            }),
+            Event::Device(message) => Ok(match Self::handle_device_message(message) {
                 Ok(event) => event,
                 Err(e) => Some(AppEvent::InvalidPayload(e)),
-            },
+            }),
             Event::State { host_id, payload } => {
                 if self
                     .client
@@ -316,15 +341,18 @@ impl AppEventLoop {
                         let client = self.client.client.clone();
                         let timestamp = self.will_timestamp;
                         task::spawn(async move {
-                            _ = client
+                            if let Err(e) = client
                                 .publish_state_message(topic, StatePayload::Online { timestamp })
-                                .await;
+                                .await
+                            {
+                                error!("Failed to republish application online state: {e}");
+                            }
                         });
                     }
                 }
-                None
+                Ok(None)
             }
-            _ => None,
+            _ => Ok(None),
         }
     }
 
@@ -342,17 +370,20 @@ impl AppEventLoop {
 
     /// Progress the App. Continuing to poll will reconnect if the application if there is a disconnection.
     /// **NOTE** Don't block this while iterating. Additionally, using the `AppClient` directly inside the loop may block progress.
-    pub async fn poll(&mut self) -> AppEvent {
+    ///
+    /// Returns an error if the application cannot establish its subscriptions or
+    /// publish its online state. In that case the application remains offline.
+    pub async fn poll(&mut self) -> Result<AppEvent, AppError> {
         loop {
             select! {
                 event = self.eventloop.poll() => {
-                    if let Some(app_event) = self.handle_event(event) {
-                        return app_event
+                    if let Some(app_event) = self.handle_event(event).await? {
+                        return Ok(app_event)
                     }
                 }
                 Some(_) = self.shutdown_rx.recv() => {
                     self.poll_until_offline_with_timeout().await;
-                    return AppEvent::Cancelled
+                    return Ok(AppEvent::Cancelled)
                 },
             }
         }

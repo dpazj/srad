@@ -28,7 +28,7 @@ pub use metric_manager::manager::{
     DeviceMetricManager, MetricManager, NoMetricManager, NodeMetricManager,
 };
 pub use metric_manager::simple_manager;
-pub use node::{EoN, NodeHandle, TemplateRegistry};
+pub use node::{EoN, EoNError, NodeHandle, TemplateRegistry};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum BirthType {

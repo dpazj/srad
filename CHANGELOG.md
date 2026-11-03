@@ -38,6 +38,8 @@ Minimum supported Rust version is now 1.85.
 ### App
 
 - `AppClient` publish methods now return `ClientError`
+- **breaking change** `AppEventLoop::poll` returns `Result<AppEvent, AppError>` and `Application::run` returns `Result<(), AppError>`
+- Publish the application online STATE only after its subscriptions have been established; a subscription failure leaves the app offline and returns `AppError::Subscribe`
 - Add `NodeEvent::Raw` and `DeviceEvent::Raw` so the generic application can decode deferred payloads in per-node tasks
 - Add `DecodedNodeEvent` and `DecodedDeviceEvent`, returned by `NodeEvent::from_message` and `DeviceEvent::from_message`, for decoding deferred events
 - Add `BdseqError` and preserve BDSEQ decoding details in `PayloadError`
@@ -45,7 +47,8 @@ Minimum supported Rust version is now 1.85.
 
 ### EoN
 
-- Change EoN lifecycle publishes to QoS 0: NDeath, DBirth and DDeath.
+- Change EoN lifecycle publishes to QoS 0: NDeath, DBirth and DDeath. The NDEATH Last Will remains QoS 1
+- **breaking change** `EoN::run` returns `Result<(), EoNError>` and reports a failed topic subscription instead of silently skipping the node birth
 - Add `PublishError::Client` and stop masking client publish failures as `StateError::Offline`
 - Add `MessageMetricError` and `MessageMetricsError`
 - **breaking change** `MessageMetric` and `MessageMetrics` conversions now return typed errors

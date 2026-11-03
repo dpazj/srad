@@ -15,7 +15,7 @@ use crate::{
         NDeath, NodeEvent,
     },
     resequencer::{self, Resequencer},
-    AppClient, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier,
+    AppClient, AppError, AppEvent, AppEventLoop, MetricBirthDetails, MetricDetails, NodeIdentifier,
     SubscriptionConfig,
 };
 
@@ -995,13 +995,17 @@ impl Application {
 
     /// Run the Application
     ///
-    /// Runs the Application until [AppClient::cancel()] is called
-    pub async fn run(mut self) {
+    /// Runs the Application until [AppClient::cancel()] is called.
+    ///
+    /// Returns an error if the application cannot establish its subscriptions or
+    /// publish its online state.
+    pub async fn run(mut self) -> Result<(), AppError> {
         loop {
-            let event = self.eventloop.poll().await;
+            let event = self.eventloop.poll().await?;
             if !self.handle_event(event).await {
                 break;
             }
         }
+        Ok(())
     }
 }

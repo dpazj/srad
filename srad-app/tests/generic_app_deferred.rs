@@ -96,7 +96,7 @@ async fn decodes_payload_in_node_task() {
     .build();
 
     tokio::spawn(async move {
-        application.run().await;
+        let _ = application.run().await;
     });
 
     broker.tx_event.send(srad_client::Event::Online).unwrap();
@@ -183,7 +183,7 @@ async fn decodes_device_payloads_in_node_task() {
     .build();
 
     tokio::spawn(async move {
-        application.run().await;
+        let _ = application.run().await;
     });
 
     broker.tx_event.send(srad_client::Event::Online).unwrap();
