@@ -10,7 +10,27 @@ use crate::{ClientError, Event, LastWill, StatePayload};
 #[async_trait]
 pub trait Client {
     /// Disconnects the client.
+    ///
+    /// This uses a normal MQTT disconnect, so the server discards the client's
+    /// Last Will message.
     async fn disconnect(&self) -> Result<(), ClientError>;
+
+    /// Attempts to disconnect in a way that makes the MQTT server publish the
+    /// client's Last Will message.
+    ///
+    /// Returns `true` when the implementation handled the disconnect without a
+    /// normal MQTT `DISCONNECT` packet. The caller must close the connection,
+    /// for example by dropping the event loop, so the server publishes the
+    /// will. The caller may still publish its own death message, for example
+    /// because brokers do not expose server-published wills to extensions.
+    ///
+    /// Returns `false` when the implementation did nothing. The caller must
+    /// publish its own death message and perform a normal [Client::disconnect].
+    ///
+    /// The default implementation does nothing and returns `false`.
+    async fn disconnect_with_will(&self) -> Result<bool, ClientError> {
+        Ok(false)
+    }
 
     /// Publishes a state message to the specified state topic.
     ///

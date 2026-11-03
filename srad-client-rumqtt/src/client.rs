@@ -70,6 +70,16 @@ impl srad_client::Client for Client {
         self.client.disconnect().await.map_err(ClientError::new)
     }
 
+    async fn disconnect_with_will(&self) -> Result<bool, ClientError> {
+        // rumqttc cannot send an MQTT 5 DISCONNECT with the
+        // `Disconnect with Will Message` reason code. Returning `true` without
+        // sending anything makes the caller drop the event loop, which closes
+        // the network connection; the broker then publishes the Last Will.
+        //
+        // TODO: send the MQTT 5 reason code once rumqttc exposes it.
+        Ok(true)
+    }
+
     async fn publish_state_message(
         &self,
         topic: StateTopic,
@@ -303,5 +313,17 @@ impl srad_client::EventLoop for EventLoop {
             None,
         );
         self.el.options.set_last_will(mqtt_will);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use srad_client::Client as _;
+
+    #[tokio::test]
+    async fn supports_a_will_preserving_disconnect() {
+        let (_eventloop, client) = EventLoop::new(MqttOptions::new("test", "localhost", 1883), 0);
+        assert!(client.disconnect_with_will().await.unwrap());
     }
 }

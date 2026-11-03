@@ -220,7 +220,11 @@ pub struct NodeHandle {
 }
 
 impl NodeHandle {
-    /// Stop all operations, sending a death certificate and disconnect from the broker.
+    /// Stop all operations and disconnect from the broker.
+    ///
+    /// The node death certificate is published as an NDEATH message. If the
+    /// client supports a will-preserving disconnect, the MQTT DISCONNECT packet
+    /// is omitted so the broker also publishes the registered Last Will.
     ///
     /// This will cancel [EoN::run()]
     pub async fn cancel(&self) {
@@ -228,6 +232,28 @@ impl NodeHandle {
             return;
         }
         info!("Edge node stopping. node={}", self.state.edge_node_id);
+
+        // Prefer a will-preserving disconnect. Clients that cannot do this fall
+        // back to a normal disconnect. Either way the NDEATH is published
+        // explicitly, because brokers do not expose server-published wills to
+        // extensions and some subscribers may not see them otherwise.
+        let will_on_close = match self.client.disconnect_with_will().await {
+            Ok(will_on_close) => will_on_close,
+            Err(e) => {
+                debug!(
+                    "Unable to arrange for a will-preserving disconnect. node={}: {e}",
+                    self.state.edge_node_id
+                );
+                false
+            }
+        };
+
+        // Stop accepting data publishes before the death certificate is
+        // published. Subscribers treat any DATA after NDEATH as a sequence
+        // error, and the connection may stay open briefly while a
+        // will-preserving disconnect completes.
+        self.state.set_dead();
+
         let topic = NodeTopic::new(
             &self.state.group_id,
             NodeMessageType::NDeath,
@@ -241,8 +267,12 @@ impl NodeHandle {
                 self.state.edge_node_id
             ),
         };
+
         _ = self.stop_tx.send(EoNShutdown).await;
-        _ = self.client.disconnect().await;
+
+        if !will_on_close {
+            _ = self.client.disconnect().await;
+        }
     }
 
     /// Manually trigger a rebirth for the node
