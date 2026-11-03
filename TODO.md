@@ -1,5 +1,6 @@
 # TODO
 
+
 ## General
 
 **Features**
@@ -27,7 +28,6 @@
 
 - App state change callbacks
 - Multi-part metric message support
-- Wait for app states
 
 ## Client
 

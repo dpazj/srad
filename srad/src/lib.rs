@@ -72,3 +72,10 @@ pub mod types {
     pub use srad_macros::{DataSetRow, Template};
     pub use srad_types::*;
 }
+
+// Compile the code blocks in the workspace README as doctests. This crate publishes
+// that file as its crate README, so without this the snippets shown on crates.io are
+// never compiled and can silently drift from the API.
+#[cfg(doctest)]
+#[doc = include_str!("../../README.md")]
+struct ReadmeDoctests;

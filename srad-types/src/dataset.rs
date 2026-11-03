@@ -1,3 +1,39 @@
+//! Sparkplug DataSet support.
+//!
+//! [`DataSet`] is a low-level wrapper around the protobuf DataSet representation and does
+//! not validate columns or rows. For compile-time column definitions and checked row
+//! conversion, use [`TypedDataSet`] together with [`DataSetRow`] and the
+//! `#[derive(DataSetRow)]` macro.
+//!
+//! # Example
+//!
+//! ```
+//! use srad_types::{payload::DataType, DataSet, DataSetValue, MetricValue, MetricValueKind};
+//!
+//! let mut data_set = DataSet::new();
+//! data_set
+//!     .init(["Time", "Value"], [DataType::UInt64, DataType::Double])
+//!     .add_row_values([
+//!         DataSetValue::from(1_u64),
+//!         DataSetValue::from(2.5_f64),
+//!     ]);
+//!
+//! assert_eq!(data_set.num_of_columns(), Some(2));
+//! assert_eq!(data_set.columns()[0], "Time");
+//! assert_eq!(data_set.rows().len(), 1);
+//!
+//! let value: MetricValue = data_set.into();
+//! match MetricValueKind::try_from_metric_value(DataType::DataSet, value).unwrap() {
+//!     MetricValueKind::DataSet(data_set) => {
+//!         assert_eq!(
+//!             data_set.types(),
+//!             [DataType::UInt64 as u32, DataType::Double as u32]
+//!         );
+//!     }
+//!     _ => panic!("expected a DataSet metric value"),
+//! }
+//! ```
+
 use thiserror::Error;
 
 use crate::{
@@ -28,7 +64,7 @@ impl DataSetColumn {
 /// Does not validate column or row consistency. Prefer [`TypedDataSet`], which provides
 /// typed rows and validated columns and values.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct DataSet(pub payload::DataSet);
+pub struct DataSet(payload::DataSet);
 
 impl DataSet {
     pub fn new() -> Self {
