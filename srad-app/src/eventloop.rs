@@ -183,6 +183,11 @@ pub struct AppEventLoop {
     online: bool,
     /// Whether the underlying client currently reports an established connection.
     client_online: bool,
+    /// Whether a session establishment task is currently running.
+    session_in_flight: bool,
+    /// Identifies the current session establishment attempt. Results from older
+    /// attempts are ignored.
+    session_attempt: u64,
     /// When the next attempt to establish the application session may be made.
     retry_at: Option<Instant>,
     retry_delay: Duration,
@@ -192,6 +197,8 @@ pub struct AppEventLoop {
     client: AppClient,
     eventloop: Box<DynEventLoop>,
     shutdown_rx: Receiver<Shutdown>,
+    session_tx: mpsc::Sender<(u64, Result<(), SessionError>)>,
+    session_rx: mpsc::Receiver<(u64, Result<(), SessionError>)>,
 }
 
 impl AppEventLoop {
@@ -222,9 +229,12 @@ impl AppEventLoop {
             sender: tx,
             state: app_state.clone(),
         };
+        let (session_tx, session_rx) = mpsc::channel(1);
         let mut app = Self {
             online: false,
             client_online: false,
+            session_in_flight: false,
+            session_attempt: 0,
             retry_at: None,
             retry_delay: Duration::from_secs(3),
             state: app_state,
@@ -233,6 +243,8 @@ impl AppEventLoop {
             eventloop: Box::new(eventloop),
             subscription_config,
             shutdown_rx: rx,
+            session_tx,
+            session_rx,
         };
         app.update_last_will();
         (app, client)
@@ -254,56 +266,85 @@ impl AppEventLoop {
         ));
     }
 
-    /// Subscribe to the application topics and advertise the application online.
-    async fn establish_session(&mut self) -> Result<(), SessionError> {
+    /// The topic the application publishes its STATE messages on and the
+    /// subscriptions it needs for the session.
+    fn session_topics(&self) -> (StateTopic, Vec<TopicFilter>) {
         let state_topic = StateTopic::new_host(&self.state.host_id);
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
-        if !matches!(self.subscription_config, SubscriptionConfig::AllGroups) {
-            //If subscription config == AllGroups, then we get STATE subscriptions for free
-            topics.push(TopicFilter::new_with_qos(
-                Topic::State(state_topic.clone()),
-                QoS::AtMostOnce,
-            ));
-        }
-
-        // Only publish the online state once the subscriptions have been established,
-        // otherwise the application may miss messages while advertising itself online.
-        self.client
-            .client
-            .subscribe_many(topics)
-            .await
-            .map_err(SessionError::Subscribe)?;
-
-        let timestamp = self.will_timestamp;
-        self.client
-            .client
-            .publish_state_message(state_topic, StatePayload::Online { timestamp })
-            .await
-            .map_err(SessionError::PublishOnlineState)
+        // Subscribe to the application's own STATE topic even when the
+        // namespace subscription already covers it. The Sparkplug TCK requires
+        // the explicit STATE subscription.
+        topics.push(TopicFilter::new_with_qos(
+            Topic::State(state_topic.clone()),
+            QoS::AtMostOnce,
+        ));
+        (state_topic, topics)
     }
 
-    /// Attempt to establish the application session, retrying on a delay if it fails.
+    /// Attempt to establish the application session, retrying on a delay if it
+    /// fails.
     ///
-    /// Failures are treated like a lost connection: the client is disconnected and
-    /// the application tries again once the configured retry delay has elapsed.
-    async fn try_online(&mut self) -> Option<AppEvent> {
-        if !self.client_online || self.online || self.retry_at.is_some() {
-            return None;
+    /// The subscribe and online STATE publish run on a spawned task so that the
+    /// event loop keeps being polled. Awaiting the client from here would block
+    /// the event loop, and with a zero-capacity request channel the client would
+    /// wait forever for the event loop to receive the request.
+    fn try_online(&mut self) {
+        if !self.client_online || self.online || self.retry_at.is_some() || self.session_in_flight {
+            return;
         }
 
         info!("App Online");
-        if let Err(e) = self.establish_session().await {
-            warn!("Failed to establish application session: {e}");
-            self.retry_at = Some(Instant::now() + self.retry_delay);
-            _ = self.client.client.disconnect().await;
-            return None;
-        }
+        let (state_topic, topics) = self.session_topics();
+        let client = self.client.client.clone();
+        let timestamp = self.will_timestamp;
+        let tx = self.session_tx.clone();
 
+        self.session_attempt = self.session_attempt.wrapping_add(1);
+        let attempt = self.session_attempt;
+        self.session_in_flight = true;
+
+        task::spawn(async move {
+            let result = async {
+                client
+                    .subscribe_many(topics)
+                    .await
+                    .map_err(SessionError::Subscribe)?;
+
+                // Only publish the online state once the subscriptions have been
+                // established, otherwise the application may miss messages while
+                // advertising itself online.
+                client
+                    .publish_state_message(state_topic, StatePayload::Online { timestamp })
+                    .await
+                    .map_err(SessionError::PublishOnlineState)
+            }
+            .await;
+
+            _ = tx.send((attempt, result)).await;
+        });
+    }
+
+    fn on_session_established(&mut self) -> Option<AppEvent> {
         self.state
             .published_online_state
             .store(true, std::sync::atomic::Ordering::SeqCst);
         self.online = true;
         Some(AppEvent::Online)
+    }
+
+    fn on_session_failed(&mut self, error: SessionError) {
+        warn!("Failed to establish application session: {error}");
+        self.state
+            .published_online_state
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.retry_at = Some(Instant::now() + self.retry_delay);
+
+        // Disconnect on a task too: the request channel may have zero capacity
+        // and the event loop must keep being polled.
+        let client = self.client.client.clone();
+        task::spawn(async move {
+            _ = client.disconnect().await;
+        });
     }
 
     fn handle_offline(&mut self) -> Option<AppEvent> {
@@ -341,15 +382,19 @@ impl AppEventLoop {
         }
     }
 
-    async fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
+    fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         match event {
             Event::Offline => {
                 self.client_online = false;
+                // Invalidate any in-flight session establishment for this connection.
+                self.session_attempt = self.session_attempt.wrapping_add(1);
+                self.session_in_flight = false;
                 self.handle_offline()
             }
             Event::Online => {
                 self.client_online = true;
-                self.try_online().await
+                self.try_online();
+                None
             }
             Event::Node(message) => match Self::handle_node_message(message) {
                 Ok(event) => event,
@@ -410,8 +455,26 @@ impl AppEventLoop {
             let retry_at = TokioInstant::from_std(self.retry_at.unwrap_or_else(Instant::now));
             select! {
                 event = self.eventloop.poll() => {
-                    if let Some(app_event) = self.handle_event(event).await {
+                    if let Some(app_event) = self.handle_event(event) {
                         return app_event
+                    }
+                }
+                Some((attempt, result)) = self.session_rx.recv() => {
+                    if attempt != self.session_attempt {
+                        // Result from a connection that is no longer current.
+                        continue;
+                    }
+                    self.session_in_flight = false;
+                    if !self.client_online {
+                        continue;
+                    }
+                    match result {
+                        Ok(()) => {
+                            if let Some(app_event) = self.on_session_established() {
+                                return app_event
+                            }
+                        }
+                        Err(e) => self.on_session_failed(e),
                     }
                 }
                 Some(_) = self.shutdown_rx.recv() => {
@@ -420,9 +483,7 @@ impl AppEventLoop {
                 },
                 _ = sleep_until(retry_at), if self.retry_at.is_some() => {
                     self.retry_at = None;
-                    if let Some(app_event) = self.try_online().await {
-                        return app_event
-                    }
+                    self.try_online();
                 },
             }
         }

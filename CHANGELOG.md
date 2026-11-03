@@ -29,8 +29,18 @@
   arriving after the death certificate and satisfies the MQTT 5 intentional
   disconnect requirement as far as rumqttc allows
 
+### App
+
+- Establish the application session (subscribe and online STATE publish) on a
+  spawned task so the event loop keeps polling. This fixes a deadlock when the
+  client uses a zero-capacity request channel
+- Always subscribe to the application's own `spBv1.0/STATE/<host>` topic, even
+  when the namespace subscription already covers it
+
 ### Examples
 
+- Use a request channel capacity of 64 in the examples instead of a
+  zero-capacity (rendezvous) channel
 - Add a `tck-node` example that implements the DataSet and template features checked
   by the Sparkplug TCK's `SendComplexDataTest`
 - Configure the `tck-node` example to wait for the TCK's `SCADA_HOST` primary host,

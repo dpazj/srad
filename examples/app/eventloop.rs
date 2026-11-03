@@ -9,7 +9,7 @@ async fn main() {
         .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
-    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
+    let (eventloop, client) = rumqtt::EventLoop::new(opts, 64);
     let (mut application, client) =
         AppEventLoop::new("foo", SubscriptionConfig::AllGroups, eventloop, client);
 

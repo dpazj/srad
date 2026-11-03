@@ -105,7 +105,7 @@ async fn main() {
         .init();
 
     let opts = rumqtt::MqttOptions::new("client", "localhost", 1883);
-    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
+    let (eventloop, client) = rumqtt::EventLoop::new(opts, 64);
     let (application, client) = generic_app::ApplicationBuilder::new(
         "foo",
         eventloop,

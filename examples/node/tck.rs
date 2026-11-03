@@ -106,7 +106,7 @@ async fn main() {
         .init();
 
     let opts = rumqtt::MqttOptions::new("tck-node", "localhost", 1883);
-    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
+    let (eventloop, client) = rumqtt::EventLoop::new(opts, 64);
 
     let node_metrics = SimpleMetricManager::<NodeHandle>::new();
     let node_counter = node_metrics
