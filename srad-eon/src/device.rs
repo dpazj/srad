@@ -270,7 +270,7 @@ impl Device {
                 }
             } else {
                 warn!(
-                    "Got CMD payload without a timestamp for device; using the current time. Device = {}",
+                    "Got CMD payload without a timestamp for device. using the current time. Device = {}",
                     self.state.name
                 );
                 MessageMetrics::from_payload_lenient(payload)
