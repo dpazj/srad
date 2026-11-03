@@ -17,6 +17,7 @@ pub struct EoNBuilder {
     pub(crate) metric_manager: Box<DynNodeMetricManager>,
     pub(crate) node_rebirth_request_cooldown: Duration,
     pub(crate) retry_delay: Duration,
+    pub(crate) primary_host_id: Option<String>,
     pub(crate) templates: TemplateRegistry,
 }
 
@@ -35,6 +36,7 @@ impl EoNBuilder {
             metric_manager: Box::new(NoMetricManager::new()),
             node_rebirth_request_cooldown: Duration::from_secs(5),
             retry_delay: Duration::from_secs(3),
+            primary_host_id: None,
             templates: TemplateRegistry::new(),
         }
     }
@@ -67,6 +69,24 @@ impl EoNBuilder {
     /// message it disconnects and retries after this delay. Defaults to 3 seconds.
     pub fn with_retry_delay(mut self, delay: Duration) -> Self {
         self.retry_delay = delay;
+        self
+    }
+
+    /// Configure the Primary Host Application this node waits for.
+    ///
+    /// A node with a primary host subscribes to the host's STATE topic,
+    /// `spBv1.0/STATE/<primary_host_id>`, and does not publish its NBIRTH or any
+    /// DBIRTH until that host publishes an online STATE message. STATE messages
+    /// with a timestamp older than the previous STATE are ignored.
+    ///
+    /// If the primary host goes offline, the node publishes an NDEATH message,
+    /// disconnects and waits for the host to come online again before starting a
+    /// new session.
+    ///
+    /// Nodes without a configured primary host publish their birth as soon as
+    /// they connect.
+    pub fn with_primary_host_id<S: Into<String>>(mut self, primary_host_id: S) -> Self {
+        self.primary_host_id = Some(primary_host_id.into());
         self
     }
 

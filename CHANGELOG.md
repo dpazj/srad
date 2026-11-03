@@ -13,11 +13,17 @@
 - Include registered template definitions in NBIRTH messages. The definitions were
   registered with the `TemplateRegistry` but never added to the birth payload, so
   template instances referenced a definition that nodes never published
+- Add `EoNBuilder::with_primary_host_id` for Sparkplug primary host support. Nodes
+  subscribe to `spBv1.0/STATE/<primary_host_id>`, defer NBIRTH and DBIRTH until the
+  host publishes an online STATE, publish NDEATH and reconnect when the host goes
+  offline, and ignore STATE messages with older timestamps
 
 ### Examples
 
 - Add a `tck-node` example that implements the DataSet and template features checked
   by the Sparkplug TCK's `SendComplexDataTest`
+- Configure the `tck-node` example to wait for the TCK's `SCADA_HOST` primary host,
+  which enables the TCK's `edge:SessionEstablishmentTest` primary host check
 
 ## 0.6.0
 

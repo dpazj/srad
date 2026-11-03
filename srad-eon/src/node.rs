@@ -10,6 +10,7 @@ use std::{
 use log::{debug, error, info, warn};
 use srad_client::{
     ClientError, DeviceMessage, DynClient, DynEventLoop, Event, LastWill, Message, MessageKind,
+    StatePayload,
 };
 use srad_types::{
     constants::{self, BDSEQ, NODE_CONTROL_REBIRTH},
@@ -45,6 +46,8 @@ struct EoNStateInner {
     seq: u8,
     online: bool,
     birthed: bool,
+    primary_host_online: bool,
+    last_primary_host_timestamp: Option<u64>,
 }
 
 pub(crate) struct EoNState {
@@ -53,6 +56,7 @@ pub(crate) struct EoNState {
     inner: Mutex<EoNStateInner>,
     pub group_id: String,
     pub edge_node_id: String,
+    pub primary_host_id: Option<String>,
     pub ndata_topic: NodeTopic,
 }
 
@@ -78,6 +82,43 @@ impl EoNState {
 
     fn is_online(&self) -> bool {
         self.inner.lock().unwrap().online
+    }
+
+    fn is_primary_host_online(&self) -> bool {
+        self.inner.lock().unwrap().primary_host_online
+    }
+
+    /// Whether the node is allowed to publish its birth message.
+    ///
+    /// Nodes without a primary host may birth as soon as they are online. Nodes
+    /// configured with one must wait until that host is online.
+    fn ready_to_birth(&self) -> bool {
+        self.primary_host_id.is_none() || self.is_primary_host_online()
+    }
+
+    fn set_primary_host_online(&self, online: bool) {
+        self.inner.lock().unwrap().primary_host_online = online;
+    }
+
+    /// Require the primary host to be verified again before the next birth.
+    fn reset_primary_host(&self) {
+        self.inner.lock().unwrap().primary_host_online = false;
+    }
+
+    /// Record the timestamp of a STATE message.
+    ///
+    /// Returns `false` if the timestamp is older than the last accepted STATE.
+    /// Sparkplug requires the timestamp to be greater than or equal to the
+    /// previous STATE message's timestamp.
+    fn update_primary_host_timestamp(&self, timestamp: u64) -> bool {
+        let mut state = self.inner.lock().unwrap();
+        if let Some(last) = state.last_primary_host_timestamp {
+            if timestamp < last {
+                return false;
+            }
+        }
+        state.last_primary_host_timestamp = Some(timestamp);
+        true
     }
 
     fn set_dead(&self) {
@@ -126,6 +167,11 @@ impl EoNState {
     }
 
     fn sub_topics(&self) -> Vec<TopicFilter> {
+        let state_topic = match &self.primary_host_id {
+            Some(host_id) => StateTopic::new_host(host_id),
+            None => StateTopic::new(),
+        };
+
         vec![
             TopicFilter::new_with_qos(
                 Topic::NodeTopic(NodeTopic::new(
@@ -144,7 +190,7 @@ impl EoNState {
                 )),
                 QoS::AtLeastOnce,
             ),
-            TopicFilter::new_with_qos(Topic::State(StateTopic::new()), QoS::AtLeastOnce),
+            TopicFilter::new_with_qos(Topic::State(state_topic), QoS::AtLeastOnce),
         ]
     }
 }
@@ -158,9 +204,6 @@ enum SessionError {
     /// The client failed to subscribe to the topics required by the node.
     #[error("failed to subscribe to required topics: {0}")]
     Subscribe(#[source] ClientError),
-    /// The node could not publish its birth message.
-    #[error("failed to publish the node birth message: {0}")]
-    Birth(#[source] PublishError),
 }
 
 /// A handle for interacting with the Edge Node.
@@ -523,17 +566,13 @@ impl Node {
         info!("Edge node online. node={}", self.state.edge_node_id);
 
         // Subscribe before publishing the birth message so that the node can receive
-        // commands as soon as it is birthed.
+        // commands as soon as it is birthed. When a primary host is configured the
+        // birth itself is deferred until that host publishes an online STATE.
         self.client
             .subscribe_many(self.state.sub_topics())
             .await
             .map_err(SessionError::Subscribe)?;
         self.state.online_swap(true);
-        if let Err(e) = self.birth(BirthType::Birth).await {
-            //The session was never established, so do not publish a death message.
-            self.state.online_swap(false);
-            return Err(SessionError::Birth(e));
-        }
         Ok(())
     }
 
@@ -542,21 +581,51 @@ impl Node {
     /// Failures are treated like a lost connection: the client is disconnected and
     /// the node tries again once the configured retry delay has elapsed.
     async fn try_online(&mut self) {
-        if !self.client_online || self.state.is_online() || self.retry_at.is_some() {
+        if !self.client_online || self.retry_at.is_some() {
             return;
         }
 
-        if let Err(e) = self.on_online().await {
+        if !self.state.is_online() {
+            if let Err(e) = self.on_online().await {
+                warn!(
+                    "Failed to establish edge node session. node={}: {e}",
+                    self.state.edge_node_id
+                );
+                self.retry_at = Some(Instant::now() + self.config.retry_delay);
+                _ = self.client.disconnect().await;
+                return;
+            }
+        }
+
+        if self.state.birthed() {
+            return;
+        }
+
+        if !self.state.ready_to_birth() {
+            debug!(
+                "Waiting for primary host before birthing node. node={} host={}",
+                self.state.edge_node_id,
+                self.state.primary_host_id.as_deref().unwrap_or_default()
+            );
+            return;
+        }
+
+        if let Err(e) = self.birth(BirthType::Birth).await {
+            // The session was never established, so do not publish a death message.
             warn!(
-                "Failed to establish edge node session. node={}: {e}",
+                "Failed to publish node birth message. node={}: {e}",
                 self.state.edge_node_id
             );
+            self.state.online_swap(false);
             self.retry_at = Some(Instant::now() + self.config.retry_delay);
             _ = self.client.disconnect().await;
         }
     }
 
     fn on_offline(&self, will_sender: oneshot::Sender<LastWill>) {
+        // A new MQTT session must verify the primary host again before birthing.
+        self.state.reset_primary_host();
+
         if !self.state.online_swap(false) {
             return;
         }
@@ -565,6 +634,87 @@ impl Node {
         self.death();
         let new_lastwill = self.state.create_last_will();
         _ = will_sender.send(new_lastwill);
+    }
+
+    /// Handle a STATE message from the primary host application.
+    async fn on_primary_host_state(&mut self, host_id: String, payload: StatePayload) {
+        let Some(expected_host_id) = self.state.primary_host_id.clone() else {
+            return;
+        };
+
+        if host_id != expected_host_id {
+            warn!(
+                "Ignoring STATE message for an unexpected host. node={} host={} expected={}",
+                self.state.edge_node_id, host_id, expected_host_id
+            );
+            return;
+        }
+
+        let timestamp = match payload {
+            StatePayload::Online { timestamp } | StatePayload::Offline { timestamp } => timestamp,
+        };
+
+        if !self.state.update_primary_host_timestamp(timestamp) {
+            warn!(
+                "Ignoring STATE message with an older timestamp. node={} host={} timestamp={}",
+                self.state.edge_node_id, host_id, timestamp
+            );
+            return;
+        }
+
+        match payload {
+            StatePayload::Online { .. } => {
+                info!(
+                    "Primary host online. node={} host={}",
+                    self.state.edge_node_id, host_id
+                );
+                self.state.set_primary_host_online(true);
+                self.try_online().await;
+            }
+            StatePayload::Offline { .. } => {
+                info!(
+                    "Primary host offline. node={} host={}",
+                    self.state.edge_node_id, host_id
+                );
+                self.state.set_primary_host_online(false);
+                self.on_primary_host_offline().await;
+            }
+        }
+    }
+
+    /// Terminate the Sparkplug session after the primary host goes offline.
+    ///
+    /// The NDEATH message uses the `bdSeq` of the current session. Disconnecting
+    /// lets the client reconnect with a new session and an incremented `bdSeq`;
+    /// the node then waits for the primary host to come online again before
+    /// publishing its next birth.
+    async fn on_primary_host_offline(&mut self) {
+        if !self.state.birthed() {
+            return;
+        }
+
+        let topic = NodeTopic::new(
+            &self.state.group_id,
+            NodeMessageType::NDeath,
+            &self.state.edge_node_id,
+        );
+        if let Err(e) = self
+            .client
+            .publish_node_message(topic, self.state.generate_death_payload())
+            .await
+        {
+            error!(
+                "Failed to publish node death certificate. node={}: {e}",
+                self.state.edge_node_id
+            );
+        }
+
+        // Stop publishing data immediately. `on_offline` increments `bdSeq` once
+        // the client reports the new session and updates the last will.
+        self.state.set_dead();
+        self.devices.lock().unwrap().on_death();
+
+        _ = self.client.disconnect().await;
     }
 
     async fn on_sparkplug_message(&mut self, message: Message, handle: NodeHandle) {
@@ -666,6 +816,9 @@ impl Node {
                             self.client_online = false;
                             self.on_offline(sender);
                         },
+                        ClientStateMessage::State { host_id, payload } => {
+                            self.on_primary_host_state(host_id, payload).await;
+                        },
                         ClientStateMessage::Stopped => break
                     },
                     None => break, //EoN has been dropped
@@ -688,6 +841,10 @@ enum ClientStateMessage {
     Stopped,
     Online,
     Offline(oneshot::Sender<LastWill>),
+    State {
+        host_id: String,
+        payload: StatePayload,
+    },
 }
 
 /// struct that represents a Sparkplug Edge Node instance.
@@ -712,9 +869,13 @@ impl EoN {
             .ok_or("node id must be provided".to_string())?;
         srad_types::utils::validate_name(&group_id)?;
         srad_types::utils::validate_name(&node_id)?;
+        if let Some(primary_host_id) = &builder.primary_host_id {
+            srad_types::utils::validate_name(primary_host_id)?;
+        }
 
         let metric_manager = builder.metric_manager;
         let (eventloop, client) = builder.eventloop_client;
+        let primary_host_id = builder.primary_host_id;
         let (stop_tx, stop_rx) = mpsc::channel(1);
 
         let state = Arc::new(EoNState {
@@ -724,10 +885,13 @@ impl EoN {
                 seq: 0,
                 online: false,
                 birthed: false,
+                primary_host_online: false,
+                last_primary_host_timestamp: None,
             }),
             ndata_topic: NodeTopic::new(&group_id, NodeMessageType::NData, &node_id),
             group_id,
             edge_node_id: node_id,
+            primary_host_id,
         });
 
         let template_registry = Arc::new(builder.templates);
@@ -795,6 +959,16 @@ impl EoN {
         }
     }
 
+    async fn on_state(&mut self, host_id: String, payload: StatePayload) {
+        if self.state.primary_host_id.is_none() {
+            return;
+        }
+        _ = self
+            .client_state_tx
+            .send(ClientStateMessage::State { host_id, payload })
+            .await;
+    }
+
     fn on_node_message(&mut self, message: Message) {
         _ = self.node_message_tx.send(message)
     }
@@ -809,10 +983,7 @@ impl EoN {
             Event::Offline => self.on_offline().await,
             Event::Node(node_message) => self.on_node_message(node_message.message),
             Event::Device(device_message) => self.on_device_message(device_message),
-            Event::State {
-                host_id: _,
-                payload: _,
-            } => (),
+            Event::State { host_id, payload } => self.on_state(host_id, payload).await,
             Event::InvalidPublish {
                 reason: _,
                 topic: _,

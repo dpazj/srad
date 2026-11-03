@@ -44,7 +44,8 @@ reports.
 Build the runner and the example nodes first:
 
 ```shell
-cargo build -p tck-runner --example simple-node --example tck-node
+cargo build -p tck-runner
+cargo build -p examples --example simple-node --example tck-node
 ```
 
 Then run a single test against a fresh, containerised TCK broker:
@@ -65,12 +66,18 @@ definition and instance, and data messages that use aliases. Run it with:
     --node-cmd ./target/debug/examples/tck-node
 ```
 
+The `tck-node` example configures `SCADA_HOST` as its Sparkplug Primary Host
+Application. The TCK brings this host online before starting the node, so `tck-node`
+waits for the host's STATE message before publishing its birth and
+`edge:SessionEstablishmentTest` exercises the primary-host wait path. If you change
+`--host-app-id`, update `tck.rs` to match.
+
 Run several tests, or every test of a profile:
 
 ```shell
 ./target/debug/tck-runner edge:SessionEstablishmentTest edge:SendDataTest \
     --docker-image srad-tck \
-    --node-cmd ./target/debug/examples/simple-node
+    --node-cmd ./target/debug/examples/tck-node
 
 ./target/debug/tck-runner --suite broker --docker-image srad-tck
 ```
