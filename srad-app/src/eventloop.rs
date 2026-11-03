@@ -75,7 +75,12 @@ pub struct AppClient {
 impl AppClient {
     /// Stop all operations, sending a death certificate (application offline message) and disconnect from the broker.
     ///
-    /// This will produce an [AppEvent::Cancelled] event on the [AppEventLoop] after the application has gracefully disconnected
+    /// This will produce an [AppEvent::Cancelled] event on the [AppEventLoop] after the application has gracefully disconnected.
+    ///
+    /// The death certificate and the MQTT disconnect are queued on the client,
+    /// so the caller must keep polling the [AppEventLoop] until it returns
+    /// [AppEvent::Cancelled] (or the client is disconnected) to ensure they are
+    /// flushed before the process exits.
     pub async fn cancel(&self) {
         info!("App Stopping");
         let topic = StateTopic::new_host(&self.state.host_id);

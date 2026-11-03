@@ -357,6 +357,11 @@ async fn run_one(
     let mut node = None;
     if matches!(spec.nodes, NodeMode::StartBefore) {
         node = start_node(cli, &test_dir)?;
+        if node.is_some() {
+            // Let the node connect and publish its retained birth or STATE
+            // before the test starts observing it.
+            sleep(Duration::from_millis(cli.node_start_delay)).await;
+        }
     }
 
     let mut driver = Driver::connect(&broker.0, broker.1, Duration::from_secs(30))

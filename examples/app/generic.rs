@@ -126,7 +126,7 @@ async fn main() {
     })
     .build();
 
-    tokio::spawn(async move {
+    let app = tokio::spawn(async move {
         application.run().await;
     });
 
@@ -135,4 +135,8 @@ async fn main() {
         return;
     }
     client.cancel().await;
+
+    // Wait for the event loop to flush the offline STATE message and the
+    // disconnect before the process exits.
+    let _ = app.await;
 }

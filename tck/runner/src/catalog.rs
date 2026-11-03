@@ -157,11 +157,16 @@ pub const TESTS: &[TestSpec] = &[
         false,
         "Edge node behaviour with multiple brokers",
     ),
-    // Host Application profile
+    // Host Application profile. The node under test is the host application
+    // itself, so `--node-cmd` starts the application. Tests that inspect the
+    // application's CONNECT and STATE sequence start it after the test has been
+    // requested. The command and termination tests need the application online
+    // before the test starts because the TCK checks its retained online STATE at
+    // construction.
     test(
         Profile::Host,
         "SessionEstablishmentTest",
-        NodeMode::Manual,
+        NodeMode::StartAfter,
         DeviceArgs::None,
         false,
         "Host application session establishment",
@@ -169,7 +174,7 @@ pub const TESTS: &[TestSpec] = &[
     test(
         Profile::Host,
         "SessionTerminationTest",
-        NodeMode::Manual,
+        NodeMode::StartAfterThenStop,
         DeviceArgs::None,
         false,
         "Host application intentional disconnect",
@@ -177,7 +182,7 @@ pub const TESTS: &[TestSpec] = &[
     test(
         Profile::Host,
         "SendCommandTest",
-        NodeMode::Manual,
+        NodeMode::StartBefore,
         DeviceArgs::One,
         true,
         "Host application sends node and device commands",
@@ -185,7 +190,7 @@ pub const TESTS: &[TestSpec] = &[
     test(
         Profile::Host,
         "EdgeSessionTerminationTest",
-        NodeMode::Manual,
+        NodeMode::StartBefore,
         DeviceArgs::One,
         true,
         "Host application handles edge node death messages",
@@ -193,7 +198,7 @@ pub const TESTS: &[TestSpec] = &[
     test(
         Profile::Host,
         "MessageOrderingTest",
-        NodeMode::Manual,
+        NodeMode::StartBefore,
         DeviceArgs::One,
         false,
         "Host application reorders out of order messages",
@@ -201,7 +206,9 @@ pub const TESTS: &[TestSpec] = &[
     test(
         Profile::Host,
         "MultipleBrokerTest",
-        NodeMode::Manual,
+        // The test refuses to start if the host is already online, then waits
+        // for the application to connect to both brokers.
+        NodeMode::StartAfter,
         DeviceArgs::None,
         false,
         "Host application behaviour with multiple brokers",
