@@ -16,6 +16,7 @@ pub struct EoNBuilder {
     pub(crate) eventloop_client: (Box<DynEventLoop>, Arc<DynClient>),
     pub(crate) metric_manager: Box<DynNodeMetricManager>,
     pub(crate) node_rebirth_request_cooldown: Duration,
+    pub(crate) retry_delay: Duration,
     pub(crate) templates: TemplateRegistry,
 }
 
@@ -33,6 +34,7 @@ impl EoNBuilder {
             eventloop_client: (Box::new(eventloop), Arc::new(client)),
             metric_manager: Box::new(NoMetricManager::new()),
             node_rebirth_request_cooldown: Duration::from_secs(5),
+            retry_delay: Duration::from_secs(3),
             templates: TemplateRegistry::new(),
         }
     }
@@ -56,6 +58,15 @@ impl EoNBuilder {
     /// Set the cooldown for the time to respond to CMD rebirth requests
     pub fn with_rebirth_cmd_cooldown(mut self, cooldown: Duration) -> Self {
         self.node_rebirth_request_cooldown = cooldown;
+        self
+    }
+
+    /// Sets the delay between attempts to establish the node session.
+    ///
+    /// If the node cannot subscribe to its command topics or publish its birth
+    /// message it disconnects and retries after this delay. Defaults to 3 seconds.
+    pub fn with_retry_delay(mut self, delay: Duration) -> Self {
+        self.retry_delay = delay;
         self
     }
 

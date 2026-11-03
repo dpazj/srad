@@ -19,20 +19,19 @@
 
 ## EoN
 
-- Add a node rebirth cooldown for CMD-triggered rebirths
-- Provide properties in `MessageMetric`
+- Check the result of publishes and handle failures accordingly
+  - Decide how to handle failed DBIRTH/NDATA/DDATA/NCMD/DCMD/DDEATH publishes
+- Populate `MessageMetric::properties` from received metrics (currently always `None`)
 - Multi-part metric message support for NDATA/DDATA and NCMD/DCMD
 - Wait for states
 
 ## App
 
-- App state change callbacks
 - Multi-part metric message support
 
 ## Client
 
 - Better guarantees around operation success
-  - Ensure subscription requests receive a response
+  - Surface broker responses to subscriptions: rumqtt 0.24 `subscribe_many` only enqueues the request and incoming SUBACKs are ignored
   - Ensure metric publishes have been sent/acked
   - Blocked on <https://github.com/bytebeamio/rumqtt/pull/916>
-

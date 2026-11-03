@@ -1,9 +1,9 @@
 use std::{
     sync::{atomic::AtomicBool, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
-use log::{debug, info};
+use log::{debug, error, info, warn};
 use srad_client::{
     Client, ClientError, DeviceMessage, DynClient, DynEventLoop, Event, EventLoop, NodeMessage,
     StatePayload,
@@ -22,11 +22,13 @@ use crate::{
     metrics::PublishMetric,
 };
 
+use thiserror::Error;
+
 use tokio::{
     select,
     sync::mpsc::{self, Receiver},
     task,
-    time::timeout,
+    time::{sleep_until, timeout, Instant as TokioInstant},
 };
 
 struct Shutdown;
@@ -159,6 +161,17 @@ struct AppState {
     published_online_state: AtomicBool,
 }
 
+/// Errors that prevent an application from establishing its session.
+#[derive(Debug, Error)]
+enum SessionError {
+    /// The client failed to subscribe to the topics required by the application.
+    #[error("failed to subscribe to required topics: {0}")]
+    Subscribe(#[source] ClientError),
+    /// The application could not publish its online STATE message.
+    #[error("failed to publish the application online state: {0}")]
+    PublishOnlineState(#[source] ClientError),
+}
+
 /// A Sparkplug Application EventLoop
 ///
 /// On top of [srad_client::EventLoop] functionality, AppEventLoop provides some specific application functionality:
@@ -168,6 +181,11 @@ struct AppState {
 /// * Topic specific message payload verification and transformation
 pub struct AppEventLoop {
     online: bool,
+    /// Whether the underlying client currently reports an established connection.
+    client_online: bool,
+    /// When the next attempt to establish the application session may be made.
+    retry_at: Option<Instant>,
+    retry_delay: Duration,
     state: Arc<AppState>,
     will_timestamp: u64,
     subscription_config: SubscriptionConfig,
@@ -206,6 +224,9 @@ impl AppEventLoop {
         };
         let mut app = Self {
             online: false,
+            client_online: false,
+            retry_at: None,
+            retry_delay: Duration::from_secs(3),
             state: app_state,
             will_timestamp: 0,
             client: client.clone(),
@@ -217,6 +238,14 @@ impl AppEventLoop {
         (app, client)
     }
 
+    /// Sets the delay between attempts to establish the application session.
+    ///
+    /// If the application cannot subscribe to its topics or publish its online
+    /// STATE it disconnects and retries after this delay. Defaults to 3 seconds.
+    pub fn set_retry_delay(&mut self, delay: Duration) {
+        self.retry_delay = delay;
+    }
+
     fn update_last_will(&mut self) {
         self.will_timestamp = timestamp();
         self.eventloop.set_last_will(srad_client::LastWill::new_app(
@@ -225,34 +254,55 @@ impl AppEventLoop {
         ));
     }
 
-    fn handle_online(&mut self) -> Option<AppEvent> {
-        if self.online {
-            return None;
-        }
-        info!("App Online");
-        self.online = true;
-        let client = self.client.client.clone();
+    /// Subscribe to the application topics and advertise the application online.
+    async fn establish_session(&mut self) -> Result<(), SessionError> {
         let state_topic = StateTopic::new_host(&self.state.host_id);
         let mut topics: Vec<TopicFilter> = self.subscription_config.clone().into();
-        if let SubscriptionConfig::AllGroups = self.subscription_config {
-        } else {
+        if !matches!(self.subscription_config, SubscriptionConfig::AllGroups) {
             //If subscription config == AllGroups, then we get STATE subscriptions for free
             topics.push(TopicFilter::new_with_qos(
                 Topic::State(state_topic.clone()),
                 QoS::AtMostOnce,
             ));
         }
+
+        // Only publish the online state once the subscriptions have been established,
+        // otherwise the application may miss messages while advertising itself online.
+        self.client
+            .client
+            .subscribe_many(topics)
+            .await
+            .map_err(SessionError::Subscribe)?;
+
         let timestamp = self.will_timestamp;
-        let app_state = self.client.state.clone();
-        task::spawn(async move {
-            _ = client.subscribe_many(topics).await;
-            _ = client
-                .publish_state_message(state_topic, srad_client::StatePayload::Online { timestamp })
-                .await;
-            app_state
-                .published_online_state
-                .store(true, std::sync::atomic::Ordering::SeqCst);
-        });
+        self.client
+            .client
+            .publish_state_message(state_topic, StatePayload::Online { timestamp })
+            .await
+            .map_err(SessionError::PublishOnlineState)
+    }
+
+    /// Attempt to establish the application session, retrying on a delay if it fails.
+    ///
+    /// Failures are treated like a lost connection: the client is disconnected and
+    /// the application tries again once the configured retry delay has elapsed.
+    async fn try_online(&mut self) -> Option<AppEvent> {
+        if !self.client_online || self.online || self.retry_at.is_some() {
+            return None;
+        }
+
+        info!("App Online");
+        if let Err(e) = self.establish_session().await {
+            warn!("Failed to establish application session: {e}");
+            self.retry_at = Some(Instant::now() + self.retry_delay);
+            _ = self.client.client.disconnect().await;
+            return None;
+        }
+
+        self.state
+            .published_online_state
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.online = true;
         Some(AppEvent::Online)
     }
 
@@ -291,10 +341,16 @@ impl AppEventLoop {
         }
     }
 
-    fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
+    async fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         match event {
-            Event::Offline => self.handle_offline(),
-            Event::Online => self.handle_online(),
+            Event::Offline => {
+                self.client_online = false;
+                self.handle_offline()
+            }
+            Event::Online => {
+                self.client_online = true;
+                self.try_online().await
+            }
             Event::Node(message) => match Self::handle_node_message(message) {
                 Ok(event) => event,
                 Err(e) => Some(AppEvent::InvalidPayload(e)),
@@ -316,9 +372,12 @@ impl AppEventLoop {
                         let client = self.client.client.clone();
                         let timestamp = self.will_timestamp;
                         task::spawn(async move {
-                            _ = client
+                            if let Err(e) = client
                                 .publish_state_message(topic, StatePayload::Online { timestamp })
-                                .await;
+                                .await
+                            {
+                                error!("Failed to republish application online state: {e}");
+                            }
                         });
                     }
                 }
@@ -342,17 +401,28 @@ impl AppEventLoop {
 
     /// Progress the App. Continuing to poll will reconnect if the application if there is a disconnection.
     /// **NOTE** Don't block this while iterating. Additionally, using the `AppClient` directly inside the loop may block progress.
+    ///
+    /// If the application cannot establish its session, for example because
+    /// subscribing to its topics or publishing its online STATE fails, it
+    /// disconnects and retries after a delay rather than stopping.
     pub async fn poll(&mut self) -> AppEvent {
         loop {
+            let retry_at = TokioInstant::from_std(self.retry_at.unwrap_or_else(Instant::now));
             select! {
                 event = self.eventloop.poll() => {
-                    if let Some(app_event) = self.handle_event(event) {
+                    if let Some(app_event) = self.handle_event(event).await {
                         return app_event
                     }
                 }
                 Some(_) = self.shutdown_rx.recv() => {
                     self.poll_until_offline_with_timeout().await;
                     return AppEvent::Cancelled
+                },
+                _ = sleep_until(retry_at), if self.retry_at.is_some() => {
+                    self.retry_at = None;
+                    if let Some(app_event) = self.try_online().await {
+                        return app_event
+                    }
                 },
             }
         }

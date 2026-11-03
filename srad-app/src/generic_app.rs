@@ -827,6 +827,15 @@ impl ApplicationBuilder {
         self
     }
 
+    /// Sets the delay between attempts to establish the application session.
+    ///
+    /// If the application cannot subscribe to its topics or publish its online
+    /// STATE it disconnects and retries after this delay. Defaults to 3 seconds.
+    pub fn with_retry_delay(mut self, delay: Duration) -> Self {
+        self.eventloop.set_retry_delay(delay);
+        self
+    }
+
     /// Builds the Application instance with the configured settings.
     ///
     /// Creates and returns a new Application instance and its associated AppClient handle.
@@ -995,7 +1004,11 @@ impl Application {
 
     /// Run the Application
     ///
-    /// Runs the Application until [AppClient::cancel()] is called
+    /// Runs the Application until [AppClient::cancel()] is called.
+    ///
+    /// If the application cannot establish its session, for example because
+    /// subscribing to its topics or publishing its online STATE fails, it
+    /// disconnects and retries after a delay rather than stopping.
     pub async fn run(mut self) {
         loop {
             let event = self.eventloop.poll().await;
