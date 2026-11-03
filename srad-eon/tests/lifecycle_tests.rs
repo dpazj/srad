@@ -3,14 +3,14 @@ mod utils;
 use std::time::Duration;
 
 use srad_client::{
-    channel::{ChannelEventLoop, OutboundMessage},
-    LastWill, NodeMessage,
+    channel::{ChannelClient, ChannelEventLoop, OutboundMessage},
+    Client, ClientError, LastWill, NodeMessage, StatePayload,
 };
 use srad_eon::{EoNBuilder, NoMetricManager};
 use srad_types::{
     constants::NODE_CONTROL_REBIRTH,
     payload::{Metric, Payload},
-    topic::{DeviceMessage, DeviceTopic, NodeTopic},
+    topic::{DeviceMessage, DeviceTopic, NodeTopic, StateTopic, TopicFilter},
 };
 use tokio::time::timeout;
 use utils::tester::{
@@ -19,6 +19,117 @@ use utils::tester::{
 };
 
 use crate::utils::tester::{verify_device_death, verify_node_birth};
+
+/// A [Client] that can terminate the connection without an MQTT DISCONNECT,
+/// like `srad-client-rumqtt` does for MQTT 5.
+#[derive(Clone)]
+struct WillClient(ChannelClient);
+
+#[async_trait::async_trait]
+impl Client for WillClient {
+    async fn disconnect(&self) -> Result<(), ClientError> {
+        self.0.disconnect().await
+    }
+
+    async fn disconnect_with_will(&self) -> Result<bool, ClientError> {
+        Ok(true)
+    }
+
+    async fn publish_state_message(
+        &self,
+        topic: StateTopic,
+        payload: StatePayload,
+    ) -> Result<(), ClientError> {
+        self.0.publish_state_message(topic, payload).await
+    }
+
+    async fn try_publish_state_message(
+        &self,
+        topic: StateTopic,
+        payload: StatePayload,
+    ) -> Result<(), ClientError> {
+        self.0.try_publish_state_message(topic, payload).await
+    }
+
+    async fn publish_node_message(
+        &self,
+        topic: NodeTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
+        self.0.publish_node_message(topic, payload).await
+    }
+
+    async fn try_publish_node_message(
+        &self,
+        topic: NodeTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
+        self.0.try_publish_node_message(topic, payload).await
+    }
+
+    async fn publish_device_message(
+        &self,
+        topic: DeviceTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
+        self.0.publish_device_message(topic, payload).await
+    }
+
+    async fn try_publish_device_message(
+        &self,
+        topic: DeviceTopic,
+        payload: Payload,
+    ) -> Result<(), ClientError> {
+        self.0.try_publish_device_message(topic, payload).await
+    }
+
+    async fn subscribe_many(&self, topics: Vec<TopicFilter>) -> Result<(), ClientError> {
+        self.0.subscribe_many(topics).await
+    }
+}
+
+#[tokio::test]
+async fn will_capable_client_skips_disconnect_on_shutdown() {
+    let group_id = "foo";
+    let node_id = "bar";
+
+    let (channel_eventloop, client, mut broker) = ChannelEventLoop::new();
+    let (eventloop, handle) = EoNBuilder::new(channel_eventloop, WillClient(client))
+        .with_group_id(group_id)
+        .with_node_id(node_id)
+        .build()
+        .unwrap();
+
+    tokio::spawn(async move { eventloop.run().await });
+
+    test_node_online(&mut broker, group_id, node_id, 0).await;
+
+    handle.cancel().await;
+
+    // The NDEATH is still published explicitly so subscribers and the TCK see
+    // it, even when the broker publishes the Last Will as well.
+    let (topic, payload) = match timeout(Duration::from_secs(1), broker.rx_outbound.recv())
+        .await
+        .unwrap()
+        .unwrap()
+    {
+        OutboundMessage::NodeMessage { topic, payload } => (topic, payload),
+        other => panic!("unexpected message: {other:?}"),
+    };
+    assert_eq!(
+        topic,
+        NodeTopic::new(group_id, srad_types::topic::NodeMessage::NDeath, node_id)
+    );
+    assert_eq!(payload, create_test_ndeath_payload(0));
+
+    // A will-capable client closes the connection without a DISCONNECT.
+    assert!(
+        timeout(Duration::from_millis(500), broker.rx_outbound.recv())
+            .await
+            .is_err(),
+        "a DISCONNECT must not be sent for a will-capable client"
+    );
+}
 
 #[tokio::test]
 async fn node_session() {
