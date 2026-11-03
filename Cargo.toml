@@ -10,7 +10,8 @@ members = [
   "srad-macros",
   "srad-app",
   "examples",
-  "codegen"
+  "codegen",
+  "tck/runner"
 ]
 
 [workspace.package]

@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1
+
+FROM hivemq/hivemq-ce:2025.3
+
+USER root
+
+# Build dependencies for the TCK web console and helper tools.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        netcat-openbsd \
+        unzip \
+        wget \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && corepack enable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install the Eclipse Sparkplug TCK 3.0.0 and its HiveMQ extension.
+WORKDIR /
+RUN wget -q https://download.eclipse.org/sparkplug/3.0.0/Eclipse-Sparkplug-TCK-3.0.0.zip \
+    && unzip -q Eclipse-Sparkplug-TCK-3.0.0.zip \
+    && unzip -q SparkplugTCK/hivemq-extension/sparkplug-tck-3.0.0.zip -d /opt/hivemq/extensions
+
+COPY ./config.xml /opt/hivemq/conf/config.xml
+
+# Build the TCK web console.
+WORKDIR /
+RUN wget -q https://github.com/eclipse-sparkplug/sparkplug/archive/refs/tags/v3.0.0.zip \
+    && unzip -q v3.0.0.zip -d /
+
+WORKDIR /sparkplug-3.0.0/tck/webconsole
+RUN corepack enable \
+    && yarn set version berry \
+    && YARN_ENABLE_IMMUTABLE_INSTALLS=false yarn install \
+    && NODE_OPTIONS=--openssl-legacy-provider yarn build
+
+WORKDIR /
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 1883 8000 3000
+
+ENTRYPOINT [ "/entrypoint.sh" ]

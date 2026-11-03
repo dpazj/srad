@@ -34,3 +34,7 @@ path = "node/many_nodes.rs"
 [[example]]
 name = "node-template"
 path = "node/template.rs"
+
+[[example]]
+name = "tck-node"
+path = "node/tck.rs"
