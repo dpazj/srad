@@ -89,7 +89,7 @@ Rust 1.85 or newer is required.
 - [`srad-client`](./srad-client/README.md): Trait and type definitions for implementing clients to interact with Sparkplug.  
 - [`srad-client-rumqtt`](./srad-client-rumqtt/README.md): Client implementation using [rumqtt](https://github.com/bytebeamio/rumqtt).
 - [`srad-types`](./srad-types/README.md): Utility and Protobuf generated types.
-- [`srad-macros`](./srad-macros/README.md): Derive macro implementation for Templates
+- [`srad-macros`](./srad-macros/README.md): Derive macro implementation for Templates and DataSets
 - [`codegen`](./codegen): Generates types from protobuf files in [`protos`](./protos).
 - [`examples`](./examples): Example Edge Node and application implementations.
 

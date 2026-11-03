@@ -8,3 +8,4 @@ This includes:
 
 - Protobuf generated types
 - Trait definitions and implementation for conversion of standard rust types to protobuf generated types.
+- Typed `DataSet` support, including `TypedDataSet`, `DataSetRow` and the `#[derive(DataSetRow)]` macro.
