@@ -1,9 +1,9 @@
 //! An Edge Node that exercises the features checked by the Sparkplug TCK's
 //! `SendComplexDataTest`.
 //!
-//! The node publishes a DataSet, a template definition/instance and regular
-//! metrics on its birth, then keeps publishing data with aliases. Use it as
-//! the node under test for the TCK:
+//! The node publishes a DataSet, a template definition (NBIRTH) and template
+//! instance (DBIRTH), plus regular metrics, then keeps publishing data with
+//! aliases. Use it as the node under test for the TCK:
 //!
 //! ```shell
 //! # in one terminal
@@ -21,23 +21,20 @@ use srad::{
     client_rumqtt as rumqtt,
     eon::{
         simple_manager::{SimpleMetricBuilder, SimpleMetricManager},
-        BirthInitializer, BirthMetricDetails, DeviceHandle, EoNBuilder, MetricManager, NodeHandle,
-        NodeMetricManager,
+        BirthInitializer, BirthMetricDetails, DeviceHandle, DeviceMetricManager, EoNBuilder,
+        MetricManager, NodeHandle,
     },
     types::{DataSetRow, Template, TemplateMetadata, TypedDataSet},
 };
 use tokio::time;
 
-/// A template with parameters only. Parameters are reported as template
-/// parameters instead of metrics, which keeps the TCK's data-message checks
-/// happy.
+/// A template with both metrics and a parameter. The definition is published
+/// in the node birth and the instance in the device birth, which keeps the
+/// TCK's template member checks valid.
 #[derive(Template, Default, Clone)]
 struct Point {
-    #[template(parameter, default = 0.0)]
     x: f64,
-    #[template(parameter, default = 0.0)]
     y: f64,
-    #[template(parameter, default = 0.0)]
     z: f64,
     #[template(parameter, default = 1.0)]
     scale: f64,
@@ -76,26 +73,30 @@ fn dataset(time: u32, value: f64) -> TypedDataSet<Sample> {
     dataset
 }
 
-/// Adds the template metric to the node's birth on top of the metrics managed
-/// by the [SimpleMetricManager].
-struct TckNodeMetrics {
-    inner: SimpleMetricManager<NodeHandle>,
+/// Adds the template instance metric to the device's birth on top of the
+/// metrics managed by the [SimpleMetricManager].
+///
+/// The template definition is registered on the node, so it is published in
+/// the node birth. Template instances are published in a device birth because
+/// the TCK rejects instances in NBIRTH when the definition has metrics.
+struct TckDeviceMetrics {
+    inner: SimpleMetricManager<DeviceHandle>,
 }
 
-impl MetricManager for TckNodeMetrics {
+impl MetricManager for TckDeviceMetrics {
     fn initialise_birth(&self, bi: &mut BirthInitializer) {
         MetricManager::initialise_birth(&self.inner, bi);
         bi.register_template_metric(BirthMetricDetails::new_template_metric(
-            "NodeTemplate",
+            "DeviceTemplate",
             Point::default(),
         ))
         .unwrap();
     }
 }
 
-impl NodeMetricManager for TckNodeMetrics {
-    fn init(&self, handle: &NodeHandle) {
-        NodeMetricManager::init(&self.inner, handle);
+impl DeviceMetricManager for TckDeviceMetrics {
+    fn init(&self, handle: &DeviceHandle) {
+        DeviceMetricManager::init(&self.inner, handle);
     }
 }
 
@@ -122,16 +123,19 @@ async fn main() {
         // The Sparkplug TCK runs a primary host application with this ID and
         // expects the node to wait for its online STATE before birthing.
         .with_primary_host_id("SCADA_HOST")
-        .with_metric_manager(TckNodeMetrics {
-            inner: node_metrics.clone(),
-        })
+        .with_metric_manager(node_metrics.clone())
         .register_template::<Point>()
         .build()
         .unwrap();
 
     let device_metrics = SimpleMetricManager::<DeviceHandle>::new();
     let device = handle
-        .register_device("dev1", device_metrics.clone())
+        .register_device(
+            "dev1",
+            TckDeviceMetrics {
+                inner: device_metrics.clone(),
+            },
+        )
         .unwrap();
     let device_counter = device_metrics
         .register_metric(SimpleMetricBuilder::new("DeviceCounter", 0_u64))
