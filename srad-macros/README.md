@@ -6,4 +6,5 @@ This library contains the implementation of proc macros for `srad`.
 
 Includes:
 
-`#[derive(Template)]` macro for deriving Template implementations of structs.
+- `#[derive(Template)]` macro for deriving Template implementations of structs.
+- `#[derive(DataSetRow)]` macro for deriving typed DataSet row implementations of structs.

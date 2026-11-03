@@ -2,11 +2,15 @@
 
 ## 0.6.0
 
+Minimum supported Rust version is now 1.85.
+
 ### Types
 
 - Add `DataSet`, `DataSetColumn`, `TypedDataSet` and `DataSetRow` derive support,
   including `#[dataset(rename = "...")]`, `#[dataset(datatype = "...")]`,
   `#[dataset(skip)]` and `Option<T>` columns
+- Add `DataSetError` for fallible DataSet operations, such as `TypedDataSet::try_add_row`
+  and row conversions
 - **breaking change** `MetricValueKind::DataSet` now contains a `DataSet`
 - **breaking change** `HasDataType` now requires `DEFAULT_DATATYPE` and
   `SUPPORTED_DATATYPES` consts; the `default_datatype()` and `supported_datatypes()`
@@ -14,7 +18,6 @@
 - Add `DataTypeError`, `QualityError`, `PropertyValueError` and `PropertySetError`
 - Add `TemplateError::MissingValue` and `TemplateError::ValueConversion`
 - **breaking change** `PropertySet::insert`, `DataType::try_from`, `Quality::try_from` and the property set/template conversions now return typed errors instead of `()`
-- Fix publish QoS for lifecycle messages: Node Death, Device Birth and Device Death now use QoS 0
 - Sign-extend negative `Int8` and `Int16` values to 32 bits when encoding for compatibility with Tahu and other Sparkplug implementations; decoding accepts both sign-extended and width-sized forms
 
 ### Client
@@ -23,16 +26,19 @@
 - **breaking change** `Message.payload` is now a `MessagePayload`, and `Event::InvalidPublish` carries `Bytes`
 - Add `ClientError` and return it from all `Client` methods
 - **breaking change** `Client` implementations must return `ClientError`
+- Fix the Node Death Last Will being retained: it is now registered with `retain = false`
 
 ### App
 
 - `AppClient` publish methods now return `ClientError`
 - Add `NodeEvent::Raw` and `DeviceEvent::Raw` so the generic application can decode deferred payloads in per-node tasks
+- Add `DecodedNodeEvent` and `DecodedDeviceEvent`, returned by `NodeEvent::from_message` and `DeviceEvent::from_message`, for decoding deferred events
 - Add `BdseqError` and preserve BDSEQ decoding details in `PayloadError`
 - **breaking change** `PayloadError::InvalidBdseq` now carries a `BdseqError`
 
 ### EoN
 
+- Change EoN lifecycle publishes to QoS 0: NDeath, DBirth and DDeath. The NDEATH Last Will remains QoS 1
 - Add `PublishError::Client` and stop masking client publish failures as `StateError::Offline`
 - Add `MessageMetricError` and `MessageMetricsError`
 - **breaking change** `MessageMetric` and `MessageMetrics` conversions now return typed errors
