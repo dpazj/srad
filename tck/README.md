@@ -44,7 +44,8 @@ reports.
 Build the runner and the example nodes first:
 
 ```shell
-cargo build -p tck-runner --example simple-node --example tck-node
+cargo build -p tck-runner
+cargo build -p examples --example simple-node --example tck-node
 ```
 
 Then run a single test against a fresh, containerised TCK broker:
