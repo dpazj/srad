@@ -297,7 +297,7 @@ impl TryFrom<MetricValue> for TemplateDefinition {
                 ));
             }
             // [tck-id-payloads-template-definition-is-definition] A Template Definition MUST have is_definition set to true.
-            if template.is_definition.unwrap_or(false) {
+            if !template.is_definition.unwrap_or(false) {
                 return Err(FromValueTypeError::InvalidValue(
                     "Template payload violates tck-id-payloads-template-definition-is_definition"
                         .into(),
@@ -314,7 +314,7 @@ impl TryFrom<MetricValue> for TemplateDefinition {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TemplateInstance {
     //name of the metric that represents the template definition
     pub template_ref: String,

@@ -30,6 +30,12 @@ macro_rules! impl_wrapper_type_for_proto_value_type {
                 $new_type(value)
             }
         }
+
+        impl From<&$new_type> for $wrapped_type {
+            fn from(value: &$new_type) -> Self {
+                value.clone().0
+            }
+        }
     };
 }
 
@@ -37,6 +43,39 @@ impl_wrapper_type_for_proto_value_type!(MetricValue, metric::Value);
 impl_wrapper_type_for_proto_value_type!(PropertyValue, property_value::Value);
 impl_wrapper_type_for_proto_value_type!(DataSetValue, data_set_value::Value);
 impl_wrapper_type_for_proto_value_type!(ParameterValue, parameter::Value);
+
+macro_rules! impl_from_ref {
+    ($value_type:ident) => {
+        impl<T> From<&T> for $value_type
+        where
+            T: Clone + Into<$value_type>,
+        {
+            fn from(value: &T) -> Self {
+                value.clone().into()
+            }
+        }
+    };
+}
+
+impl_from_ref!(MetricValue);
+impl_from_ref!(PropertyValue);
+impl_from_ref!(DataSetValue);
+impl_from_ref!(ParameterValue);
+
+macro_rules! impl_from_str {
+    ($value_type:ident) => {
+        impl From<&str> for $value_type {
+            fn from(value: &str) -> Self {
+                value.to_owned().into()
+            }
+        }
+    };
+}
+
+impl_from_str!(MetricValue);
+impl_from_str!(PropertyValue);
+impl_from_str!(DataSetValue);
+impl_from_str!(ParameterValue);
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DateTime {
@@ -485,6 +524,12 @@ macro_rules! impl_vec_type_metric_value_conversions {
       }
     }
 
+    impl From<&[$type]> for MetricValue {
+      fn from(value: &[$type]) -> Self {
+        metric::Value::BytesValue($to_proto_fn(value.to_vec())).into()
+      }
+    }
+
     impl TryFrom<MetricValue> for Vec<$type> {
       type Error = FromValueTypeError;
       fn try_from(value: MetricValue) -> Result<Self, Self::Error> {
@@ -925,6 +970,110 @@ mod tests {
             assert_eq!(Vec::<f32>::DEFAULT_DATATYPE, DataType::FloatArray);
             assert_eq!(Vec::<f64>::DEFAULT_DATATYPE, DataType::DoubleArray);
             assert_eq!(Vec::<String>::DEFAULT_DATATYPE, DataType::StringArray);
+        }
+    }
+
+    mod references {
+        use super::*;
+        use crate::{
+            DataSet, DateTime, PropertySet, Quality, TemplateDefinition, TemplateInstance,
+        };
+
+        #[test]
+        fn basic_types_convert_from_references() {
+            let metric = MetricValue::from(&42_i32);
+            assert_eq!(i32::try_from(metric).unwrap(), 42);
+
+            let property = PropertyValue::from(&"text");
+            assert_eq!(String::try_from(property).unwrap(), "text");
+
+            let data_set = DataSetValue::from(&true);
+            assert!(bool::try_from(data_set).unwrap());
+
+            let parameter = ParameterValue::from(&DateTime::new(7));
+            assert_eq!(DateTime::try_from(parameter).unwrap(), DateTime::new(7));
+        }
+
+        #[test]
+        fn arrays_convert_from_references_and_slices() {
+            let source = vec![1_i32, 2, 3];
+
+            let from_reference = MetricValue::from(&source);
+            assert_eq!(Vec::<i32>::try_from(from_reference).unwrap(), source);
+
+            let from_slice = MetricValue::from(source.as_slice());
+            assert_eq!(Vec::<i32>::try_from(from_slice).unwrap(), source);
+
+            let strings = vec!["a".to_string(), "b".to_string()];
+            let from_string_slice = MetricValue::from(strings.as_slice());
+            assert_eq!(Vec::<String>::try_from(from_string_slice).unwrap(), strings);
+        }
+
+        #[test]
+        fn data_set_converts_from_reference() {
+            let mut source = DataSet::new();
+            source
+                .init(["value"], [DataType::Int32])
+                .add_row_values([1_i32]);
+
+            let metric = MetricValue::from(&source);
+            assert_eq!(DataSet::try_from(metric).unwrap(), source);
+        }
+
+        #[test]
+        fn templates_convert_from_references() {
+            let definition = TemplateDefinition {
+                version: None,
+                metrics: Vec::new(),
+                parameters: Vec::new(),
+            };
+            let metric = MetricValue::from(&definition);
+            assert_eq!(TemplateDefinition::try_from(metric).unwrap(), definition);
+
+            let instance = TemplateInstance {
+                template_ref: "template".into(),
+                version: None,
+                metrics: Vec::new(),
+                parameters: Vec::new(),
+            };
+            let metric = MetricValue::from(&instance);
+            assert_eq!(TemplateInstance::try_from(metric).unwrap(), instance);
+        }
+
+        #[test]
+        fn template_definitions_require_is_definition() {
+            for is_definition in [None, Some(false)] {
+                let template = payload::Template {
+                    version: None,
+                    metrics: Vec::new(),
+                    parameters: Vec::new(),
+                    template_ref: None,
+                    is_definition,
+                };
+                let metric = MetricValue::from(metric::Value::TemplateValue(template));
+                assert!(TemplateDefinition::try_from(metric).is_err());
+            }
+        }
+
+        #[test]
+        fn property_sets_and_quality_convert_from_references() {
+            let set = PropertySet::new_with_quality(Quality::Bad);
+            let property = PropertyValue::from(&set);
+            let converted = PropertySet::try_from(property).unwrap();
+            assert_eq!(
+                payload::PropertySet::from(converted),
+                payload::PropertySet::from(set)
+            );
+
+            let property = PropertyValue::from(&Quality::Stale);
+            assert_eq!(Quality::try_from(property).unwrap(), Quality::Stale);
+        }
+
+        #[test]
+        fn proto_values_convert_from_references() {
+            let metric = MetricValue::from(42_i32);
+            let proto = metric::Value::from(&metric);
+            assert!(matches!(proto, metric::Value::IntValue(42)));
         }
     }
 

@@ -1,6 +1,7 @@
 use crate::{payload::DataType, traits, FromValueTypeError, PropertyValue};
 
 /// Represents the different quality property values of a metric
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Quality {
     Good = 0,
     Bad = 192,

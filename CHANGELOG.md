@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Types
+
+- Add value conversions from references (`&T`, `&str` and `&[T]`) for metric, property,
+  data set and parameter values
+- Fix `TemplateDefinition::try_from` to accept `is_definition = true`
+
 ## 0.6.0
 
 Minimum supported Rust version is now 1.85.
