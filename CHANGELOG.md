@@ -22,8 +22,8 @@
 
 - Add a `tck-node` example that implements the DataSet and template features checked
   by the Sparkplug TCK's `SendComplexDataTest`
-- Configure `simple-node` and `tck-node` to wait for the TCK's `SCADA_HOST` primary
-  host, which enables the TCK's `edge:SessionEstablishmentTest` primary host check
+- Configure the `tck-node` example to wait for the TCK's `SCADA_HOST` primary host,
+  which enables the TCK's `edge:SessionEstablishmentTest` primary host check
 
 ## 0.6.0
 
