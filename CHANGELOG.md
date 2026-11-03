@@ -24,6 +24,11 @@
   subscribe to `spBv1.0/STATE/<primary_host_id>`, defer NBIRTH and DBIRTH until the
   host publishes an online STATE, publish NDEATH and reconnect when the host goes
   offline, and ignore STATE messages with older timestamps
+- Accept command payloads that omit the payload timestamp by using the time the
+  command was received, instead of discarding the command
+- Stop data publishes immediately when a rebirth command is received, so no DATA
+  messages are sent after the command, and publish the node and device births from
+  the same session
 - Stop accepting data publishes before publishing the NDEATH on shutdown, and use
   `Client::disconnect_with_will` when the client supports it. This stops DATA
   arriving after the death certificate and satisfies the MQTT 5 intentional

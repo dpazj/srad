@@ -242,6 +242,21 @@ impl MessageMetrics {
     pub fn is_empty(&self) -> bool {
         self.metrics.len() == 0
     }
+
+    /// Create metrics from a payload, using the current time if the payload
+    /// does not include a timestamp.
+    ///
+    /// Some Sparkplug implementations omit the payload timestamp on command
+    /// messages. The command is still actionable, so use the receive time
+    /// instead of rejecting it.
+    #[must_use]
+    pub fn from_payload_lenient(value: Payload) -> Self {
+        let timestamp = value.timestamp.unwrap_or_else(timestamp);
+        Self {
+            timestamp,
+            metrics: value.metrics,
+        }
+    }
 }
 
 /// Errors that can occur when converting a Sparkplug [Metric] into a [MessageMetric].
@@ -396,5 +411,19 @@ mod tests {
             MessageMetrics::try_from(Payload::default()),
             Err(MessageMetricsError::MissingTimestamp)
         ));
+    }
+
+    #[test]
+    fn payload_without_timestamp_can_be_read_leniently() {
+        let mut metric = Metric::new();
+        metric.set_name("metric".into());
+        let payload = Payload {
+            metrics: vec![metric],
+            ..Default::default()
+        };
+
+        let metrics = MessageMetrics::from_payload_lenient(payload);
+        assert!(metrics.timestamp > 0);
+        assert_eq!(metrics.len(), 1);
     }
 }
