@@ -240,8 +240,10 @@ impl BirthInitializer {
         let mut metric = Metric::new();
         metric.name = Some(name.clone());
         metric.datatype = Some(DataType::Template as u32);
+        metric.timestamp = Some(timestamp());
         metric.value = Some(MetricValue::from(definition).into());
         self.metric_names.insert(name);
+        self.birth_metrics.push(metric);
 
         Ok(())
     }
@@ -310,5 +312,61 @@ impl BirthInitializer {
 
     pub(crate) fn finish(self) -> Vec<Metric> {
         self.birth_metrics
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use srad_types::payload::metric::Value;
+
+    use super::*;
+
+    fn definition() -> TemplateDefinition {
+        TemplateDefinition {
+            version: Some("1.0".into()),
+            metrics: vec![],
+            parameters: vec![],
+        }
+    }
+
+    #[test]
+    fn template_definitions_are_added_to_the_birth() {
+        let registry = Arc::new(TemplateRegistry::new());
+        let mut initializer = BirthInitializer::new(BirthObjectType::Node, registry);
+
+        initializer
+            .register_template_definition("point".into(), definition())
+            .unwrap();
+
+        let metrics = initializer.finish();
+        assert_eq!(metrics.len(), 1);
+
+        let metric = &metrics[0];
+        assert_eq!(metric.name.as_deref(), Some("point"));
+        assert_eq!(metric.datatype, Some(DataType::Template as u32));
+        assert!(metric.timestamp.is_some());
+
+        match &metric.value {
+            Some(Value::TemplateValue(template)) => {
+                assert_eq!(template.version.as_deref(), Some("1.0"));
+                assert_eq!(template.is_definition, Some(true));
+                assert_eq!(template.template_ref, None);
+            }
+            value => panic!("unexpected value: {value:?}"),
+        }
+    }
+
+    #[test]
+    fn template_definitions_reject_duplicate_names() {
+        let registry = Arc::new(TemplateRegistry::new());
+        let mut initializer = BirthInitializer::new(BirthObjectType::Node, registry);
+
+        initializer
+            .register_template_definition("point".into(), definition())
+            .unwrap();
+        assert!(matches!(
+            initializer.register_template_definition("point".into(), definition()),
+            Err(BirthMetricError::DuplicateMetric)
+        ));
     }
 }

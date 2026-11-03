@@ -41,10 +41,10 @@ The TCK is controlled entirely over MQTT, so the web console is not needed.
 test, collects the results from `SPARKPLUG_TCK/RESULT` and writes JUnit XML and JSON
 reports.
 
-Build the runner and an example node first:
+Build the runner and the example nodes first:
 
 ```shell
-cargo build -p tck-runner --example simple-node
+cargo build -p tck-runner --example simple-node --example tck-node
 ```
 
 Then run a single test against a fresh, containerised TCK broker:
@@ -53,6 +53,16 @@ Then run a single test against a fresh, containerised TCK broker:
 ./target/debug/tck-runner edge:SendDataTest \
     --docker-image srad-tck \
     --node-cmd ./target/debug/examples/simple-node
+```
+
+`examples/node/tck.rs` (`--example tck-node`) is a node that implements the
+features checked by `SendComplexDataTest`: it publishes a DataSet, a template
+definition and instance, and data messages that use aliases. Run it with:
+
+```shell
+./target/debug/tck-runner edge:SendComplexDataTest \
+    --docker-image srad-tck \
+    --node-cmd ./target/debug/examples/tck-node
 ```
 
 Run several tests, or every test of a profile:

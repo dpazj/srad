@@ -8,6 +8,17 @@
   data set and parameter values
 - Fix `TemplateDefinition::try_from` to accept `is_definition = true`
 
+### EoN
+
+- Include registered template definitions in NBIRTH messages. The definitions were
+  registered with the `TemplateRegistry` but never added to the birth payload, so
+  template instances referenced a definition that nodes never published
+
+### Examples
+
+- Add a `tck-node` example that implements the DataSet and template features checked
+  by the Sparkplug TCK's `SendComplexDataTest`
+
 ## 0.6.0
 
 Minimum supported Rust version is now 1.85.
