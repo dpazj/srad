@@ -673,10 +673,39 @@ pub enum FromMetricValueError {
 }
 
 impl MetricValueKind {
+    /// Normalize an integer value to the protobuf field that the datatype
+    /// expects.
+    ///
+    /// The specification maps integer datatypes to `int_value` or `long_value`,
+    /// but some producers (for example the Eclipse Tahu based Sparkplug TCK)
+    /// encode a 32-bit value in `long_value` when the source language value is
+    /// a 64-bit integer. Accepting either field keeps payloads readable while
+    /// preserving the unsigned representation of negative values.
+    fn coerce_integer_value(datatype: DataType, value: MetricValue) -> MetricValue {
+        use payload::metric::Value;
+
+        match (datatype, value.0) {
+            (
+                DataType::Int8
+                | DataType::Int16
+                | DataType::Int32
+                | DataType::UInt8
+                | DataType::UInt16
+                | DataType::UInt32,
+                Value::LongValue(value),
+            ) => Value::IntValue(value as u32).into(),
+            (DataType::Int64 | DataType::UInt64, Value::IntValue(value)) => {
+                Value::LongValue(value as u64).into()
+            }
+            (_, value) => value.into(),
+        }
+    }
+
     pub fn try_from_metric_value(
         datatype: DataType,
         value: MetricValue,
     ) -> Result<Self, FromMetricValueError> {
+        let value = Self::coerce_integer_value(datatype, value);
         let out = match datatype {
             DataType::Unknown => return Err(FromMetricValueError::InvalidDataType),
             DataType::Int8 => MetricValueKind::Int8(i8::try_from(value)?),
@@ -1197,6 +1226,35 @@ mod tests {
                 proto_to_datetime_vec(datetime_vec_to_proto(vec.clone())).unwrap()
             );
         }
+    }
+
+    #[test]
+    fn metric_value_kind_accepts_integer_in_either_proto_field() {
+        // Some producers encode 32-bit integer datatypes in `long_value`.
+        let value = MetricValue::new(metric::Value::LongValue(0xFFFF_FFFF));
+        assert!(matches!(
+            MetricValueKind::try_from_metric_value(DataType::UInt32, value).unwrap(),
+            MetricValueKind::UInt32(u32::MAX)
+        ));
+
+        let value = MetricValue::new(metric::Value::LongValue(300));
+        assert!(matches!(
+            MetricValueKind::try_from_metric_value(DataType::Int16, value).unwrap(),
+            MetricValueKind::Int16(300)
+        ));
+
+        let value = MetricValue::new(metric::Value::LongValue(-1_i64 as u64));
+        assert!(matches!(
+            MetricValueKind::try_from_metric_value(DataType::Int8, value).unwrap(),
+            MetricValueKind::Int8(-1)
+        ));
+
+        // ... and 64-bit integer datatypes in `int_value`.
+        let value = MetricValue::new(metric::Value::IntValue(0xFFFF_FFFF));
+        assert!(matches!(
+            MetricValueKind::try_from_metric_value(DataType::Int64, value).unwrap(),
+            MetricValueKind::Int64(0xFFFF_FFFF)
+        ));
     }
 
     #[test]

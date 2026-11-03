@@ -1,7 +1,10 @@
 # Sparkplug TCK
 
-A containerised setup for running the [Eclipse Sparkplug TCK 3.0.0][tck] against an
+An **AI generated** containerised test harness for running the [Eclipse Sparkplug TCK 3.0.0][tck] against an
 `srad` node, plus `tck-runner`, a CLI that runs the tests programmatically.
+
+See [`CONFORMANCE.md`](./CONFORMANCE.md) for the current `edge` and `host`
+results and the implementation gaps behind the tests that do not pass.
 
 [tck]: https://github.com/eclipse-sparkplug/sparkplug
 
@@ -45,7 +48,7 @@ Build the runner and the example nodes first:
 
 ```shell
 cargo build -p tck-runner
-cargo build -p examples --example simple-node --example tck-node
+cargo build -p examples --example simple-node --example tck-node --example generic-app
 ```
 
 Then run a single test against a fresh, containerised TCK broker:
@@ -136,8 +139,34 @@ which arguments each test takes and how the node has to be managed:
   after the test request.
 - Session termination tests start the node and then stop it to trigger the death
   messages.
-- Host application tests expect the application to be running already; their
-  interactive prompts need `--console-reply` or a person reading the console.
+- Host application tests run the host application itself as the node under test.
+  Session establishment and multiple-broker tests start it after the test
+  request, session termination starts and then stops it, and the command and
+  death tests start it before the test because the TCK checks the application's
+  retained online `STATE` at construction. Their interactive prompts need
+  `--console-reply` or a person reading the console.
+
+### Host application tests
+
+The host application under test must use the id passed to `--host-app-id` and
+the MQTT client id passed to `--client-id`. The `generic-app` example uses `foo`
+and `client`:
+
+```shell
+cargo build -p examples --example generic-app
+
+./target/debug/tck-runner --suite host \
+    --docker-image srad-tck \
+    --node-cmd ./target/debug/examples/generic-app \
+    --host-app-id foo \
+    --client-id client \
+    --console-reply PASS
+```
+
+`host:SendCommandTest` prompts the operator to make the application send four
+commands. `generic-app` has no such trigger, so that test times out; it needs an
+application that exposes a command-sending workflow. `host:MultipleBrokerTest`
+additionally needs the application connected to two brokers at once.
 
 ### Isolation and bdSeq
 

@@ -7,6 +7,10 @@
 - Add value conversions from references (`&T`, `&str` and `&[T]`) for metric, property,
   data set and parameter values
 - Fix `TemplateDefinition::try_from` to accept `is_definition = true`
+- Accept integer metric values encoded in either the protobuf `int_value` or
+  `long_value` field. Some producers, including the Eclipse Tahu based Sparkplug
+  TCK, encode 32-bit datatypes in `long_value`, which previously made
+  `MetricValueKind::try_from_metric_value` reject the whole birth payload
 
 ### Client
 
@@ -46,12 +50,25 @@
 
 - Use a request channel capacity of 64 in the examples instead of a
   zero-capacity (rendezvous) channel
+- Wait for the application event loop to finish in the `generic-app` example
+  before exiting, so the offline STATE message and MQTT DISCONNECT are flushed
+  and the TCK's `host:SessionTerminationTest` sees the host death certificate
 - Publish the `tck-node` template instance in the device birth, rather than a
   parameters-only template, so the TCK's template member assertions execute
 - Add a `tck-node` example that implements the DataSet and template features checked
   by the Sparkplug TCK's `SendComplexDataTest`
 - Configure the `tck-node` example to wait for the TCK's `SCADA_HOST` primary host,
   which enables the TCK's `edge:SessionEstablishmentTest` primary host check
+
+### TCK
+
+- Manage the host application under test with `--node-cmd` for the host profile:
+  session establishment and multiple-broker tests start it after the test
+  request, session termination starts and then stops it, and the command and
+  death tests start it before the test so its retained online STATE is present
+- Wait `--node-start-delay` after starting a node for `StartBefore` tests, so the
+  node has connected and published its retained birth or STATE before the test
+  observes it
 
 ## 0.6.0
 

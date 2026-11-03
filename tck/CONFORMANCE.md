@@ -1,0 +1,265 @@
+# Sparkplug TCK Conformance
+
+**Document AI Generated**
+
+This document records the current results of the [Eclipse Sparkplug TCK][tck]
+`edge` and `host` profiles against the `srad` Edge Node and Host Application
+implementations. It lists what passes, which assertions are not executed, and the
+implementation gaps behind them. The TCK's `broker` profile is not covered
+because it tests the MQTT server rather than the library.
+
+Last run: 2026-11-03, against Eclipse Sparkplug TCK **3.0.0** with the
+`hivemq/hivemq-ce:2025.3` based `srad-tck` image.
+
+[tck]: https://github.com/eclipse-sparkplug/sparkplug
+
+## Scope
+
+| Profile | Implementation under test | Example used |
+| --- | --- | --- |
+| `edge` | `srad-eon` | `examples/node/tck.rs` (`tck-node`) |
+| `host` | `srad-app` | `examples/app/generic.rs` (`generic-app`) |
+
+## Results
+
+| Profile | Test | Result | Assertions |
+| --- | --- | --- | --- |
+| edge | `SessionEstablishmentTest` | PASS but INCOMPLETE | 77 passed, 1 not executed |
+| edge | `SessionTerminationTest` | PASS but INCOMPLETE | 25 passed, 10 not executed |
+| edge | `SendDataTest` | PASS | 44 passed |
+| edge | `SendComplexDataTest` | PASS | 48 passed |
+| edge | `ReceiveCommandTest` | PASS | 14 passed |
+| edge | `PrimaryHostTest` | PASS | 35 passed |
+| edge | `MultipleBrokerTest` | **FAIL** | 23 passed, 1 failed, 1 not executed |
+| host | `SessionEstablishmentTest` | PASS but INCOMPLETE | 43 passed, 1 not executed |
+| host | `SessionTerminationTest` | PASS but INCOMPLETE | 11 passed, 1 not executed |
+| host | `SendCommandTest` | **TIMEOUT** | 11 passed, 26 not executed |
+| host | `EdgeSessionTerminationTest` | PASS | 15 passed |
+| host | `MessageOrderingTest` | PASS | 22 passed |
+| host | `MultipleBrokerTest` | **TIMEOUT** | 3 not executed |
+
+`PASS but INCOMPLETE` means every executed assertion passed but some assertions
+were not exercised. It is the expected result when a requirement does not apply
+to the implementation (for example, the MQTT 3.1.1 clean-session requirement
+when the client only speaks MQTT 5).
+
+## What is covered
+
+### Edge Node (`srad-eon`)
+
+The following are exercised and pass:
+
+- Session establishment: `CONNECT` ordering, Last Will (topic, QoS, retain,
+  payload, `bdSeq`), NBIRTH/DBIRTH topics, QoS, retain, sequence numbers,
+  timestamps, ordering, and the `bdSeq` relationship between the Will and the
+  birth.
+- Primary host handling: waiting for an online `STATE`, ignoring a wrong host,
+  re-birthing when the host comes online, and the offline/reconnect path.
+- Data: NDATA/DDATA topics, QoS 0, no retain, sequence increments, UTC
+  timestamps, metric ordering, and alias use.
+- Complex data: DataSets, template definitions and instances, parameters,
+  property sets, all scalar types, and aliases.
+- Commands: NCMD/DCMD subscription, `Node Control/Rebirth` handling, and the
+  rebirth sequence (`bdSeq` continuity, NBIRTH followed by DBIRTH).
+- Topic structure and name validation, metric name/datatype rules, and
+  birth/data alias rules.
+
+### Host Application (`srad-app`)
+
+- Session establishment: online `STATE` publish and subscription, retained
+  birth/death payloads, QoS, and timestamps.
+- Session termination: offline `STATE` before a clean MQTT DISCONNECT, death
+  payload, QoS, and retain.
+- Edge and device death handling: the application marks nodes, devices, and
+  metrics stale when it receives NDEATH/DDEATH.
+- Message ordering: out-of-order DDATA is buffered, and the application sends
+  `Node Control/Rebirth` when the reorder timeout elapses.
+
+## Gaps and not-executed assertions
+
+### `edge:MultipleBrokerTest` — no broker failover
+
+**Failing assertion:** `operational-behavior-primary-application-state-with-multiple-servers-walk`
+
+**Not executed:** `operational-behavior-primary-application-state-with-multiple-servers-single-server`
+
+**Why:** `srad-eon` owns a single `EventLoop` and `Client`. When the primary host
+goes offline, `NodeHandle::on_primary_host_offline` publishes NDEATH and
+disconnects, but the node reconnects to the same broker. The specification
+requires the Edge Node to terminate the session and move to the next MQTT Server
+in its connection list. There is no broker list, no switching logic, and no
+`EoNBuilder` API for multiple brokers.
+
+The runner also does not provision the second broker on port 1884 that this test
+expects, so the harness needs work before a multi-broker node could complete the
+test.
+
+**Implementation:** add a multi-broker client/event-loop adapter (or
+`EoNBuilder::with_brokers`), switch brokers after the primary host goes offline,
+and let the existing primary-host wait logic establish the new session. The
+per-session `bdSeq` increment and the STATE timestamp handling already work.
+
+### `host:MultipleBrokerTest` — single-broker application
+
+**Not executed:** all three assertions
+(`...-with-multiple-servers-state-subs`, `...-with-multiple-servers-state`,
+`operational-behavior-host-application-multi-server-timestamp`).
+
+**Why:** the test requires the Host Application to be online on two MQTT Servers
+at the same time, publish its online `STATE` to both, and reconnect after the TCK
+forcibly disconnects it from one. `srad-app` owns one client and one event loop.
+
+**Implementation:** run one application per broker (same host id, different MQTT
+client ids) or add a multi-client application wrapper that publishes online and
+offline `STATE` to every broker and reconnects each independently. The runner
+also needs to start the second broker.
+
+### `host:SendCommandTest` — no command workflow and no command datatype
+
+**Not executed:** 26 command assertions, including
+`operational-behavior-data-commands-ncmd-verb`,
+`operational-behavior-data-commands-ncmd-rebirth-value`,
+`operational-behavior-data-commands-dcmd-metric-value`,
+`topics-ncmd-*`, `topics-dcmd-*`, and the NCMD/DCMD payload assertions.
+
+**Why:** two separate gaps.
+
+1. The application has no command-sending workflow. `AppClient` exposes
+   `publish_metrics` and `publish_node_rebirth`, but `generic-app` has no trigger
+   that makes it send commands. The TCK asks the operator to trigger four
+   commands and receives none.
+2. `srad-app` cannot include a datatype on a published metric. `PublishMetric`
+   stores the value, and `From<PublishMetric> for Metric` sets the name, alias,
+   value, and timestamp, but never `datatype`. The TCK requires
+   `datatype == Boolean` for the `Node Control/Rebirth` value and
+   `datatype == birth datatype` for the DCMD metric value. The specification
+   says datatype *SHOULD NOT* be included in NCMD/DCMD, so this is partly a TCK
+   inconsistency, but an option is needed for interoperability.
+
+**Implementation:** add `PublishMetric::with_datatype(DataType)` (and a
+`publish_device_rebirth` helper next to `publish_node_rebirth`), then provide a
+legitimate application workflow that sends a command in response to an
+application-level input.
+
+### MQTT 3.1.1 assertions — client is MQTT 5 only
+
+**Not executed:**
+- `principles-persistence-clean-session-311` (`edge:SessionEstablishmentTest`)
+- `message-flow-phid-sparkplug-clean-session-311`
+  (`host:SessionEstablishmentTest`)
+
+**Why:** `srad-client-rumqtt` imports `rumqttc::v5` only, so every session is
+MQTT 5 and the 3.1.1 clean-session path cannot be exercised. The MQTT 5
+equivalents (`clean-session-50`) pass.
+
+**Implementation:** add a v4 client implementation using the root `rumqttc` API
+and a way to select the MQTT version. This would also execute the MQTT 3.1.1
+will/disconnect assertions.
+
+### MQTT 5 Disconnect-with-Will — blocked by `rumqttc`
+
+**Not executed:**
+- `payloads-ndeath-will-message-publisher-disconnect-mqtt50`
+- `payloads-ndeath-will-message-publisher-disconnect-mqtt311`
+
+**Why:** for MQTT 5 the specification requires a DISCONNECT packet with reason
+code `0x04` (Disconnect with Will Message). `srad-client-rumqtt` cannot send it:
+`rumqttc` 0.24 exposes `Request::Disconnect` without a reason code, so
+`disconnect_with_will` returns `true` and closes the TCP connection instead. The
+broker still publishes the Will, but the TCK never sees a DISCONNECT packet and
+cannot execute the assertion.
+
+**Implementation:** patch or upgrade `rumqttc` to expose the reason code (the
+existing TODO references rumqtt/rumqtt#916), then send `0x04` from
+`disconnect_with_will`. Keep the explicit NDEATH publish, because brokers do not
+expose server-published Wills to extensions; the duplicate Will NDEATH carries
+the same `bdSeq` and is ignored by hosts.
+
+### DDEATH on node shutdown — not published
+
+**Not executed:** `operational-behavior-device-ddeath`,
+`payloads-ddeath-seq`, `payloads-ddeath-seq-inc`,
+`payloads-ddeath-seq-number`, `payloads-ddeath-timestamp`,
+`topics-ddeath-mqtt`, `topics-ddeath-seq-num`, `topics-ddeath-topic`.
+
+**Why:** the node publishes DDEATH when a device is disabled or removed
+(`DeviceHandle::disable()` and `NodeStateMessage::Removed` call
+`Device::death(true)`), but `NodeStateMessage::Death` calls `death(false)`.
+`NodeHandle::cancel()` publishes only NDEATH, so a graceful node shutdown
+produces no DDEATH. The TCK's `edge:SessionTerminationTest` stops the whole node
+and therefore cannot observe a DDEATH.
+
+The specification says an NDEATH implies that all associated devices are
+offline, so DDEATH on node shutdown is not strictly required. This is primarily
+TCK coverage.
+
+**Implementation (optional):** publish DDEATH for each birthed device before
+NDEATH in `NodeHandle::cancel()`. This needs a sequence allocation that does not
+require `birthed` (the node is still online) and access to each device's birthed
+state. Alternatively, add a `disable_all_devices()` helper with an
+acknowledgement and call it from the test node before `cancel()`.
+
+### `host:SessionTerminationTest` — no-DISCONNECT branch
+
+**Not executed:**
+`host-topic-phid-death-payload-timestamp-disconnect-with-no-disconnect-packet`
+
+**Why:** the application publishes the offline `STATE` and then sends a clean MQTT
+DISCONNECT, so the TCK takes the `disconnect-clean` branch. The other branch is
+only executed when the application terminates the connection without a
+DISCONNECT packet.
+
+**Implementation:** run a variant that closes the socket without a DISCONNECT
+(for example through `Client::disconnect_with_will` or a forced process kill) to
+exercise the branch.
+
+## TCK quirks worth knowing
+
+- **Tahu integer encoding.** The TCK's Tahu encoder stores a `UInt32` value in
+  the protobuf `long_value` field when the Java source value is a `Long`. This
+  previously made `srad-types` reject the whole DBIRTH. `MetricValueKind` now
+  accepts integer values in either `int_value` or `long_value`; the fix is
+  covered by a unit test.
+- **Command datatype.** `host:SendCommandTest` requires a datatype in command
+  metrics even though the specification says it *SHOULD NOT* be included. This
+  is the main reason the command test cannot pass with the current
+  `PublishMetric` API.
+- **DDEATH is only reachable through node shutdown.** `edge:SessionTerminationTest`
+  has no way to take a single device offline while the node stays up, so the
+  DDEATH assertions depend on shutdown behaviour.
+
+## Reproducing
+
+Build the runner and examples:
+
+```shell
+cargo build -p tck-runner
+cargo build -p examples --example tck-node --example generic-app
+```
+
+Edge profile:
+
+```shell
+./target/debug/tck-runner --suite edge \
+    --docker-image srad-tck \
+    --node-cmd ./target/debug/examples/tck-node \
+    --timeout 90
+```
+
+Host profile:
+
+```shell
+./target/debug/tck-runner --suite host \
+    --docker-image srad-tck \
+    --node-cmd ./target/debug/examples/generic-app \
+    --host-app-id foo \
+    --client-id client \
+    --console-reply PASS \
+    --timeout 60
+```
+
+The runner writes `results.json`, `junit.xml`, and per-test logs under
+`tck/results/<timestamp>/`. The host suite needs `--host-app-id` and
+`--client-id` to match the application under test (`foo` and `client` for
+`generic-app`). `host:MultipleBrokerTest` additionally needs a second broker on
+port 1884 and a host application connected to both brokers.

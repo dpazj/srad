@@ -95,6 +95,12 @@ Rust 1.85 or newer is required.
 - [`codegen`](./codegen): Generates types from protobuf files in [`protos`](./protos).
 - [`examples`](./examples): Example Edge Node and application implementations.
 
+## TCK Conformance
+
+See [`tck/CONFORMANCE.md`](./tck/CONFORMANCE.md) for the current Eclipse Sparkplug
+TCK `edge` and `host` results, the assertions that are not executed, and the
+implementation gaps behind them.
+
 ## License
 
 This project is dual licensed under the [MIT] and [APACHE] licenses.
