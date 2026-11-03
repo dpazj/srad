@@ -14,7 +14,7 @@ use tokio::{select, sync::mpsc, task};
 
 use crate::{
     birth::{BirthInitializer, BirthObjectType},
-    metric::{MetricPublisher, PublishError, PublishMetric},
+    metric::{MessageMetrics, MetricPublisher, PublishError, PublishMetric},
     metric_manager::manager::DynDeviceMetricManager,
     node::{EoNState, TemplateRegistry},
     BirthType, StateError,
@@ -257,15 +257,23 @@ impl Device {
                     return;
                 }
             };
-            let message_metrics = match payload.try_into() {
-                Ok(metrics) => metrics,
-                Err(_) => {
-                    warn!(
-                        "Got invalid CMD payload for device - ignoring. Device = {}",
-                        self.state.name
-                    );
-                    return;
+            let message_metrics = if payload.timestamp.is_some() {
+                match payload.try_into() {
+                    Ok(metrics) => metrics,
+                    Err(e) => {
+                        warn!(
+                            "Got invalid CMD payload for device - ignoring. Device = {} error={e}",
+                            self.state.name
+                        );
+                        return;
+                    }
                 }
+            } else {
+                warn!(
+                    "Got CMD payload without a timestamp for device. using the current time. Device = {}",
+                    self.state.name
+                );
+                MessageMetrics::from_payload_lenient(payload)
             };
             self.dev_impl.on_dcmd(handle, message_metrics).await
         }
