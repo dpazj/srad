@@ -65,6 +65,12 @@ definition and instance, and data messages that use aliases. Run it with:
     --node-cmd ./target/debug/examples/tck-node
 ```
 
+Both example nodes configure `SCADA_HOST` as their Sparkplug Primary Host Application.
+The TCK's edge tests bring this host online before starting the node, so the node waits
+for the host's STATE message before publishing its birth and
+`edge:SessionEstablishmentTest` exercises the primary-host wait path. If you change
+`--host-app-id`, update the examples to match.
+
 Run several tests, or every test of a profile:
 
 ```shell

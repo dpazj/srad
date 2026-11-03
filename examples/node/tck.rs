@@ -119,6 +119,9 @@ async fn main() {
     let (eon, handle) = EoNBuilder::new(eventloop, client)
         .with_group_id("foo")
         .with_node_id("bar")
+        // The Sparkplug TCK runs a primary host application with this ID and
+        // expects the node to wait for its online STATE before birthing.
+        .with_primary_host_id("SCADA_HOST")
         .with_metric_manager(TckNodeMetrics {
             inner: node_metrics.clone(),
         })
