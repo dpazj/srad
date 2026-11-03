@@ -2,7 +2,9 @@ use crate::{metadata::MetaData, payload::DataType, value};
 
 /// Trait used to query the Sparkplug datatype(s) that an implementing type supports
 pub trait HasDataType {
-    /// Default [crate::payload::DataType] the type maps to
+    /// Default [crate::payload::DataType] the type maps to.
+    ///
+    /// This must be included in [`Self::SUPPORTED_DATATYPES`].
     const DEFAULT_DATATYPE: DataType;
 
     /// All Sparkplug [crate::payload::DataType]'s the type supports.
@@ -27,6 +29,19 @@ pub const fn datatype_is_supported(datatype: DataType, supported: &[DataType]) -
         index += 1;
     }
     false
+}
+
+/// Asserts at compile time that a type's [`HasDataType::DEFAULT_DATATYPE`] is included in its
+/// [`HasDataType::SUPPORTED_DATATYPES`].
+///
+/// This is used by derive macros and the crate's own [`HasDataType`] implementations so an
+/// invalid implementation fails to compile instead of producing the wrong column datatype.
+#[doc(hidden)]
+pub const fn assert_default_datatype_supported<T: HasDataType>() {
+    assert!(
+        datatype_is_supported(T::DEFAULT_DATATYPE, T::SUPPORTED_DATATYPES),
+        "HasDataType::DEFAULT_DATATYPE must be included in HasDataType::SUPPORTED_DATATYPES",
+    );
 }
 
 impl<T> HasDataType for Option<T>

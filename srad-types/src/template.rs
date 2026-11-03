@@ -265,6 +265,8 @@ impl HasDataType for TemplateDefinition {
     const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::Template];
 }
 
+const _: () = traits::assert_default_datatype_supported::<TemplateDefinition>();
+
 impl traits::MetricValue for TemplateDefinition {}
 
 impl From<TemplateDefinition> for payload::Template {
@@ -327,6 +329,8 @@ impl HasDataType for TemplateInstance {
     const DEFAULT_DATATYPE: DataType = DataType::Template;
     const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::Template];
 }
+
+const _: () = traits::assert_default_datatype_supported::<TemplateInstance>();
 
 impl traits::MetricValue for TemplateInstance {}
 

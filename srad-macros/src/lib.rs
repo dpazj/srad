@@ -163,7 +163,7 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
     let mut skipped_types = Vec::new();
     let mut datatype_assertions = Vec::new();
     // A const assertion cannot be evaluated for a type that depends on a generic parameter,
-    // so overrides on generic rows are validated at decode time instead.
+    // so rows with type generics defer default/override validation to decode time instead.
     let has_type_generics = input.generics.type_params().next().is_some();
 
     for field in fields.named.iter() {
@@ -206,16 +206,24 @@ fn try_data_set_row(input: DeriveInput) -> syn::Result<proc_macro::TokenStream> 
             },
         };
 
-        if datatype.is_some() && !has_type_generics {
+        if !has_type_generics {
+            // The type's own default datatype must always be supported, even when the column
+            // datatype is overridden.
             datatype_assertions.push(quote! {
-                const _: () = ::core::assert!(
-                    ::srad::types::traits::datatype_is_supported(
-                        #datatype_expr,
-                        <#value_ty as ::srad::types::traits::HasDataType>::SUPPORTED_DATATYPES,
-                    ),
-                    "dataset datatype override is not supported by the field type",
-                );
+                const _: () = ::srad::types::traits::assert_default_datatype_supported::<#value_ty>();
             });
+
+            if datatype.is_some() {
+                datatype_assertions.push(quote! {
+                    const _: () = ::core::assert!(
+                        ::srad::types::traits::datatype_is_supported(
+                            #datatype_expr,
+                            <#value_ty as ::srad::types::traits::HasDataType>::SUPPORTED_DATATYPES,
+                        ),
+                        "dataset datatype override is not supported by the field type",
+                    );
+                });
+            }
         }
 
         let encode_expr = if is_option {
@@ -879,9 +887,63 @@ pub fn template_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 ///
 /// Use `#[dataset(datatype = "Text")]` to override the column datatype. The datatype must be
 /// listed by the field type's `HasDataType::SUPPORTED_DATATYPES`; this is checked at compile
-/// time for non-generic rows. Encoding and decoding still use the field type's `DataSetValue`
-/// implementation, so only variants encoded by that type are valid (for example `String` can
-/// use `String`, `Text` or `Uuid` because all three are encoded as a string).
+/// time for non-generic rows. The field type's `HasDataType::DEFAULT_DATATYPE` must also be
+/// included in `HasDataType::SUPPORTED_DATATYPES`, even when an override is used. Encoding and
+/// decoding still use the field type's `DataSetValue` implementation, so only variants encoded
+/// by that type are valid (for example `String` can use `String`, `Text` or `Uuid` because all
+/// three are encoded as a string).
+///
+/// ```compile_fail
+/// use srad::types::DataSetRow;
+///
+/// #[derive(DataSetRow)]
+/// struct Row {
+///     // `String` does not support `Int32`, so this override fails to compile.
+///     #[dataset(datatype = "Int32")]
+///     value: String,
+/// }
+/// ```
+///
+/// A type whose `DEFAULT_DATATYPE` is not part of its `SUPPORTED_DATATYPES` is rejected even
+/// when the field overrides the column datatype:
+///
+/// ```compile_fail
+/// use srad::types::{
+///     payload::DataType,
+///     traits::{DataSetValue as DataSetValueTrait, HasDataType},
+///     DataSetRow, DataSetValue, FromValueTypeError,
+/// };
+///
+/// struct Broken(String);
+///
+/// impl HasDataType for Broken {
+///     const DEFAULT_DATATYPE: DataType = DataType::Int32;
+///     const SUPPORTED_DATATYPES: &'static [DataType] = &[DataType::String];
+/// }
+///
+/// impl From<Broken> for DataSetValue {
+///     fn from(value: Broken) -> Self {
+///         String::from(value.0).into()
+///     }
+/// }
+///
+/// impl TryFrom<DataSetValue> for Broken {
+///     type Error = FromValueTypeError;
+///
+///     fn try_from(value: DataSetValue) -> Result<Self, Self::Error> {
+///         Ok(Self(String::try_from(value)?))
+///     }
+/// }
+///
+/// impl DataSetValueTrait for Broken {}
+///
+/// #[derive(DataSetRow)]
+/// struct Row {
+///     // The override itself is valid, but `DEFAULT_DATATYPE` is still invalid.
+///     #[dataset(datatype = "String")]
+///     value: Broken,
+/// }
+/// ```
 ///
 /// Every field type must implement:
 ///
