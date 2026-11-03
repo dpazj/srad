@@ -2,7 +2,7 @@
 
 `srad` is a [Sparkplug](https://sparkplug.eclipse.org/) library and development framework in Rust.
 
-The name `srad` comes from Scottish Gaelic, where it means "to spark" or "to [emit sparks](https://learngaelic.scot/dictionary/index.jsp?abairt=srad&slang=both&wholeword=false)".
+The name `srad` comes from Scottish Gaelic, meaning to ["spark" or "emit sparks"](https://learngaelic.scot/dictionary/index.jsp?abairt=srad&slang=both&wholeword=false).
 
 [![CI](https://github.com/dpazj/srad/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/dpazj/srad/actions/workflows/ci.yml?query=branch%3Amaster)
 [![Documentation](https://docs.rs/srad/badge.svg)][docs]
