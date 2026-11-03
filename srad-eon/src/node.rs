@@ -582,6 +582,23 @@ impl Node {
         }
     }
 
+    /// Rebirth the node in response to a rebirth command.
+    ///
+    /// Data publishes are stopped before the birth sequence so that no DATA
+    /// messages are sent after the command is received.
+    async fn command_rebirth(&mut self) {
+        if !self.state.birthed() {
+            return;
+        }
+        self.state.set_dead();
+        if let Err(e) = self.birth(BirthType::Rebirth).await {
+            error!(
+                "Publishing node rebirth message failed. node={}: {e}",
+                self.state.edge_node_id
+            );
+        }
+    }
+
     fn death(&self) {
         self.state.set_dead();
         self.state.bdseq.fetch_add(1, Ordering::SeqCst);
@@ -789,15 +806,23 @@ impl Node {
                 }
             }
 
-            let message_metrics: MessageMetrics = match payload.try_into() {
-                Ok(metrics) => metrics,
-                Err(_) => {
-                    warn!(
-                        "Received invalid CMD payload - ignoring request. node={}",
-                        self.state.edge_node_id
-                    );
-                    return;
+            let message_metrics: MessageMetrics = if payload.timestamp.is_some() {
+                match payload.try_into() {
+                    Ok(metrics) => metrics,
+                    Err(e) => {
+                        warn!(
+                            "Received invalid CMD payload - ignoring request. node={} error={e}",
+                            self.state.edge_node_id
+                        );
+                        return;
+                    }
                 }
+            } else {
+                warn!(
+                    "Received CMD payload without a timestamp; using the current time. node={}",
+                    self.state.edge_node_id
+                );
+                MessageMetrics::from_payload_lenient(payload)
             };
 
             self.metric_manager.on_ncmd(handle, message_metrics).await;
@@ -815,7 +840,7 @@ impl Node {
                     "Got Rebirth CMD - Rebirthing Node. node={}",
                     self.state.edge_node_id
                 );
-                self.rebirth().await;
+                self.command_rebirth().await;
                 self.last_node_rebirth_request = now;
             }
         }
