@@ -9,8 +9,7 @@ Minimum supported Rust version is now 1.85.
 - Add `DataSet`, `DataSetColumn`, `TypedDataSet` and `DataSetRow` derive support,
   including `#[dataset(rename = "...")]`, `#[dataset(datatype = "...")]`,
   `#[dataset(skip)]` and `Option<T>` columns
-- Add `DataSetError` for fallible DataSet operations, such as `TypedDataSet::try_add_row`
-  and row conversions
+- Add `DataSetError` for fallible DataSet operations
 - **breaking change** `MetricValueKind::DataSet` now contains a `DataSet`
 - **breaking change** `HasDataType` now requires `DEFAULT_DATATYPE` and
   `SUPPORTED_DATATYPES` consts; the `default_datatype()` and `supported_datatypes()`
@@ -38,7 +37,7 @@ Minimum supported Rust version is now 1.85.
 
 ### EoN
 
-- Change EoN lifecycle publishes to QoS 0: NDeath, DBirth and DDeath. The NDEATH Last Will remains QoS 1
+- Change EoN lifecycle publishes to QoS 0: NDeath, DBirth and DDeath.
 - Add `PublishError::Client` and stop masking client publish failures as `StateError::Offline`
 - Add `MessageMetricError` and `MessageMetricsError`
 - **breaking change** `MessageMetric` and `MessageMetrics` conversions now return typed errors
