@@ -7,7 +7,7 @@ use crate::{
     traits, PropertyValue as PropertyValueValue,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PropertyValue {
     value: Option<PropertyValueValue>,
     datatype: Option<payload::DataType>,
@@ -83,7 +83,7 @@ impl TryFrom<payload::PropertyValue> for PropertyValue {
 }
 
 /// A collection of property values
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PropertySet(HashMap<String, PropertyValue>);
 
 impl Default for PropertySet {
