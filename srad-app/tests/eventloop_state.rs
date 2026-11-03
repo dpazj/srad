@@ -122,3 +122,27 @@ async fn app_states() {
     assert_eq!(topic, StateTopic::new_host(app_id));
     assert!(matches!(payload, StatePayload::Offline { timestamp: _ }));
 }
+
+#[tokio::test]
+async fn all_groups_also_subscribes_to_its_state_topic() {
+    let app_id = "foo";
+
+    let (eventloop, client, mut broker) = ChannelEventLoop::new();
+    let (mut application, _app_client) =
+        AppEventLoop::new(app_id, SubscriptionConfig::AllGroups, eventloop, client);
+
+    tokio::spawn(async move {
+        loop {
+            _ = application.poll().await
+        }
+    });
+
+    broker.tx_event.send(srad_client::Event::Online).unwrap();
+
+    let filters = get_subscriptions_from_broker(&mut broker).await;
+    let expected_filters = vec![
+        TopicFilter::new_with_qos(Topic::State(StateTopic::new_host(app_id)), QoS::AtMostOnce),
+        TopicFilter::new_with_qos(Topic::FullNamespace, QoS::AtMostOnce),
+    ];
+    assert_filters_eq(filters, expected_filters);
+}

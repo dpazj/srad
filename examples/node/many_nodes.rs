@@ -24,7 +24,7 @@ async fn main() {
     for i in 0..NODE_COUNT {
         let node_name = format!("node-{i}");
         let opts = rumqtt::MqttOptions::new(node_name.clone(), "localhost", 1883);
-        let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
+        let (eventloop, client) = rumqtt::EventLoop::new(opts, 64);
 
         let (eon, handle) = EoNBuilder::new(eventloop, client)
             .with_group_id("foo")

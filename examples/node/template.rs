@@ -101,7 +101,7 @@ async fn main() {
 
     let opts = rumqtt::MqttOptions::new("node", "localhost", 1883);
 
-    let (eventloop, client) = rumqtt::EventLoop::new(opts, 0);
+    let (eventloop, client) = rumqtt::EventLoop::new(opts, 64);
 
     let manager = TemplateManager::new();
 
