@@ -6,7 +6,6 @@
 **Features**
 
 - Multi-part metric support
-- Wait for states
 
 **Other**
 
@@ -22,7 +21,6 @@
 - Check the result of publishes and handle failures accordingly
   - Decide how to handle failed DBIRTH/NDATA/DDATA/NCMD/DCMD/DDEATH publishes
 - Multi-part metric message support for NDATA/DDATA and NCMD/DCMD
-- Wait for states
 
 ## App
 
