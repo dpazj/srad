@@ -8,8 +8,7 @@ implementations. It lists what passes, which assertions are not executed, and th
 implementation gaps behind them. The TCK's `broker` profile is not covered
 because it tests the MQTT server rather than the library.
 
-Last run: 2026-11-04 for the `host` profile and 2026-11-03 for the `edge`
-profile, against Eclipse Sparkplug TCK **3.0.0** with the
+Last run: against Eclipse Sparkplug TCK **3.0.0** with the
 `hivemq/hivemq-ce:2025.3` based `srad-tck` image.
 
 [tck]: https://github.com/eclipse-sparkplug/sparkplug
