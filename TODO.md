@@ -21,7 +21,6 @@
 
 - Check the result of publishes and handle failures accordingly
   - Decide how to handle failed DBIRTH/NDATA/DDATA/NCMD/DCMD/DDEATH publishes
-- Populate `MessageMetric::properties` from received metrics (currently always `None`)
 - Multi-part metric message support for NDATA/DDATA and NCMD/DCMD
 - Wait for states
 

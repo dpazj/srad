@@ -31,7 +31,8 @@
 - Accept command payloads that omit the payload timestamp by using the time the
   command was received, instead of discarding the command
 - Populate `MessageMetric::properties` from received command metrics instead of
-  always setting them to `None`
+  always setting them to `None`, and reject malformed property sets with
+  `MessageMetricError::InvalidProperties`
 - Stop data publishes immediately when a rebirth command is received, so no DATA
   messages are sent after the command, and publish the node and device births from
   the same session
