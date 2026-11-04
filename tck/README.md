@@ -48,7 +48,7 @@ Build the runner and the example nodes first:
 
 ```shell
 cargo build -p tck-runner
-cargo build -p examples --example simple-node --example tck-node --example generic-app
+cargo build -p examples --example simple-node --example tck-node --example tck-host --example generic-app
 ```
 
 Then run a single test against a fresh, containerised TCK broker:
@@ -87,6 +87,10 @@ Run several tests, or every test of a profile:
 
 Tests are named `<profile>:<test>`, where the profile is `edge`, `host` or `broker`.
 `--list` prints every test the TCK ships with.
+
+Keep the per-test timeout at the default of 120 seconds when you run a whole
+profile. The interactive command tests need about 50 seconds, so shorter timeouts
+report `timed_out` even though every assertion passed.
 
 To use an already-running broker (for example the web console container), omit
 `--docker-image`:
@@ -190,8 +194,22 @@ The example uses the first `--device-id` when the option is repeated.
 
 The simpler `generic-app` example can still be used for host tests that do not
 send commands, but `host:SendCommandTest` times out with it because it has no
-command workflow. `host:MultipleBrokerTest` additionally needs the application
-connected to two brokers at once.
+command workflow.
+
+### Multiple brokers
+
+Both `MultipleBrokerTest` tests expect a second MQTT server on port 1884. The
+runner does not start it: start the broker you use for local testing on that
+port and pass it with `--second-broker tcp://localhost:1884` (the default).
+
+For example, with the workspace's inver broker, copy its development config,
+change `[mqtt] bind` to `0.0.0.0:1884` and `[http] bind` to an unused port, and
+start it before running the test. The TCK container uses host networking, so it
+can reach the second broker on `localhost`.
+
+`edge:MultipleBrokerTest` still fails because `srad-eon` has no broker failover;
+see [`CONFORMANCE.md`](./CONFORMANCE.md). `host:MultipleBrokerTest` needs the host
+application connected to both brokers, which `tck-host` does not do.
 
 ### Isolation and bdSeq
 

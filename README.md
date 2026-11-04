@@ -21,7 +21,7 @@ Additional information for this crate can be found in the [docs][docs].
 
 ## Overview
 
-`srad` aims to make it easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.
+`srad` aims to make it as easy as possible to build reliable, fast, and resource efficient Sparkplug B Edge Nodes and Applications with minimal overhead.
 
 Features include:
 
