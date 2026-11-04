@@ -96,9 +96,10 @@ requires the Edge Node to terminate the session and move to the next MQTT Server
 in its connection list. There is no broker list, no switching logic, and no
 `EoNBuilder` API for multiple brokers.
 
-The runner also does not provision the second broker on port 1884 that this test
-expects, so the harness needs work before a multi-broker node could complete the
-test.
+The runner does not provision the second broker on port 1884 that this test
+expects; start one separately and pass it with `--second-broker` (see
+[`README.md`](./README.md#multiple-brokers)). The failing assertion is the node's
+missing failover, not the harness.
 
 **Implementation:** add a multi-broker client/event-loop adapter (or
 `EoNBuilder::with_brokers`), switch brokers after the primary host goes offline,
@@ -113,15 +114,15 @@ per-session `bdSeq` increment and the STATE timestamp handling already work.
 **Why:** the test requires the Host Application to be online on two MQTT Servers
 at the same time, publish its online `STATE` to both, and reconnect after the TCK
 forcibly disconnects it from one. `srad-app` owns one client and one event loop,
-and the runner does not provision the second broker on port 1884. The
-single-server assertions (`...-state-subs` and `...-state`) pass, so the test
-reports `PASS but INCOMPLETE`; the multi-server timestamp assertion is not
-executed.
+and `tck-host` connects to a single broker. The single-server assertions
+(`...-state-subs` and `...-state`) pass, so the test reports `PASS but INCOMPLETE`;
+the multi-server timestamp assertion is not executed.
 
 **Implementation:** run one application per broker (same host id, different MQTT
 client ids) or add a multi-client application wrapper that publishes online and
-offline `STATE` to every broker and reconnects each independently. The runner
-also needs to start the second broker.
+offline `STATE` to every broker and reconnects each independently. The second
+broker on port 1884 has to be started separately (see
+[`README.md`](./README.md#multiple-brokers)).
 
 ### `host:SendCommandTest` — command datatype
 
@@ -244,7 +245,7 @@ Edge profile:
 ./target/debug/tck-runner --suite edge \
     --docker-image srad-tck \
     --node-cmd ./target/debug/examples/tck-node \
-    --timeout 90
+    --timeout 120
 ```
 
 Host profile:
@@ -256,13 +257,15 @@ Host profile:
     --host-app-id foo \
     --client-id client \
     --console-reply PASS \
-    --timeout 60
+    --timeout 120
 ```
 
 The runner writes `results.json`, `junit.xml`, and per-test logs under
 `tck/results/<timestamp>/`. The host suite needs `--host-app-id` and
 `--client-id` to match the application under test (`foo` and `client` for
-`tck-host`). `host:MultipleBrokerTest` additionally needs a second broker on
-port 1884 and a host application connected to both brokers. The simpler
-`generic-app` example can still be used for host tests that do not send
-commands, but `host:SendCommandTest` needs `tck-host`'s prompt handling.
+`tck-host`). Both `MultipleBrokerTest` tests need a second broker on port 1884;
+start it separately and pass `--second-broker` as described in
+[`README.md`](./README.md#multiple-brokers). The host test also needs a host
+application connected to both brokers. The simpler `generic-app` example can
+still be used for host tests that do not send commands, but
+`host:SendCommandTest` needs `tck-host`'s prompt handling.

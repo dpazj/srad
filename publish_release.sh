@@ -27,10 +27,15 @@ for CRATE in "${CRATES[@]}"; do
 
   echo "Publishing $CRATE"
 
-  cargo publish
+  cargo publish --locked
 
-  echo "Sleeping 5 seconds...for the release to be visible"
-  sleep 5
+  # The crates.io index needs to see the new crate before a dependent crate can
+  # be published, so wait long enough for propagation instead of relying on the
+  # retry path. If a dependent crate still fails, wait and publish the remaining
+  # crates by hand: this script aborts on the first error, and an already
+  # published version cannot be uploaded again.
+  echo "Sleeping 30 seconds for the release to be visible"
+  sleep 30
 
   popd
 done
