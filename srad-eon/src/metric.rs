@@ -4,9 +4,9 @@ use std::vec::IntoIter;
 use log::warn;
 use srad_types::payload::{Metric, Payload};
 use srad_types::utils::timestamp;
-use srad_types::PropertySet;
 use srad_types::{traits, MetricId, MetricValue};
 use srad_types::{MetaData, PartialTemplate, Template};
+use srad_types::{PropertySet, PropertySetError};
 
 use thiserror::Error;
 
@@ -268,6 +268,8 @@ pub enum MessageMetricError {
     NullMetric,
     #[error("metric has no value and does not set is_null")]
     MissingValue,
+    #[error("metric has invalid properties: {0}")]
+    InvalidProperties(#[from] PropertySetError),
 }
 
 /// Errors that can occur when converting a Sparkplug payload into [MessageMetrics].
@@ -309,11 +311,16 @@ impl TryFrom<Metric> for MessageMetric {
             return Err(MessageMetricError::MissingValue);
         };
 
+        let properties = match value.properties {
+            Some(properties) => Some(PropertySet::try_from(properties)?),
+            None => None,
+        };
+
         Ok(MessageMetric {
             id,
             timestamp: value.timestamp,
             value: metric_value,
-            properties: None,
+            properties,
         })
     }
 }
@@ -402,6 +409,45 @@ mod tests {
         assert!(matches!(
             MessageMetric::try_from(metric),
             Err(MessageMetricError::MissingValue)
+        ));
+    }
+
+    #[test]
+    fn properties_are_populated_from_the_metric() {
+        let mut metric = Metric::new();
+        metric.set_name("metric".into());
+        metric.set_value(srad_types::payload::metric::Value::IntValue(1));
+        metric.properties = Some(srad_types::payload::PropertySet {
+            keys: vec!["key".into()],
+            values: vec![srad_types::payload::PropertyValue {
+                r#type: Some(srad_types::payload::DataType::String as u32),
+                is_null: None,
+                value: Some(srad_types::payload::property_value::Value::StringValue(
+                    "value".into(),
+                )),
+            }],
+        });
+
+        let message_metric = MessageMetric::try_from(metric).unwrap();
+        let properties: srad_types::payload::PropertySet =
+            message_metric.properties.unwrap().into();
+        assert_eq!(properties.keys, vec!["key".to_string()]);
+        assert_eq!(properties.values.len(), 1);
+    }
+
+    #[test]
+    fn invalid_properties_are_rejected() {
+        let mut metric = Metric::new();
+        metric.set_name("metric".into());
+        metric.set_value(srad_types::payload::metric::Value::IntValue(1));
+        metric.properties = Some(srad_types::payload::PropertySet {
+            keys: vec!["key".into()],
+            values: Vec::new(),
+        });
+
+        assert!(matches!(
+            MessageMetric::try_from(metric),
+            Err(MessageMetricError::InvalidProperties(_))
         ));
     }
 
