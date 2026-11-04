@@ -8,7 +8,8 @@ implementations. It lists what passes, which assertions are not executed, and th
 implementation gaps behind them. The TCK's `broker` profile is not covered
 because it tests the MQTT server rather than the library.
 
-Last run: 2026-11-03, against Eclipse Sparkplug TCK **3.0.0** with the
+Last run: 2026-11-04 for the `host` profile and 2026-11-03 for the `edge`
+profile, against Eclipse Sparkplug TCK **3.0.0** with the
 `hivemq/hivemq-ce:2025.3` based `srad-tck` image.
 
 [tck]: https://github.com/eclipse-sparkplug/sparkplug
@@ -18,7 +19,7 @@ Last run: 2026-11-03, against Eclipse Sparkplug TCK **3.0.0** with the
 | Profile | Implementation under test | Example used |
 | --- | --- | --- |
 | `edge` | `srad-eon` | `examples/node/tck.rs` (`tck-node`) |
-| `host` | `srad-app` | `examples/app/generic.rs` (`generic-app`) |
+| `host` | `srad-app` | `examples/app/tck_host.rs` (`tck-host`) |
 
 ## Results
 
@@ -33,10 +34,10 @@ Last run: 2026-11-03, against Eclipse Sparkplug TCK **3.0.0** with the
 | edge | `MultipleBrokerTest` | **FAIL** | 23 passed, 1 failed, 1 not executed |
 | host | `SessionEstablishmentTest` | PASS but INCOMPLETE | 43 passed, 1 not executed |
 | host | `SessionTerminationTest` | PASS but INCOMPLETE | 11 passed, 1 not executed |
-| host | `SendCommandTest` | **TIMEOUT** | 11 passed, 26 not executed |
+| host | `SendCommandTest` | PASS but INCOMPLETE | 36 passed, 1 not executed |
 | host | `EdgeSessionTerminationTest` | PASS | 15 passed |
 | host | `MessageOrderingTest` | PASS | 22 passed |
-| host | `MultipleBrokerTest` | **TIMEOUT** | 3 not executed |
+| host | `MultipleBrokerTest` | PASS but INCOMPLETE | 7 passed, 1 not executed |
 
 `PASS but INCOMPLETE` means every executed assertion passed but some assertions
 were not exercised. It is the expected result when a requirement does not apply
@@ -74,6 +75,12 @@ The following are exercised and pass:
   metrics stale when it receives NDEATH/DDEATH.
 - Message ordering: out-of-order DDATA is buffered, and the application sends
   `Node Control/Rebirth` when the reorder timeout elapses.
+- Commands: the `tck-host` example turns the TCK's console prompts into NCMD and
+  DCMD publishes. `AppClient::publish_metrics` supports command topics, QoS 0,
+  no retain, a payload timestamp, no sequence number and metrics with names and
+  optional datatypes. The edge rebirth uses `publish_node_rebirth`, which omits
+  the datatype as recommended by the specification. The other commands use
+  `PublishMetric::with_datatype` where the TCK checks the datatype.
 
 ## Gaps and not-executed assertions
 
@@ -101,45 +108,37 @@ per-session `bdSeq` increment and the STATE timestamp handling already work.
 
 ### `host:MultipleBrokerTest` — single-broker application
 
-**Not executed:** all three assertions
-(`...-with-multiple-servers-state-subs`, `...-with-multiple-servers-state`,
-`operational-behavior-host-application-multi-server-timestamp`).
+**Not executed:**
+`operational-behavior-host-application-multi-server-timestamp`.
 
 **Why:** the test requires the Host Application to be online on two MQTT Servers
 at the same time, publish its online `STATE` to both, and reconnect after the TCK
-forcibly disconnects it from one. `srad-app` owns one client and one event loop.
+forcibly disconnects it from one. `srad-app` owns one client and one event loop,
+and the runner does not provision the second broker on port 1884. The
+single-server assertions (`...-state-subs` and `...-state`) pass, so the test
+reports `PASS but INCOMPLETE`; the multi-server timestamp assertion is not
+executed.
 
 **Implementation:** run one application per broker (same host id, different MQTT
 client ids) or add a multi-client application wrapper that publishes online and
 offline `STATE` to every broker and reconnects each independently. The runner
 also needs to start the second broker.
 
-### `host:SendCommandTest` — no command workflow and no command datatype
+### `host:SendCommandTest` — command datatype
 
-**Not executed:** 26 command assertions, including
-`operational-behavior-data-commands-ncmd-verb`,
-`operational-behavior-data-commands-ncmd-rebirth-value`,
-`operational-behavior-data-commands-dcmd-metric-value`,
-`topics-ncmd-*`, `topics-dcmd-*`, and the NCMD/DCMD payload assertions.
+**Not executed:** `operational-behavior-data-commands-ncmd-rebirth-value`.
 
-**Why:** two separate gaps.
+**Why:** Sparkplug says the datatype *SHOULD NOT* be included in command
+metrics. `tck-host` uses `AppClient::publish_node_rebirth` for the edge rebirth,
+which omits it. The TCK only sets this assertion when the `Node Control/Rebirth`
+metric has `datatype == Boolean`, so the assertion is not executed and the test
+reports `PASS but INCOMPLETE`.
 
-1. The application has no command-sending workflow. `AppClient` exposes
-   `publish_metrics` and `publish_node_rebirth`, but `generic-app` has no trigger
-   that makes it send commands. The TCK asks the operator to trigger four
-   commands and receives none.
-2. `srad-app` cannot include a datatype on a published metric. `PublishMetric`
-   stores the value, and `From<PublishMetric> for Metric` sets the name, alias,
-   value, and timestamp, but never `datatype`. The TCK requires
-   `datatype == Boolean` for the `Node Control/Rebirth` value and
-   `datatype == birth datatype` for the DCMD metric value. The specification
-   says datatype *SHOULD NOT* be included in NCMD/DCMD, so this is partly a TCK
-   inconsistency, but an option is needed for interoperability.
-
-**Implementation:** add `PublishMetric::with_datatype(DataType)` (and a
-`publish_device_rebirth` helper next to `publish_node_rebirth`), then provide a
-legitimate application workflow that sends a command in response to an
-application-level input.
+**Implementation (optional):** publish the edge rebirth through
+`AppClient::publish_metrics` with
+`PublishMetric::with_datatype(DataType::Boolean)`. The example intentionally
+does not do this because it would send a command payload that the specification
+says should not include a datatype.
 
 ### MQTT 3.1.1 assertions — client is MQTT 5 only
 
@@ -221,9 +220,12 @@ exercise the branch.
   accepts integer values in either `int_value` or `long_value`; the fix is
   covered by a unit test.
 - **Command datatype.** `host:SendCommandTest` requires a datatype in command
-  metrics even though the specification says it *SHOULD NOT* be included. This
-  is the main reason the command test cannot pass with the current
-  `PublishMetric` API.
+  metrics even though the specification says it *SHOULD NOT* be included.
+  `PublishMetric::with_datatype` supports this explicitly, but the generic
+  `publish_node_rebirth` helper leaves the datatype out to stay spec-correct.
+  `tck-host` therefore does not execute the TCK's `ncmd-rebirth-value`
+  assertion; its other command publishes opt in where the TCK checks the
+  datatype.
 - **DDEATH is only reachable through node shutdown.** `edge:SessionTerminationTest`
   has no way to take a single device offline while the node stays up, so the
   DDEATH assertions depend on shutdown behaviour.
@@ -234,7 +236,7 @@ Build the runner and examples:
 
 ```shell
 cargo build -p tck-runner
-cargo build -p examples --example tck-node --example generic-app
+cargo build -p examples --example tck-node --example tck-host
 ```
 
 Edge profile:
@@ -251,7 +253,7 @@ Host profile:
 ```shell
 ./target/debug/tck-runner --suite host \
     --docker-image srad-tck \
-    --node-cmd ./target/debug/examples/generic-app \
+    --node-cmd ./target/debug/examples/tck-host \
     --host-app-id foo \
     --client-id client \
     --console-reply PASS \
@@ -261,5 +263,7 @@ Host profile:
 The runner writes `results.json`, `junit.xml`, and per-test logs under
 `tck/results/<timestamp>/`. The host suite needs `--host-app-id` and
 `--client-id` to match the application under test (`foo` and `client` for
-`generic-app`). `host:MultipleBrokerTest` additionally needs a second broker on
-port 1884 and a host application connected to both brokers.
+`tck-host`). `host:MultipleBrokerTest` additionally needs a second broker on
+port 1884 and a host application connected to both brokers. The simpler
+`generic-app` example can still be used for host tests that do not send
+commands, but `host:SendCommandTest` needs `tck-host`'s prompt handling.

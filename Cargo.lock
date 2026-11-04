@@ -285,6 +285,7 @@ dependencies = [
  "env_logger",
  "log",
  "rand",
+ "rumqttc",
  "srad",
  "tokio",
 ]

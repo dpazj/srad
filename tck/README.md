@@ -149,24 +149,49 @@ which arguments each test takes and how the node has to be managed:
 ### Host application tests
 
 The host application under test must use the id passed to `--host-app-id` and
-the MQTT client id passed to `--client-id`. The `generic-app` example uses `foo`
-and `client`:
+the MQTT client id passed to `--client-id`. `examples/app/tck_host.rs`
+(`--example tck-host`) is a host application built on the generic application.
+It defaults to `foo` and `client`, and answers the TCK's command prompts by
+publishing the requested NCMD and DCMD messages through the generic
+application's `AppClient`:
 
 ```shell
-cargo build -p examples --example generic-app
+cargo build -p examples --example tck-host
 
 ./target/debug/tck-runner --suite host \
     --docker-image srad-tck \
-    --node-cmd ./target/debug/examples/generic-app \
+    --node-cmd ./target/debug/examples/tck-host \
     --host-app-id foo \
     --client-id client \
     --console-reply PASS
 ```
 
-`host:SendCommandTest` prompts the operator to make the application send four
-commands. `generic-app` has no such trigger, so that test times out; it needs an
-application that exposes a command-sending workflow. `host:MultipleBrokerTest`
-additionally needs the application connected to two brokers at once.
+`host:SendCommandTest` prompts for four commands: an edge rebirth, an edge
+metric update, a device rebirth and a device metric update. `tck-host`
+subscribes to `SPARKPLUG_TCK/CONSOLE_PROMPT` and publishes the corresponding
+commands. It uses metric names from the TCK 3.0.0 edge node utility's NBIRTH
+and DBIRTH (`TCK_metric/Int32`, `EdgeNode Control/Rebirth` and `Outputs/1`); if
+the TCK changes those metrics, update the constants in the example.
+
+The edge rebirth uses `AppClient::publish_node_rebirth`, which omits the metric
+datatype as recommended by the specification. The TCK requires a Boolean
+datatype for `Node Control/Rebirth`, so its
+`operational-behavior-data-commands-ncmd-rebirth-value` assertion is not
+executed and `host:SendCommandTest` reports `PASS but INCOMPLETE`. Adding the
+datatype would make the assertion pass but would send a command payload that
+the specification says *SHOULD NOT* include a datatype.
+
+`tck-runner` exports the test parameters to every `--node-cmd` process as
+`SRAD_HOST_APP_ID`, `SRAD_GROUP_ID`, `SRAD_NODE_ID`, `SRAD_DEVICE_ID`,
+`SRAD_CLIENT_ID`, `SRAD_BROKER_HOST` and `SRAD_BROKER_PORT`. `tck-host` reads
+these values, so it follows `--host-app-id`, `--group-id`, `--node-id`,
+`--device-id`, `--client-id` and `--broker` instead of requiring the defaults.
+The example uses the first `--device-id` when the option is repeated.
+
+The simpler `generic-app` example can still be used for host tests that do not
+send commands, but `host:SendCommandTest` times out with it because it has no
+command workflow. `host:MultipleBrokerTest` additionally needs the application
+connected to two brokers at once.
 
 ### Isolation and bdSeq
 
