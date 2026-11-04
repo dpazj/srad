@@ -13,8 +13,8 @@ impl NodeProcess {
     ///
     /// The child is started in its own process group so that a graceful
     /// `SIGINT` reaches the whole tree (e.g. `cargo run` and the example it
-    /// spawns).
-    pub fn spawn(command: &str, log_path: &Path) -> Result<Self> {
+    /// spawns). `envs` are added to the child's environment.
+    pub fn spawn(command: &str, log_path: &Path, envs: &[(&str, String)]) -> Result<Self> {
         let log = File::create(log_path)
             .with_context(|| format!("creating node log {}", log_path.display()))?;
 
@@ -24,7 +24,8 @@ impl NodeProcess {
             .arg(command)
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone()?))
-            .stderr(Stdio::from(log));
+            .stderr(Stdio::from(log))
+            .envs(envs.iter().map(|(key, value)| (*key, value.as_str())));
 
         #[cfg(unix)]
         {

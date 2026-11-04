@@ -45,6 +45,9 @@
   client uses a zero-capacity request channel
 - Always subscribe to the application's own `spBv1.0/STATE/<host>` topic, even
   when the namespace subscription already covers it
+- Add `PublishMetric::with_datatype` so applications can include a datatype on
+  published metrics. `publish_node_rebirth` continues to omit the datatype, as
+  recommended by the specification
 
 ### Examples
 
@@ -59,6 +62,12 @@
   by the Sparkplug TCK's `SendComplexDataTest`
 - Configure the `tck-node` example to wait for the TCK's `SCADA_HOST` primary host,
   which enables the TCK's `edge:SessionEstablishmentTest` primary host check
+- Add a `tck-host` example that uses the generic application and answers the
+  TCK's command prompts with NCMD and DCMD publishes, enabling
+  `host:SendCommandTest`. It reads the runner's test parameters from the
+  environment so it follows the configured host, group, node, device and broker.
+  The edge rebirth follows the specification and omits the metric datatype, so
+  the TCK's `ncmd-rebirth-value` assertion remains not executed
 
 ### TCK
 
@@ -69,6 +78,10 @@
 - Wait `--node-start-delay` after starting a node for `StartBefore` tests, so the
   node has connected and published its retained birth or STATE before the test
   observes it
+- Export the test parameters to `--node-cmd` as `SRAD_HOST_APP_ID`,
+  `SRAD_GROUP_ID`, `SRAD_NODE_ID`, `SRAD_DEVICE_ID`, `SRAD_CLIENT_ID`,
+  `SRAD_BROKER_HOST` and `SRAD_BROKER_PORT`, so examples can follow the runner's
+  configuration instead of hardcoding it
 
 ## 0.6.0
 

@@ -356,7 +356,7 @@ async fn run_one(
 
     let mut node = None;
     if matches!(spec.nodes, NodeMode::StartBefore) {
-        node = start_node(cli, &test_dir)?;
+        node = start_node(cli, &test_dir, broker)?;
         if node.is_some() {
             // Let the node connect and publish its retained birth or STATE
             // before the test starts observing it.
@@ -383,7 +383,7 @@ async fn run_one(
         NodeMode::StartAfter | NodeMode::StartAfterThenStop
     ) {
         sleep(Duration::from_millis(cli.node_start_delay)).await;
-        node = start_node(cli, &test_dir)?;
+        node = start_node(cli, &test_dir, broker)?;
     }
 
     let mut summary = None;
@@ -557,13 +557,29 @@ async fn handle_message(
     Ok(())
 }
 
-fn start_node(cli: &Cli, test_dir: &Path) -> Result<Option<NodeProcess>> {
+fn start_node(cli: &Cli, test_dir: &Path, broker: &(String, u16)) -> Result<Option<NodeProcess>> {
     let Some(command) = &cli.node_cmd else {
         return Ok(None);
     };
 
+    // Test parameters are passed to the node under test so that examples can
+    // follow the runner's --host-app-id, --group-id, --node-id, --device-id,
+    // --client-id and --broker options instead of hardcoding them.
+    let envs = vec![
+        ("SRAD_HOST_APP_ID", cli.host_app_id.clone()),
+        ("SRAD_GROUP_ID", cli.group_id.clone()),
+        ("SRAD_NODE_ID", cli.node_id.clone()),
+        (
+            "SRAD_DEVICE_ID",
+            cli.device_ids.first().cloned().unwrap_or_default(),
+        ),
+        ("SRAD_CLIENT_ID", cli.client_id.clone()),
+        ("SRAD_BROKER_HOST", broker.0.clone()),
+        ("SRAD_BROKER_PORT", broker.1.to_string()),
+    ];
+
     let log_path = test_dir.join("node.log");
-    let node = NodeProcess::spawn(command, &log_path)?;
+    let node = NodeProcess::spawn(command, &log_path, &envs)?;
     eprintln!(
         "[runner] started node: {command} (log: {})",
         log_path.display()

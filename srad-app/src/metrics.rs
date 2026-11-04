@@ -62,6 +62,7 @@ pub struct PublishMetric {
     metric_identifier: MetricId,
     value: MetricValue,
     timestamp: Option<u64>,
+    datatype: Option<DataType>,
 }
 
 impl PublishMetric {
@@ -71,12 +72,24 @@ impl PublishMetric {
             metric_identifier,
             value: value.into(),
             timestamp: None,
+            datatype: None,
         }
     }
 
     /// Sets a timestamp for the published metric
     pub fn timestamp(mut self, timestamp: u64) -> Self {
         self.timestamp = Some(timestamp);
+        self
+    }
+
+    /// Sets the datatype for the published metric.
+    ///
+    /// Sparkplug says that the datatype SHOULD NOT be included in NCMD and DCMD
+    /// metrics, so it is omitted by default. Some consumers, including the
+    /// Eclipse Sparkplug TCK, require it for commands such as
+    /// `Node Control/Rebirth`.
+    pub fn with_datatype(mut self, datatype: DataType) -> Self {
+        self.datatype = Some(datatype);
         self
     }
 }
@@ -89,6 +102,9 @@ impl From<PublishMetric> for Metric {
             MetricId::Alias(alias) => metric.set_alias(alias),
         };
         metric.set_value(val.value.into());
+        if let Some(datatype) = val.datatype {
+            metric.set_datatype(datatype);
+        }
         metric.timestamp = val.timestamp;
         metric
     }
@@ -273,5 +289,19 @@ mod tests {
     fn valid_bdseq_is_returned() {
         let result = bdseq_from_payload_metrics(&[bdseq_metric(Some(metric::Value::LongValue(7)))]);
         assert_eq!(result.unwrap(), 7);
+    }
+
+    #[test]
+    fn publish_metric_can_include_a_datatype() {
+        let metric: Metric = PublishMetric::new(MetricId::Name("metric".into()), 1i32)
+            .with_datatype(DataType::Int32)
+            .into();
+        assert_eq!(metric.datatype, Some(DataType::Int32 as u32));
+    }
+
+    #[test]
+    fn publish_metric_omits_the_datatype_by_default() {
+        let metric: Metric = PublishMetric::new(MetricId::Name("metric".into()), 1i32).into();
+        assert_eq!(metric.datatype, None);
     }
 }
