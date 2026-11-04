@@ -30,7 +30,7 @@ Last run: against Eclipse Sparkplug TCK **3.0.0** with the
 | edge | `SendComplexDataTest` | PASS | 48 passed |
 | edge | `ReceiveCommandTest` | PASS | 14 passed |
 | edge | `PrimaryHostTest` | PASS | 35 passed |
-| edge | `MultipleBrokerTest` | **FAIL** | 23 passed, 1 failed, 1 not executed |
+| edge | `MultipleBrokerTest` | **TIMEOUT** | 27 passed, 2 failed |
 | host | `SessionEstablishmentTest` | PASS but INCOMPLETE | 43 passed, 1 not executed |
 | host | `SessionTerminationTest` | PASS but INCOMPLETE | 11 passed, 1 not executed |
 | host | `SendCommandTest` | PASS but INCOMPLETE | 36 passed, 1 not executed |
@@ -41,7 +41,9 @@ Last run: against Eclipse Sparkplug TCK **3.0.0** with the
 `PASS but INCOMPLETE` means every executed assertion passed but some assertions
 were not exercised. It is the expected result when a requirement does not apply
 to the implementation (for example, the MQTT 3.1.1 clean-session requirement
-when the client only speaks MQTT 5).
+when the client only speaks MQTT 5). `TIMEOUT` means the TCK did not send a final
+result within the per-test timeout; the partial result still records the
+assertion outcomes.
 
 ## What is covered
 
@@ -85,9 +87,9 @@ The following are exercised and pass:
 
 ### `edge:MultipleBrokerTest` — no broker failover
 
-**Failing assertion:** `operational-behavior-primary-application-state-with-multiple-servers-walk`
-
-**Not executed:** `operational-behavior-primary-application-state-with-multiple-servers-single-server`
+**Failing assertions:**
+- `operational-behavior-primary-application-state-with-multiple-servers-walk`
+- `operational-behavior-edge-node-birth-sequence-wait`
 
 **Why:** `srad-eon` owns a single `EventLoop` and `Client`. When the primary host
 goes offline, `NodeHandle::on_primary_host_offline` publishes NDEATH and
@@ -96,10 +98,12 @@ requires the Edge Node to terminate the session and move to the next MQTT Server
 in its connection list. There is no broker list, no switching logic, and no
 `EoNBuilder` API for multiple brokers.
 
-The runner does not provision the second broker on port 1884 that this test
-expects; start one separately and pass it with `--second-broker` (see
-[`README.md`](./README.md#multiple-brokers)). The failing assertion is the node's
-missing failover, not the harness.
+The second broker is started separately and passed with `--second-broker` (see
+[`README.md`](./README.md#multiple-brokers)), so the single-server assertion
+passes. The test still times out: the node never moves to the second server, and
+because it reconnects to the first server it publishes its birth without waiting
+for a new online `STATE` there, which also fails `...-birth-sequence-wait`. Both
+failures are the missing failover, not the harness.
 
 **Implementation:** add a multi-broker client/event-loop adapter (or
 `EoNBuilder::with_brokers`), switch brokers after the primary host goes offline,
