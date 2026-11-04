@@ -148,7 +148,7 @@ Minimum supported Rust version is now 1.85.
 - **No multi-broker failover.** `srad-eon` owns a single client and event loop,
   so a node reconnects to the same MQTT server when the primary host goes
   offline instead of moving to the next server in a connection list. The TCK's
-  `edge:MultipleBrokerTest` fails on the failover walk.
+  `edge:MultipleBrokerTest` fails its failover assertions.
 - **Single-broker host applications.** `srad-app` owns one client and event
   loop, and there is no built-in way to publish online and offline STATE to more
   than one MQTT server. The TCK's `host:MultipleBrokerTest` only executes its
