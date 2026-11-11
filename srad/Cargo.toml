@@ -1,6 +1,6 @@
 [package]
 name = "srad"
-version = "0.6.0"
+version = "0.7.0"
 description = "Sparkplug development framework"
 readme = "../README.md"
 keywords = ["sparkplug", "sparkplug-b", "mqtt", "iot", "async"]
@@ -26,4 +26,4 @@ srad-macros = { path = "../srad-macros", version = "0.4.0" }
 
 [dev-dependencies]
 tokio = { workspace = true }
-srad-client-rumqtt = { path = "../srad-client-rumqtt", version = "0.4.0" }
+srad-client-rumqtt = { path = "../srad-client-rumqtt", version = "0.5.0" }

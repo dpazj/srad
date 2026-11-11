@@ -1,6 +1,6 @@
 [package]
 name = "srad-client-rumqtt"
-version = "0.4.0"
+version = "0.5.0"
 description = "Sparkplug Client implementation using Rumqtt"
 readme = "README.md"
 keywords = ["sparkplug", "rumqtt"]
