@@ -31,16 +31,24 @@ Features include:
   - Derive macros for typed `Template` and `DataSet` implementations
 - **Compliance-focused APIs** - APIs designed to prevent non-conformance of the specification
 - **Async Node and Application development frameworks** - Ready-to-use frameworks built using `tokio`, providing out-the-box compatibility, scalable implementations, and support for Node/Application specific features
-- **MQTT Client Agnostic** - Flexible architecture providing the ability to choose the best MQTT implementation for your use case
+- **Pluggable MQTT Clients** - The Node and Application frameworks are generic over the `srad-client` traits. Use the provided `srad-client-rumqtt` implementation, or bring your own.
 
 ## Getting Started
+
+Add the `srad` and `srad-client-rumqtt` crates to your dependencies:
+
+```sh
+cargo add srad
+cargo add srad-client-rumqtt
+```
 
 ### Examples
 
 #### A simple Edge Node
 
 ```rust no_run
-use srad::{client_rumqtt, eon::{EoN, EoNBuilder, NoMetricManager}};
+use srad::eon::{EoN, EoNBuilder, NoMetricManager};
+use srad_client_rumqtt as client_rumqtt;
 
 #[tokio::main]
 async fn main() {
@@ -62,7 +70,7 @@ async fn main() {
 
 ```rust no_run
 use srad::app::{SubscriptionConfig, generic_app::ApplicationBuilder};
-use srad::client_rumqtt;
+use srad_client_rumqtt as client_rumqtt;
 
 #[tokio::main]
 async fn main() {
@@ -85,7 +93,7 @@ Rust 1.85 or newer is required.
 
 ## Project Layout
 
-- [`srad`](./README.md): Re-exports the `srad-*` crates under one package.
+- [`srad`](./README.md): Re-exports the `srad-eon`, `srad-app`, `srad-client`, `srad-types` and `srad-macros` crates under one package.
 - [`srad-eon`](./srad-eon/README.md): SDK for building Sparkplug Edge Nodes.
 - [`srad-app`](./srad-app/README.md): SDK for building Sparkplug Applications.
 - [`srad-client`](./srad-client/README.md): Trait and type definitions for implementing clients to interact with Sparkplug.  

@@ -46,8 +46,8 @@ use srad::app::{
     generic_app, AppClient, MetricBirthDetails, MetricDetails, NodeIdentifier, PublishMetric,
     PublishTopic, SubscriptionConfig,
 };
-use srad::client_rumqtt as rumqtt;
 use srad::types::{payload::DataType, MetricId};
+use srad_client_rumqtt as rumqtt;
 
 const DEFAULT_HOST_ID: &str = "foo";
 const DEFAULT_GROUP_ID: &str = "foo";

@@ -5,13 +5,13 @@ use std::{
 
 use rand::RngExt;
 use srad::{
-    client_rumqtt as rumqtt,
     eon::{
         BirthMetricDetails, EoNBuilder, MessageMetrics, MetricManager, MetricPublisher,
         MetricToken, NodeHandle, NodeMetricManager,
     },
     types::{Template, TemplateInstance, TemplateMetadata},
 };
+use srad_client_rumqtt as rumqtt;
 
 use async_trait::async_trait;
 use log::{error, info, warn, LevelFilter};

@@ -1,10 +1,8 @@
-use srad::{
-    client_rumqtt as rumqtt,
-    eon::{
-        simple_manager::{SimpleMetricBuilder, SimpleMetricManager},
-        EoNBuilder, NoMetricManager,
-    },
+use srad::eon::{
+    simple_manager::{SimpleMetricBuilder, SimpleMetricManager},
+    EoNBuilder, NoMetricManager,
 };
+use srad_client_rumqtt as rumqtt;
 use std::time::Duration;
 
 use log::LevelFilter;

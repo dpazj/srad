@@ -1,6 +1,6 @@
 use log::{info, LevelFilter};
 use srad::app::{AppEventLoop, SubscriptionConfig};
-use srad::client_rumqtt as rumqtt;
+use srad_client_rumqtt as rumqtt;
 
 #[tokio::main]
 async fn main() {

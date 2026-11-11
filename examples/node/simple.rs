@@ -1,10 +1,8 @@
-use srad::{
-    client_rumqtt as rumqtt,
-    eon::{
-        simple_manager::{SimpleMetricBuilder, SimpleMetricManager},
-        EoNBuilder,
-    },
+use srad::eon::{
+    simple_manager::{SimpleMetricBuilder, SimpleMetricManager},
+    EoNBuilder,
 };
+use srad_client_rumqtt as rumqtt;
 use std::time::Duration;
 
 use tokio::time;
