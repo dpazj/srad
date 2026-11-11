@@ -4,9 +4,9 @@ use std::sync::Arc;
 use log::{info, LevelFilter};
 use srad::app::generic_app::{MetricStore, StateUpdateError};
 use srad::app::{generic_app, NodeIdentifier, SubscriptionConfig};
-use srad::client_rumqtt as rumqtt;
 use srad::types::payload::DataType;
 use srad::types::{MetricId, MetricValueKind};
+use srad_client_rumqtt as rumqtt;
 
 struct MetricStoreImpl {
     node: Arc<NodeIdentifier>,

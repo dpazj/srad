@@ -6,6 +6,10 @@
 //!
 //! This is a convenient crate that re-exports the other `srad` crates. See those crates for docs etc.
 //!
+//! MQTT client implementations live in their own crates. To use the Rumqtt
+//! client, add [`srad-client-rumqtt`](https://crates.io/crates/srad-client-rumqtt)
+//! to your dependencies.
+//!
 //! # Example
 //!  
 //! Some super simple "Hello, World!" examples:
@@ -13,7 +17,8 @@
 //! ## Edge Node
 //!
 //! ```rust no_run
-//! use srad::{client_rumqtt, eon::{EoN, EoNBuilder, NoMetricManager}};
+//! use srad::eon::{EoN, EoNBuilder, NoMetricManager};
+//! use srad_client_rumqtt as client_rumqtt;
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -35,7 +40,7 @@
 //!
 //! ```rust no_run
 //! use srad::app::{SubscriptionConfig, generic_app::ApplicationBuilder};
-//! use srad::client_rumqtt;
+//! use srad_client_rumqtt as client_rumqtt;
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -54,7 +59,6 @@
 //!
 //! - `eon`: Enables the Edge Node SDK. Enabled by default.
 //! - `app`: Enables the Application SDK. Enabled by default.
-//! - `rumqtt-client`: Enables the Rumqtt client implementation. Enabled by default.
 //!
 
 #[cfg(feature = "eon")]
@@ -64,9 +68,6 @@ pub use srad_eon as eon;
 pub use srad_app as app;
 
 pub use srad_client as client;
-
-#[cfg(feature = "rumqtt-client")]
-pub use srad_client_rumqtt as client_rumqtt;
 
 pub mod types {
     pub use srad_macros::{DataSetRow, Template};

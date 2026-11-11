@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Top-level crate
+
+- **breaking change** `srad` no longer re-exports the Rumqtt client. The
+  `rumqtt-client` feature and the `srad::client_rumqtt` path were removed; add
+  `srad-client-rumqtt` as a separate dependency and use it directly instead.
+
 ### Client
 
 - **breaking change** Update `rumqttc` to 0.25.1. The `MqttOptions` and

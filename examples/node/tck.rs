@@ -18,7 +18,6 @@ use std::time::Duration;
 
 use log::LevelFilter;
 use srad::{
-    client_rumqtt as rumqtt,
     eon::{
         simple_manager::{SimpleMetricBuilder, SimpleMetricManager},
         BirthInitializer, BirthMetricDetails, DeviceHandle, DeviceMetricManager, EoNBuilder,
@@ -26,6 +25,7 @@ use srad::{
     },
     types::{DataSetRow, Template, TemplateMetadata, TypedDataSet},
 };
+use srad_client_rumqtt as rumqtt;
 use tokio::time;
 
 /// A template with both metrics and a parameter. The definition is published

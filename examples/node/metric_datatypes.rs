@@ -1,13 +1,13 @@
 use std::sync::Mutex;
 
 use srad::{
-    client_rumqtt as rumqtt,
     eon::{BirthMetricDetails, EoNBuilder, MetricManager, NodeMetricManager},
     types::{
         payload::DataType, DataSet, DataSetRow, DataSetValue, DateTime, Template, TemplateMetadata,
         TypedDataSet,
     },
 };
+use srad_client_rumqtt as rumqtt;
 
 use log::LevelFilter;
 
