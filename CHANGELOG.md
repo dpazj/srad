@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Client
+
+- **breaking change** Update `rumqttc` to 0.25.1. The `MqttOptions` and
+  `ConnectProperties` re-exported by `srad-client-rumqtt` now come from
+  rumqttc 0.25, whose TLS connections use rustls 0.23, with aws-lc-rs as the
+  default crypto provider, instead of rustls 0.22. Certificates are then
+  verified by rustls-webpki 0.103 rather than 0.102, which avoids
+  RUSTSEC-2026-0346, RUSTSEC-2026-0349, RUSTSEC-2026-0049, RUSTSEC-2026-0098,
+  RUSTSEC-2026-0099, RUSTSEC-2026-0104 and RUSTSEC-2026-0382
+
 ## 0.6.0
 
 Minimum supported Rust version is now 1.85.
